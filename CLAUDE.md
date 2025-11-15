@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL: API Documentation Verification
+
+**BEFORE making ANY changes to third-party library APIs (Flet, PyQt, YOLO, etc.):**
+
+1. **ALWAYS use Context7 (`mcp__context7__resolve-library-id` and `mcp__context7__get-library-docs`) to check the official API documentation**
+2. **Verify the correct API syntax, parameter names, and capitalization** (e.g., `ft.Colors` not `ft.colors`)
+3. **Never guess or assume API signatures** - incorrect APIs cause runtime errors
+4. **Check the installed version** before suggesting upgrades or version-specific features
+
+**Examples of when to use Context7:**
+- Using Flet controls or properties (AppBar, colors, icons, etc.)
+- Calling Ultralytics YOLO methods (track, predict, parameters)
+- Using MediaPipe or OpenCV functions
+- Any third-party library API usage
+
+**Why this matters:**
+- Prevents AttributeError and runtime failures
+- Ensures compatibility with installed versions
+- Saves debugging time from incorrect API usage
+
 ## Project Overview
 
 DE-GUI is a cross-platform GUI application (Flet-based, PyQt6 legacy) for the Drane Engineering assistive robotic arm. It integrates:
