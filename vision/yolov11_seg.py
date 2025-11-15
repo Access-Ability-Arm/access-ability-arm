@@ -28,6 +28,8 @@ def suppress_stderr():
 
 from ultralytics import YOLO
 
+from config.console import info, status, underline
+
 
 class YOLOv11Seg:
     def __init__(self, model_size="n"):
@@ -38,20 +40,20 @@ class YOLOv11Seg:
             model_size: Model size - 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
                        Nano is fastest, XLarge is most accurate
         """
-        print(f"Loading YOLOv11-{model_size}-seg model...")
+        status(f"Loading YOLOv11-{model_size}-seg model...")
 
         # Detect available device (MPS for Apple Silicon, CUDA for NVIDIA, CPU fallback)
         import torch
 
         if torch.backends.mps.is_available():
             self.device = "mps"
-            print("YOLOv11: Using Apple Metal (MPS) for GPU acceleration")
+            info(f"YOLOv11: Using {underline('Apple Metal (MPS)')} for GPU acceleration")
         elif torch.cuda.is_available():
             self.device = "cuda"
-            print("YOLOv11: Using NVIDIA CUDA for GPU acceleration")
+            info(f"YOLOv11: Using {underline('NVIDIA CUDA')} for GPU acceleration")
         else:
             self.device = "cpu"
-            print("YOLOv11: Using CPU (no GPU acceleration available)")
+            info("YOLOv11: Using CPU (no GPU acceleration available)")
 
         # Load YOLOv11 segmentation model from models/ directory
         models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
@@ -68,18 +70,18 @@ class YOLOv11Seg:
                 # Auto-download if not found locally
                 # YOLO downloads to current directory, so we need to move it
                 model_name = f"yolo11{model_size}-seg.pt"
-                print(f"Downloading {model_name}...")
+                info(f"Downloading {model_name}...")
                 self.model = YOLO(model_name, verbose=False)
 
                 # Move downloaded model to models/ directory for future use
                 if os.path.exists(model_name) and not os.path.exists(local_model):
                     import shutil
                     shutil.move(model_name, local_model)
-                    print(f"Moved {model_name} to models/ directory")
+                    status(f"Moved {model_name} to models/ directory")
                     # Reload from correct location
                     self.model = YOLO(local_model, verbose=False)
 
-        print(f"✓ YOLOv11-{model_size}-seg ready")
+        status(f"YOLOv11-{model_size}-seg ready")
 
         # Detection confidence threshold
         self.detection_threshold = 0.5

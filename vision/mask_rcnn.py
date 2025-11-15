@@ -4,6 +4,8 @@ import platform
 import cv2
 import numpy as np
 
+from config.console import info
+
 
 class MaskRCNN:
     def __init__(self):
@@ -22,7 +24,7 @@ class MaskRCNN:
             try:
                 self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
                 self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-                print("Mask R-CNN: Using CUDA backend")
+                info("Mask R-CNN: Using CUDA backend")
                 backend_set = True
             except:
                 pass
@@ -32,7 +34,7 @@ class MaskRCNN:
             try:
                 self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_VKCOM)
                 self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_VULKAN)
-                print("Mask R-CNN: Using Vulkan backend (Metal via MoltenVK)")
+                info("Mask R-CNN: Using Vulkan backend (Metal via MoltenVK)")
                 backend_set = True
             except:
                 pass
@@ -41,7 +43,7 @@ class MaskRCNN:
         if not backend_set:
             self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
             self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-            print("Mask R-CNN: Using CPU backend (no GPU acceleration available)")
+            info("Mask R-CNN: Using CPU backend (no GPU acceleration available)")
 
         # Generate random colors
         np.random.seed(2)

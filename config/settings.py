@@ -6,6 +6,8 @@ Handles hardware/software availability detection and app settings
 from dataclasses import dataclass
 from typing import Optional
 
+from config.console import error, success, underline
+
 
 @dataclass
 class AppConfig:
@@ -52,9 +54,9 @@ def detect_hardware_capabilities() -> AppConfig:
         from hardware.realsense_camera import RealsenseCamera
 
         config.realsense_available = True
-        print("✓ RealSense camera support available")
+        success(f"{underline('RealSense camera')} support available")
     except ImportError:
-        print("✗ RealSense camera not available - using standard webcam only")
+        error("RealSense camera not available - using standard webcam only")
 
     # Try YOLOv11-seg first (preferred), fallback to Mask R-CNN
     try:
@@ -62,17 +64,17 @@ def detect_hardware_capabilities() -> AppConfig:
 
         config.segmentation_available = True
         config.segmentation_model = "yolov11"
-        print("✓ YOLOv11-seg object detection available (recommended)")
+        success(f"{underline('YOLOv11-seg')} object detection available (recommended)")
     except ImportError as e:
-        print(f"✗ YOLOv11-seg not available: {e}")
+        error(f"YOLOv11-seg not available: {e}")
         try:
             from vision.mask_rcnn import MaskRCNN
 
             config.segmentation_available = True
             config.segmentation_model = "maskrcnn"
-            print("✓ Mask R-CNN object detection available (legacy)")
+            success("Mask R-CNN object detection available (legacy)")
         except ImportError:
-            print("✗ No segmentation model available - face tracking only")
+            error("No segmentation model available - face tracking only")
 
     return config
 

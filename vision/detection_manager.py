@@ -3,12 +3,40 @@ Detection Manager
 Manages switching between different detection modes (face tracking vs object detection)
 """
 
+import os
+import sys
+from contextlib import contextmanager
 from typing import Optional
 
 import numpy as np
 
+from config.console import error, status, success
 from config.settings import app_config
 from vision.face_detector import FaceDetector
+
+
+@contextmanager
+def suppress_output():
+    """Suppress all output including system-level warnings"""
+    # Save original file descriptors
+    stdout_fd = sys.stdout.fileno()
+    stderr_fd = sys.stderr.fileno()
+
+    # Save copies of the original file descriptors
+    with os.fdopen(os.dup(stdout_fd), 'w') as stdout_copy, \
+         os.fdopen(os.dup(stderr_fd), 'w') as stderr_copy:
+
+        # Redirect stdout and stderr to devnull
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, stdout_fd)
+            os.dup2(devnull, stderr_fd)
+            yield
+        finally:
+            # Restore original file descriptors
+            os.dup2(stdout_copy.fileno(), stdout_fd)
+            os.dup2(stderr_copy.fileno(), stderr_fd)
+            os.close(devnull)
 
 
 class DetectionManager:
@@ -16,10 +44,18 @@ class DetectionManager:
 
     def __init__(self):
         """Initialize detection manager with available detectors"""
-        print("Detection manager initialized")
+        status("Detection manager initialized")
 
         # Always initialize face detector (MediaPipe is always available)
-        self.face_detector = FaceDetector()
+        # Suppress TensorFlow Lite feedback manager warnings during initialization
+        # Warnings appear during the first .process() call, so we make a dummy call
+        with suppress_output():
+            self.face_detector = FaceDetector()
+            # Make a dummy process call to trigger TFLite initialization warnings
+            # This ensures warnings are suppressed rather than appearing later
+            import numpy as np
+            dummy_image = np.zeros((10, 10, 3), dtype=np.uint8)
+            self.face_detector.mesh.process(dummy_image)
 
         # Initialize segmentation model if available
         self.segmentation_model = None
@@ -29,7 +65,7 @@ class DetectionManager:
         # Set default detection mode
         # Modes: "face", "objects", "combined" (face + objects simultaneously)
         self.detection_mode = "objects" if self.segmentation_model else "face"
-        print(f"Detection mode: {self.detection_mode}")
+        status(f"Detection mode: {self.detection_mode}")
 
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""

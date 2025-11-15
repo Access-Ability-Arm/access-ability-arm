@@ -22,6 +22,7 @@ import flet as ft
 # Suppress user warnings
 warnings.simplefilter("ignore", UserWarning)
 
+from config.console import header, info, status, underline
 from flet_gui.main_window import FletMainWindow
 
 
@@ -52,12 +53,12 @@ if __name__ == "__main__":
 
     # Run Flet app
     if args.web:
-        print("Starting Access Ability Arm (Web version)...")
-        print(f"Open browser to: http://localhost:{args.port}")
-        print("Press Ctrl+C to stop the server")
+        header(f"Starting Access Ability Arm ({underline('Web version')})")
+        info(f"Open browser to: http://localhost:{args.port}")
+        status("Press Ctrl+C to stop the server")
         ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=args.port)
     else:
-        print("Starting Access Ability Arm (Desktop version)...")
-        print("Press 'T' to toggle between face tracking and object detection")
-        print("Close the window to exit")
+        header(f"Starting Access Ability Arm ({underline('Desktop version')})")
+        info("Press 'T' to toggle between face tracking and object detection")
+        status("Close the window to exit")
         ft.app(target=main)

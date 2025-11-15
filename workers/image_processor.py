@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from PyQt6 import QtCore, QtGui
 
+from config.console import error, status, success, underline
 from config.settings import app_config
 from vision.detection_manager import DetectionManager
 
@@ -31,7 +32,7 @@ class ImageProcessor(QtCore.QThread):
             callback: Optional callback function for non-Qt frameworks (like Flet)
         """
         super(ImageProcessor, self).__init__()
-        print("Image processor initialized")
+        status("Image processor initialized")
 
         self.display_width = display_width
         self.display_height = display_height
@@ -62,14 +63,14 @@ class ImageProcessor(QtCore.QThread):
 
                 self.rs_camera = RealsenseCamera()
                 self.use_realsense = True
-                print("✓ Using RealSense camera")
+                success(f"Using {underline('RealSense camera')}")
             except Exception as e:
-                print(f"✗ RealSense initialization failed: {e}")
-                print("→ Falling back to standard webcam")
+                error(f"RealSense initialization failed: {e}")
+                status("Falling back to standard webcam")
                 self.camera = cv2.VideoCapture(0)
         else:
             self.camera = cv2.VideoCapture(0)
-            print("✓ Using standard webcam")
+            success(f"Using {underline('standard webcam')}")
 
     def camera_changed(self, camera_index: int):
         """
@@ -82,11 +83,11 @@ class ImageProcessor(QtCore.QThread):
         if not self.use_realsense and self.camera:
             self.camera.release()
             self.camera = cv2.VideoCapture(camera_index)
-            print(f"✓ Switched to camera {camera_index}")
+            success(f"Switched to camera {camera_index}")
 
     def run(self):
         """Main processing loop"""
-        print("Image processor is running")
+        status("Image processor is running")
         self.thread_active = True
 
         while self.thread_active:
@@ -167,8 +168,8 @@ class ImageProcessor(QtCore.QThread):
                     (255, 0, 0),
                     2,
                 )
-            except Exception as e:
-                print(f"Error drawing reference point: {e}")
+            except Exception:
+                pass  # Silently skip if depth is unavailable at reference point
 
         return image
 

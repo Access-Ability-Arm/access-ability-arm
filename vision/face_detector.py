@@ -5,22 +5,48 @@ Uses MediaPipe to track facial landmarks, specifically mouth points
 
 import os
 import sys
+from contextlib import contextmanager
 
 import cv2
 import numpy as np
 
+from config.console import status
+
 # Suppress TensorFlow Lite warnings from MediaPipe
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GLOG_minloglevel'] = '3'
+os.environ['GLOG_logtostderr'] = '0'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# Suppress ABSL warnings (includes feedback manager warnings from inference_feedback_manager.cc)
+os.environ['ABSL_MINLOGLEVEL'] = '2'  # 0=INFO, 1=WARNING, 2=ERROR - suppress INFO and WARNING
 
-# Temporarily suppress stderr during MediaPipe import
-stderr = sys.stderr
-sys.stderr = open(os.devnull, 'w')
-try:
-    import mediapipe as mp
-finally:
-    sys.stderr.close()
-    sys.stderr = stderr
+
+@contextmanager
+def suppress_output():
+    """Suppress all output including system-level warnings"""
+    # Save original file descriptors
+    stdout_fd = sys.stdout.fileno()
+    stderr_fd = sys.stderr.fileno()
+
+    # Save copies of the original file descriptors
+    with os.fdopen(os.dup(stdout_fd), 'w') as stdout_copy, \
+         os.fdopen(os.dup(stderr_fd), 'w') as stderr_copy:
+
+        # Redirect stdout and stderr to devnull
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, stdout_fd)
+            os.dup2(devnull, stderr_fd)
+            yield
+        finally:
+            # Restore original file descriptors
+            os.dup2(stdout_copy.fileno(), stdout_fd)
+            os.dup2(stderr_copy.fileno(), stderr_fd)
+            os.close(devnull)
+
+
+# MediaPipe import is fine - warnings come from first .process() call, not import
+import mediapipe as mp
 
 
 class FaceDetector:
@@ -72,10 +98,13 @@ class FaceDetector:
 
     def __init__(self):
         """Initialize MediaPipe face mesh"""
-        self.mp_mesh = mp.solutions.face_mesh
-        self.mesh = self.mp_mesh.FaceMesh()
+        # Suppress TensorFlow Lite feedback manager warnings during initialization
+        # Warnings can occur when accessing mp.solutions.face_mesh or creating FaceMesh()
+        with suppress_output():
+            self.mp_mesh = mp.solutions.face_mesh
+            self.mesh = self.mp_mesh.FaceMesh()
         self.mp_draw = mp.solutions.drawing_utils
-        print("Face detector initialized")
+        status("Face detector initialized")
 
     def detect_and_draw(self, image: np.ndarray) -> np.ndarray:
         """
@@ -87,7 +116,9 @@ class FaceDetector:
         Returns:
             Image with landmarks drawn
         """
-        results = self.mesh.process(image)
+        # Suppress TensorFlow Lite feedback manager warnings during processing
+        with suppress_output():
+            results = self.mesh.process(image)
 
         if results.multi_face_landmarks:
             for face_landmarks in results.multi_face_landmarks:
