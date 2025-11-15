@@ -4,9 +4,15 @@ Provides interface compatible with mask_rcnn.py for easy drop-in replacement
 """
 
 import os
+import warnings
 
 import cv2
 import numpy as np
+
+# Suppress TensorFlow Lite warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TF logs (INFO, WARNING, ERROR)
+warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf')
+
 from ultralytics import YOLO
 
 
@@ -39,15 +45,17 @@ class YOLOv11Seg:
         local_model = os.path.join(models_dir, f"yolo11{model_size}-seg.pt")
 
         if os.path.exists(local_model):
-            print(f"Loading local model: {local_model}")
-            self.model = YOLO(local_model)
+            # Suppress verbose output during model loading
+            import logging
+            logging.getLogger("ultralytics").setLevel(logging.WARNING)
+            self.model = YOLO(local_model, verbose=False)
         else:
-            # Auto-download if not found locally
+            # Auto-download if not found locally (only shows message on first run)
             model_name = f"yolo11{model_size}-seg.pt"
-            print(f"Local model not found, downloading {model_name}...")
-            self.model = YOLO(model_name)
+            print(f"Downloading {model_name} (first run only)...")
+            self.model = YOLO(model_name, verbose=False)
 
-        print(f"YOLOv11-{model_size}-seg loaded successfully")
+        print(f"✓ YOLOv11-{model_size}-seg ready")
 
         # Detection confidence threshold
         self.detection_threshold = 0.5
