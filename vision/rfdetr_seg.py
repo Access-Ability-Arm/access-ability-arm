@@ -22,12 +22,12 @@ class RFDETRSeg:
     (44.3 mAP on COCO, November 2025 release).
     """
 
-    def __init__(self, confidence_threshold=0.3):
+    def __init__(self, confidence_threshold=0.25):
         """
         Initialize RF-DETR Seg model
 
         Args:
-            confidence_threshold: Minimum confidence for detections (default 0.3)
+            confidence_threshold: Minimum confidence for detections (default 0.25)
         """
         self.confidence_threshold = confidence_threshold
 
