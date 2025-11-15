@@ -4,10 +4,16 @@ Enumerates available cameras and provides camera switching functionality
 """
 
 import asyncio
+import os
 import platform
+import sys
 from typing import Dict, List
 
 import cv2
+
+# Suppress OpenCV warnings during camera enumeration
+os.environ['OPENCV_LOG_LEVEL'] = 'FATAL'
+os.environ['OPENCV_VIDEOIO_DEBUG'] = '0'
 
 if platform.system() == "Windows":
     import winsdk.windows.devices.enumeration as windows_devices
@@ -25,7 +31,6 @@ class CameraManager:
         Args:
             max_cameras_to_check: Maximum number of camera indices to check
         """
-        print("Camera manager initialized")
         self.max_cameras_to_check = max_cameras_to_check
         self.cameras: List[Dict[str, any]] = []
 
@@ -41,9 +46,14 @@ class CameraManager:
         camera_indexes = self._get_camera_indexes()
 
         if len(camera_indexes) == 0:
+            print("⚠ No cameras detected")
             return self.cameras
 
         self.cameras = self._add_camera_information(camera_indexes)
+
+        # Print detected cameras
+        if len(self.cameras) > 0:
+            print(f"✓ Detected {len(self.cameras)} camera(s): {', '.join([f'Camera {c['camera_index']}' for c in self.cameras])}")
 
         return self.cameras
 
@@ -58,13 +68,21 @@ class CameraManager:
         camera_indexes = []
         remaining_checks = self.max_cameras_to_check
 
-        while remaining_checks > 0:
-            capture = cv2.VideoCapture(index)
-            if capture.read()[0]:
-                camera_indexes.append(index)
-                capture.release()
-            index += 1
-            remaining_checks -= 1
+        # Suppress stderr during camera enumeration to hide OpenCV warnings
+        stderr = sys.stderr
+        sys.stderr = open(os.devnull, 'w')
+
+        try:
+            while remaining_checks > 0:
+                capture = cv2.VideoCapture(index)
+                if capture.read()[0]:
+                    camera_indexes.append(index)
+                    capture.release()
+                index += 1
+                remaining_checks -= 1
+        finally:
+            sys.stderr.close()
+            sys.stderr = stderr
 
         return camera_indexes
 
