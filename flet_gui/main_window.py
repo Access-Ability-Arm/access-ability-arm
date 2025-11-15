@@ -11,6 +11,7 @@ from io import BytesIO
 import cv2
 import flet as ft
 import numpy as np
+from flet import icons
 from PIL import Image
 
 from config.settings import app_config
@@ -102,7 +103,7 @@ class FletMainWindow:
         # Detection mode toggle button
         self.toggle_mode_btn = ft.ElevatedButton(
             text="Toggle Detection Mode (T)",
-            icon=ft.icons.SWAP_HORIZ,
+            icon=icons.SWAP_HORIZ,
             on_click=lambda _: self._toggle_detection_mode(),
         )
 
@@ -117,7 +118,7 @@ class FletMainWindow:
                     ft.Container(
                         content=ft.Row(
                             [
-                                ft.Icon(ft.icons.PRECISION_MANUFACTURING, size=40),
+                                ft.Icon(icons.PRECISION_MANUFACTURING, size=40),
                                 ft.Text(
                                     "DE-GUI Assistive Robotic Arm",
                                     size=24,
@@ -187,7 +188,7 @@ class FletMainWindow:
                         ft.Row(
                             [
                                 ft.IconButton(
-                                    icon=ft.icons.REMOVE,
+                                    icon=icons.REMOVE,
                                     tooltip=f"{direction} negative",
                                     on_click=lambda e,
                                     d=direction: self._on_button_press(d, "neg"),
@@ -196,7 +197,7 @@ class FletMainWindow:
                                 ),
                                 ft.Icon(icon, size=30),
                                 ft.IconButton(
-                                    icon=ft.icons.ADD,
+                                    icon=icons.ADD,
                                     tooltip=f"{direction} positive",
                                     on_click=lambda e,
                                     d=direction: self._on_button_press(d, "pos"),
@@ -243,10 +244,10 @@ class FletMainWindow:
                         size=20,
                         weight=ft.FontWeight.BOLD,
                     ),
-                    create_direction_controls("x", ft.icons.SWAP_HORIZ),
-                    create_direction_controls("y", ft.icons.SWAP_VERT),
-                    create_direction_controls("z", ft.icons.HEIGHT),
-                    create_direction_controls("grip", ft.icons.BACK_HAND),
+                    create_direction_controls("x", icons.SWAP_HORIZ),
+                    create_direction_controls("y", icons.SWAP_VERT),
+                    create_direction_controls("z", icons.HEIGHT),
+                    create_direction_controls("grip", icons.BACK_HAND),
                     grip_toggle,
                 ],
                 spacing=15,
