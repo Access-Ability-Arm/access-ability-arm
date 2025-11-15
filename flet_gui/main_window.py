@@ -64,20 +64,50 @@ class FletMainWindow:
 
     def _build_ui(self):
         """Build the Flet UI layout"""
-        # Video feed display - create placeholder
-        # Create a minimal 1x1 transparent PNG as base64 placeholder
-        placeholder_base64 = (
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m"
-            "Nk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        )
-
+        # Video feed display
         self.video_feed = ft.Image(
-            src_base64=placeholder_base64,
+            src_base64="",  # Will be updated by image processor
             width=800,
             height=650,
             fit=ft.ImageFit.CONTAIN,
             border_radius=10,
         )
+
+        # Loading placeholder (shown until first frame arrives)
+        self.loading_placeholder = ft.Container(
+            content=ft.Column(
+                [
+                    ft.ProgressRing(color="#607D8B"),  # Blue Grey 500
+                    ft.Text(
+                        "Loading camera...",
+                        size=16,
+                        color="#607D8B",  # Blue Grey 500
+                        weight=ft.FontWeight.W_400,
+                    ),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            width=800,
+            height=650,
+            bgcolor="#ECEFF1",  # Light grey (Blue Grey 50)
+            border_radius=10,
+            alignment=ft.alignment.center,
+            visible=True,  # Initially visible
+        )
+
+        # Video container with Stack to overlay loading on video
+        self.video_container = ft.Stack(
+            [
+                self.video_feed,
+                self.loading_placeholder,
+            ],
+            width=800,
+            height=650,
+        )
+
+        # Track if first frame has been received
+        self._first_frame_received = False
 
         # Camera selection
         cameras = self.camera_manager.get_camera_info()
@@ -125,8 +155,8 @@ class FletMainWindow:
                             ft.Container(
                                 content=ft.Column(
                                     [
-                                        # Video feed without border/padding for tight fit
-                                        self.video_feed,
+                                        # Video container with loading overlay
+                                        self.video_container,
                                         ft.Row(
                                             [
                                                 self.camera_dropdown,
@@ -312,6 +342,12 @@ class FletMainWindow:
 
             # Update Flet image
             self.video_feed.src_base64 = img_base64
+
+            # Hide loading placeholder on first frame
+            if not self._first_frame_received:
+                self.loading_placeholder.visible = False
+                self._first_frame_received = True
+
             self.page.update()
 
         except Exception as e:
