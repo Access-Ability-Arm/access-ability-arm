@@ -58,7 +58,7 @@ The application will automatically:
 
 ### Configuration
 
-The application uses RF-DETR Seg for object detection with a confidence threshold of 0.2 (configurable in `vision/rfdetr_seg.py`). For alternative models, see `config/settings.py` which includes fallback support for YOLOv11-seg and Mask R-CNN.
+The application uses RF-DETR Seg for object detection with a confidence threshold of 0.3 (configurable in `vision/rfdetr_seg.py`). For alternative models, see `config/settings.py` which includes fallback support for YOLOv11-seg and Mask R-CNN.
 
 ## System Requirements
 
@@ -101,7 +101,7 @@ Two GUI implementations are available:
 |---------|-------|------|
 | **Interface** | Traditional desktop | Modern Material Design |
 | **Platforms** | Desktop only | Desktop + Web + Mobile* |
-| **Entry Point** | `main.py` | `main_flet.py` |
+| **Entry Point** | `main_pyqt.py` | `main.py` |
 | **UI Definition** | Qt Designer (.ui file) | Python code |
 | **Web Support** | ✗ | ✓ |
 
@@ -114,13 +114,13 @@ The application uses a modular architecture for maintainability:
 ```
 access-ability-arm/
 ├── config/       # Configuration & feature detection
-├── gui/          # PyQt6 main window & UI
-├── flet_gui/     # Flet alternative GUI
+├── gui/          # PyQt6 main window & UI (legacy)
+├── flet_gui/     # Flet GUI (default)
 ├── hardware/     # Camera & button controllers
-├── vision/       # Computer vision (YOLO, face detection)
+├── vision/       # Computer vision (RF-DETR, YOLO, face detection)
 ├── workers/      # Image processing thread
-├── main.py       # PyQt6 entry point
-└── main_flet.py  # Flet entry point
+├── main.py       # Flet entry point (default)
+└── main_pyqt.py  # PyQt6 entry point (legacy)
 ```
 
 See [docs/refactoring.md](docs/refactoring.md) for architecture details.
