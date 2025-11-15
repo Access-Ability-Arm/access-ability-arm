@@ -1,6 +1,18 @@
+# GUI Framework
 PyQt6>=6.6.0
+
+# Computer Vision
 opencv-python>=4.8.0
-numpy>=1.24.0
 mediapipe>=0.10.0
+
+# Numerical Computing
+numpy>=1.24.0
+
+# Development Tools
 ipykernel>=7.0.0
-# pyrealsense2>=2.54.0  # Note: Installed manually from source (v2.56.5)
+
+# RealSense Camera Support (for main-rd.py only)
+# pyrealsense2>=2.54.0
+# NOTE: pyrealsense2 must be installed manually from source (v2.56.5)
+# Follow installation guide: https://github.com/IntelRealSense/librealsense/blob/master/doc/installation.md
+# Only required if using main-rd.py with Intel RealSense camera
