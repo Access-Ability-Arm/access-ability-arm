@@ -48,27 +48,30 @@ web:
 # Package for macOS
 package-macos:
 	@echo "Building macOS application bundle..."
-	flet build macos --name "Access Ability Arm" \
-		--org com.accessability \
+	flet build macos \
+		--project "access-ability-arm" \
 		--product "Access Ability Arm" \
+		--org "com.accessability" \
 		--description "Assistive robotic arm control application"
 	@echo "✓ macOS package built in build/macos/"
 
 # Package for Linux
 package-linux:
 	@echo "Building Linux application package..."
-	flet build linux --name "Access Ability Arm" \
-		--org com.accessability \
+	flet build linux \
+		--project "access-ability-arm" \
 		--product "Access Ability Arm" \
+		--org "com.accessability" \
 		--description "Assistive robotic arm control application"
 	@echo "✓ Linux package built in build/linux/"
 
 # Package for Windows
 package-windows:
 	@echo "Building Windows executable..."
-	flet build windows --name "Access Ability Arm" \
-		--org com.accessability \
+	flet build windows \
+		--project "access-ability-arm" \
 		--product "Access Ability Arm" \
+		--org "com.accessability" \
 		--description "Assistive robotic arm control application"
 	@echo "✓ Windows package built in build/windows/"
 
