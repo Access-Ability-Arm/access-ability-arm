@@ -64,13 +64,12 @@ class FletMainWindow:
 
     def _build_ui(self):
         """Build the Flet UI layout"""
-        # Video feed display
+        # Video feed display (responsive)
         self.video_feed = ft.Image(
             src_base64="",  # Will be updated by image processor
-            width=800,
-            height=650,
             fit=ft.ImageFit.CONTAIN,
             border_radius=10,
+            expand=True,
         )
 
         # Loading placeholder (shown until first frame arrives)
@@ -88,22 +87,23 @@ class FletMainWindow:
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
-            width=800,
-            height=650,
             bgcolor="#ECEFF1",  # Light grey (Blue Grey 50)
             border_radius=10,
             alignment=ft.alignment.center,
             visible=True,  # Initially visible
+            expand=True,
         )
 
         # Video container with Stack to overlay loading on video
-        self.video_container = ft.Stack(
-            [
-                self.video_feed,
-                self.loading_placeholder,
-            ],
-            width=800,
-            height=650,
+        self.video_container = ft.Container(
+            content=ft.Stack(
+                [
+                    self.video_feed,
+                    self.loading_placeholder,
+                ],
+                expand=True,
+            ),
+            expand=True,
         )
 
         # Track if first frame has been received
@@ -151,7 +151,7 @@ class FletMainWindow:
                     # Main content area
                     ft.Row(
                         [
-                            # Left: Video feed
+                            # Left: Video feed (responsive, takes available space)
                             ft.Container(
                                 content=ft.Column(
                                     [
@@ -166,14 +166,17 @@ class FletMainWindow:
                                         ),
                                     ],
                                     spacing=10,
+                                    expand=True,
                                 ),
                                 padding=0,
+                                expand=2,  # Takes 2/3 of available space
                             ),
-                            # Right: Control panel
+                            # Right: Control panel (fixed width)
                             control_panel,
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                         spacing=20,
+                        expand=True,
                     ),
                     # Footer: Status
                     ft.Container(
