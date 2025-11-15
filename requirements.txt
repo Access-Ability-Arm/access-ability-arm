@@ -3,7 +3,7 @@
 flet>=0.24.0  # Modern cross-platform UI framework
 
 # Computer Vision
-opencv-python>=4.8.0
+opencv-python-headless>=4.8.0  # Headless version saves ~60-70MB vs opencv-python
 mediapipe>=0.10.0
 
 # Object Detection & Segmentation

@@ -59,7 +59,6 @@ package-macos:
 		--exclude PyQt6 \
 		--exclude archive \
 		--cleanup-packages \
-		--cleanup-package-files "polars*" "jax*" "*jaxlib*" \
 		--permissions camera \
 		--info-plist NSCameraUsageDescription="This app requires camera access to detect objects and track face landmarks for assistive robotic arm control."
 	@echo "✓ macOS package built in build/macos/"
