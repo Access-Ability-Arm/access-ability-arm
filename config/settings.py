@@ -63,18 +63,19 @@ def detect_hardware_capabilities() -> AppConfig:
             "RealSense camera not available - using standard webcam only"
         )
 
-    # Try YOLOv11 first (proven segmentation), fallback to Mask R-CNN
-    # Note: RF-DETR Seg Preview doesn't return segmentation masks yet (bbox only)
-    # Uncomment below when RF-DETR Seg has full mask support:
-    # try:
-    #     from vision.rfdetr_seg import RFDETRSeg  # noqa: F401
-    #     config.segmentation_available = True
-    #     config.segmentation_model = "rfdetr"
-    #     success(f"{underline('RF-DETR Seg')} object detection available")
-    # except ImportError as e:
-    #     error(f"RF-DETR not available: {e}")
-
+    # Try RF-DETR first (SOTA 2025), fallback to YOLOv11, then Mask R-CNN
+    # Note: optimize_for_inference() breaks mask output, so we skip optimization
     try:
+        from vision.rfdetr_seg import RFDETRSeg  # noqa: F401
+        config.segmentation_available = True
+        config.segmentation_model = "rfdetr"
+        success(
+            f"{underline('RF-DETR Seg')} object detection available "
+            "(SOTA Nov 2025, 44.3 mAP)"
+        )
+    except ImportError as e:
+        error(f"RF-DETR not available: {e}")
+        try:
             from vision.yolov11_seg import YOLOv11Seg  # noqa: F401
 
             config.segmentation_available = True

@@ -38,10 +38,11 @@ class RFDETRSeg:
             # Model auto-detects device (MPS/CUDA/CPU)
             self.model = RFDETRSegPreview()
 
-            # Optimize model for inference (reduces latency)
-            print("[RF-DETR] Optimizing model for inference...")
-            self.model.optimize_for_inference()
-            print("[RF-DETR] Model loaded and optimized ✅")
+            # NOTE: Do NOT call optimize_for_inference() - it breaks mask output!
+            # The optimization removes segmentation masks from the Detections object.
+            # Trade-off: Slightly slower inference but working segmentation masks.
+
+            print("[RF-DETR] Model loaded successfully ✅")
 
         except Exception as e:
             print(f"[RF-DETR] Error loading model: {e}")
@@ -106,13 +107,19 @@ class RFDETRSeg:
                     # Get segmentation mask and convert to contour
                     if hasattr(detections, 'mask') and detections.mask is not None:
                         mask = detections.mask[i]
-                        # Find contours from mask
-                        mask_uint8 = (mask * 255).astype(np.uint8)
+
+                        # Convert boolean or float mask to uint8
+                        if mask.dtype == bool:
+                            mask_uint8 = (mask.astype(np.uint8) * 255)
+                        else:
+                            mask_uint8 = (mask * 255).astype(np.uint8)
+
                         contour_list, _ = cv2.findContours(
                             mask_uint8,
                             cv2.RETR_EXTERNAL,
                             cv2.CHAIN_APPROX_SIMPLE
                         )
+
                         if contour_list:
                             # Use largest contour
                             largest_contour = max(
