@@ -91,6 +91,10 @@ class RFDETRSeg:
             if hasattr(detections, 'xyxy') and detections.xyxy is not None:
                 num_detections = len(detections.xyxy)
 
+                # Debug: Log number of detections
+                if num_detections > 0:
+                    print(f"[RF-DETR] Detected {num_detections} objects")
+
                 for i in range(num_detections):
                     # Get bbox (xyxy format)
                     x1, y1, x2, y2 = detections.xyxy[i]
