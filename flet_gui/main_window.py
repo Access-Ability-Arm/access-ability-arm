@@ -200,7 +200,7 @@ class FletMainWindow:
             return ft.Container(
                 content=ft.Column(
                     [
-                        ft.Text(direction.upper(), weight=ft.FontWeight.BOLD, size=16),
+                        ft.Text(direction.upper(), weight=ft.FontWeight.BOLD, size=28),
                         ft.Row(
                             [
                                 ft.IconButton(
@@ -210,8 +210,11 @@ class FletMainWindow:
                                     d=direction: self._on_button_press(d, "neg"),
                                     bgcolor="#EF9A9A",  # Red 200
                                     icon_color="#B71C1C",  # Red 900
+                                    icon_size=60,
+                                    width=100,
+                                    height=100,
                                 ),
-                                ft.Icon(icon, size=30),
+                                ft.Icon(icon, size=80),
                                 ft.IconButton(
                                     icon=ft.Icons.ADD,
                                     tooltip=f"{direction} positive",
@@ -219,16 +222,19 @@ class FletMainWindow:
                                     d=direction: self._on_button_press(d, "pos"),
                                     bgcolor="#A5D6A7",  # Green 200
                                     icon_color="#1B5E20",  # Green 900
+                                    icon_size=60,
+                                    width=100,
+                                    height=100,
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=5,
+                    spacing=10,
                 ),
-                padding=10,
-                border=ft.border.all(1, "#CFD8DC"),  # Blue Grey 100
+                padding=20,
+                border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
                 border_radius=10,
             )
 
@@ -236,19 +242,21 @@ class FletMainWindow:
         grip_toggle = ft.Container(
             content=ft.Column(
                 [
-                    ft.Text("GRIP STATE", weight=ft.FontWeight.BOLD, size=16),
+                    ft.Text("GRIP STATE", weight=ft.FontWeight.BOLD, size=28),
                     ft.Switch(
                         label="Open/Close",
+                        label_style=ft.TextStyle(size=20),
                         on_change=lambda e: self._on_grip_state_changed(
                             e.control.value
                         ),
+                        scale=2.0,
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=10,
+                spacing=20,
             ),
-            padding=10,
-            border=ft.border.all(1, "#CFD8DC"),  # Blue Grey 100
+            padding=20,
+            border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
             border_radius=10,
         )
 
@@ -257,7 +265,7 @@ class FletMainWindow:
                 [
                     ft.Text(
                         "Manual Controls",
-                        size=20,
+                        size=32,
                         weight=ft.FontWeight.BOLD,
                     ),
                     create_direction_controls("x", ft.Icons.SWAP_HORIZ),
@@ -266,11 +274,11 @@ class FletMainWindow:
                     create_direction_controls("grip", ft.Icons.BACK_HAND),
                     grip_toggle,
                 ],
-                spacing=15,
+                spacing=20,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            width=300,
-            padding=20,
+            width=400,
+            padding=30,
             bgcolor="#ECEFF1",  # Blue Grey 50
             border_radius=10,
         )
