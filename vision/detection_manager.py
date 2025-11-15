@@ -27,6 +27,7 @@ class DetectionManager:
             self.segmentation_model = self._initialize_segmentation_model()
 
         # Set default detection mode
+        # Modes: "face", "objects", "combined" (face + objects simultaneously)
         self.detection_mode = "objects" if self.segmentation_model else "face"
         print(f"Detection mode: {self.detection_mode}")
 
@@ -64,6 +65,8 @@ class DetectionManager:
         """
         if self.detection_mode == "objects" and self.segmentation_model:
             return self._process_object_detection(image, depth_frame)
+        elif self.detection_mode == "combined" and self.segmentation_model:
+            return self._process_combined_detection(image, depth_frame)
         else:
             return self._process_face_detection(image)
 
@@ -88,13 +91,36 @@ class DetectionManager:
         """Process frame with face landmark detection"""
         return self.face_detector.detect_and_draw(image)
 
+    def _process_combined_detection(
+        self, image: np.ndarray, depth_frame: Optional[np.ndarray]
+    ) -> np.ndarray:
+        """Process frame with both object detection and face tracking"""
+        # First, run object detection (includes person segmentation)
+        boxes, classes, contours, centers = self.segmentation_model.detect_objects_mask(
+            image
+        )
+
+        # Draw object masks
+        image = self.segmentation_model.draw_object_mask(image)
+
+        # Draw object info (labels, depth)
+        image = self.segmentation_model.draw_object_info(image, depth_frame)
+
+        # Then overlay face landmarks on top
+        image = self.face_detector.detect_and_draw(image)
+
+        return image
+
     def toggle_mode(self):
-        """Toggle between face tracking and object detection modes"""
+        """Toggle between face tracking, object detection, and combined modes"""
         if self.segmentation_model:
             if self.detection_mode == "face":
                 self.detection_mode = "objects"
                 print("✓ Switched to object detection mode")
-            else:
+            elif self.detection_mode == "objects":
+                self.detection_mode = "combined"
+                print("✓ Switched to combined mode (face + objects)")
+            else:  # combined
                 self.detection_mode = "face"
                 print("✓ Switched to face tracking mode")
         else:

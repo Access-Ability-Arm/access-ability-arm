@@ -68,11 +68,11 @@ python main_pyqt.py
   - **GPU Acceleration**: Automatically uses Apple Metal (MPS) on M-series Macs, CUDA on NVIDIA, or CPU
   - Much faster and more accurate than legacy Mask R-CNN
   - Falls back to Mask R-CNN if YOLOv11-seg unavailable
-- **Modes**: Automatically selects best mode based on available hardware:
-  - RealSense + YOLO → Object detection with depth (fastest)
-  - Webcam + YOLO → Object detection without depth
-  - Webcam only → Face tracking
-- **Toggle**: Press 'T' to switch between face tracking and object detection
+- **Detection Modes**: Three modes available (cycle with 'T' key):
+  1. **Object Detection** (default): YOLOv11 segmentation for 80 COCO classes
+  2. **Face Tracking**: MediaPipe face mesh with landmark detection
+  3. **Combined**: Simultaneous object detection + face tracking
+- **Toggle**: Press 'T' to cycle through modes (Object → Combined → Face → Object...)
 - **Fixed Reference Point**: Red circle shows depth at position (250, 100) when RealSense is active
 - Works on macOS, Windows, Linux, and web browsers
 

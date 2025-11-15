@@ -52,7 +52,7 @@ The application will automatically:
 ### Controls
 
 - **Camera Selection**: Choose camera from dropdown menu
-- **Detection Mode**: Press 'T' to toggle between face tracking and object detection
+- **Detection Mode**: Press 'T' to cycle through modes (Object → Combined → Face → Object...)
 - **Robotic Arm**: Use GUI buttons for manual control (x±, y±, z±, grip)
 
 ### Configuration
@@ -78,16 +78,28 @@ yolo_model_size: str = "m"  # Options: 'n' (nano, ~6MB), 's' (small, ~24MB),
 
 ## Detection Modes
 
-### Object Detection (Default)
-- Detects and segments 80 COCO object classes
-- Real-time bounding boxes and colored masks
-- Distance measurement with RealSense camera
+Press **'T'** to cycle through detection modes:
+
+### 1. Object Detection (Default)
+- YOLOv11 instance segmentation for 80 COCO object classes
+- Real-time colored segmentation masks with labels
+- Confidence scores with temporal smoothing
+- Distance measurement with RealSense camera (optional)
 - Fixed reference point depth indicator
 
-### Face Tracking
-- 20 mouth landmark points using MediaPipe
-- Center point calculation and visualization
+### 2. Face Tracking
+- MediaPipe face mesh with multiple landmark groups
+- Mouth (20 points), eyes, eyebrows, nose, ears
+- Color-coded visualization for each feature
+- Center point calculation
 - Works with any standard webcam
+
+### 3. Combined Mode (Face + Objects)
+- Simultaneous object detection and face tracking
+- Segmentation masks for all objects (including persons)
+- Face landmarks overlaid on detected persons
+- Best for complex assistive tasks requiring both awareness types
+- Runs both models concurrently (~25-33 FPS on Apple Silicon)
 
 ## GUI Options
 

@@ -294,10 +294,17 @@ class FletMainWindow:
 
         mode = self.image_processor.detection_mode
 
+        # Format mode name for display
+        mode_display = {
+            "face": "Face Tracking",
+            "objects": "Object Detection",
+            "combined": "Combined (Face + Objects)"
+        }.get(mode, mode.upper())
+
         status_msg = (
             f"RealSense: {realsense_status} | "
             f"Detection: {seg_status} | "
-            f"Mode: {mode.upper()}"
+            f"Mode: {mode_display}"
         )
 
         self.status_text.value = status_msg
