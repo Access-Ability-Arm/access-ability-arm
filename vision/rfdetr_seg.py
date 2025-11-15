@@ -22,12 +22,12 @@ class RFDETRSeg:
     (44.3 mAP on COCO, November 2025 release).
     """
 
-    def __init__(self, confidence_threshold=0.25):
+    def __init__(self, confidence_threshold=0.2):
         """
         Initialize RF-DETR Seg model
 
         Args:
-            confidence_threshold: Minimum confidence for detections (default 0.25)
+            confidence_threshold: Minimum confidence for detections (default 0.2)
         """
         self.confidence_threshold = confidence_threshold
 
@@ -91,9 +91,13 @@ class RFDETRSeg:
             if hasattr(detections, 'xyxy') and detections.xyxy is not None:
                 num_detections = len(detections.xyxy)
 
-                # Debug: Log number of detections
+                # Debug: Log number of detections and their confidence scores
                 if num_detections > 0:
-                    print(f"[RF-DETR] Detected {num_detections} objects")
+                    if hasattr(detections, 'confidence') and detections.confidence is not None:
+                        conf_scores = [f"{detections.confidence[i]:.2f}" for i in range(min(5, num_detections))]
+                        print(f"[RF-DETR] Detected {num_detections} objects, confidences: {conf_scores}"+" (showing first 5)" if num_detections > 5 else "")
+                    else:
+                        print(f"[RF-DETR] Detected {num_detections} objects")
 
                 for i in range(num_detections):
                     # Get bbox (xyxy format)
