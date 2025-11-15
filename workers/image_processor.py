@@ -1,0 +1,169 @@
+"""
+Image Processing Worker Thread
+Handles camera capture, detection processing, and Qt image conversion
+"""
+
+from typing import Optional
+
+import cv2
+import numpy as np
+from PyQt6 import QtCore, QtGui
+
+from config.settings import app_config
+from vision.detection_manager import DetectionManager
+
+
+class ImageProcessor(QtCore.QThread):
+    """
+    Worker thread for continuous camera capture and image processing
+    Runs detection algorithms and emits processed frames to GUI
+    """
+
+    ImageUpdate = QtCore.pyqtSignal(QtGui.QImage)
+
+    def __init__(self, display_width: int = 800, display_height: int = 650):
+        """
+        Initialize image processor
+
+        Args:
+            display_width: Width for display scaling
+            display_height: Height for display scaling
+        """
+        super(ImageProcessor, self).__init__()
+        print("Image processor initialized")
+
+        self.display_width = display_width
+        self.display_height = display_height
+        self.thread_active = False
+
+        # Camera setup
+        self.use_realsense = False
+        self.rs_camera = None
+        self.camera = None
+        self.depth_frame = None
+
+        self._initialize_camera()
+
+        # Detection setup
+        self.detection_manager = DetectionManager()
+
+    def _initialize_camera(self):
+        """Initialize camera (RealSense if available, otherwise webcam)"""
+        # Try to initialize RealSense first
+        if app_config.realsense_available:
+            try:
+                from hardware.realsense_camera import RealsenseCamera
+
+                self.rs_camera = RealsenseCamera()
+                self.use_realsense = True
+                print("✓ Using RealSense camera")
+            except Exception as e:
+                print(f"✗ RealSense initialization failed: {e}")
+                print("→ Falling back to standard webcam")
+                self.camera = cv2.VideoCapture(0)
+        else:
+            self.camera = cv2.VideoCapture(0)
+            print("✓ Using standard webcam")
+
+    def camera_changed(self, camera_index: int):
+        """
+        Switch to a different camera
+
+        Args:
+            camera_index: Index of the camera to switch to
+        """
+        # Only works with standard webcam, not RealSense
+        if not self.use_realsense and self.camera:
+            self.camera.release()
+            self.camera = cv2.VideoCapture(camera_index)
+            print(f"✓ Switched to camera {camera_index}")
+
+    def run(self):
+        """Main processing loop"""
+        print("Image processor is running")
+        self.thread_active = True
+
+        while self.thread_active:
+            ret, frame, depth_frame = self._capture_frame()
+
+            if ret and frame is not None:
+                # Convert to RGB
+                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # Process with detection
+                processed_image = self.detection_manager.process_frame(
+                    image_rgb, depth_frame
+                )
+
+                # Convert to Qt format and emit
+                qt_image = self._convert_to_qt_image(processed_image)
+                self.ImageUpdate.emit(qt_image)
+
+    def _capture_frame(self):
+        """
+        Capture a frame from the active camera
+
+        Returns:
+            Tuple of (success, frame, depth_frame)
+        """
+        ret = False
+        frame = None
+        depth_frame = None
+
+        if self.use_realsense and self.rs_camera:
+            ret, frame, depth_frame = self.rs_camera.get_frame_stream()
+            self.depth_frame = depth_frame
+        elif self.camera:
+            ret, frame = self.camera.read()
+
+        return ret, frame, depth_frame
+
+    def _convert_to_qt_image(self, image: np.ndarray) -> QtGui.QImage:
+        """
+        Convert numpy array to Qt QImage
+
+        Args:
+            image: RGB image array
+
+        Returns:
+            QImage ready for display
+        """
+        # Flip image horizontally for mirror effect
+        flipped_image = cv2.flip(image, 1)
+
+        # Convert to Qt format
+        qt_format = QtGui.QImage(
+            flipped_image.data,
+            flipped_image.shape[1],
+            flipped_image.shape[0],
+            QtGui.QImage.Format.Format_RGB888,
+        )
+
+        # Scale to display size
+        scaled = qt_format.scaled(
+            self.display_width,
+            self.display_height,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+        )
+
+        return scaled
+
+    def toggle_detection_mode(self):
+        """Toggle between face tracking and object detection"""
+        self.detection_manager.toggle_mode()
+
+    @property
+    def detection_mode(self) -> str:
+        """Get current detection mode"""
+        return self.detection_manager.detection_mode
+
+    @property
+    def has_object_detection(self) -> bool:
+        """Check if object detection is available"""
+        return self.detection_manager.has_object_detection
+
+    def stop(self):
+        """Stop the processing thread"""
+        self.thread_active = False
+        self.quit()
+        self.wait()

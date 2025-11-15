@@ -83,54 +83,107 @@ python measure_object_distance.py
 
 ## Architecture
 
-### Main Application Structure
+### Project Structure (Refactored - November 2025)
+
+The codebase follows a clean, modular architecture:
+
+```
+DE-GUI/
+├── main.py                    # Entry point (~40 lines)
+├── config/
+│   └── settings.py            # Configuration & feature detection
+├── gui/
+│   └── main_window.py         # Main window & UI logic
+├── hardware/
+│   ├── camera_manager.py      # Camera enumeration & switching
+│   ├── button_controller.py   # Button press/hold detection
+│   └── realsense_camera.py    # RealSense interface
+├── vision/
+│   ├── detection_manager.py   # Detection mode orchestration
+│   ├── face_detector.py       # MediaPipe face tracking
+│   ├── yolov12_seg.py         # YOLO segmentation
+│   └── mask_rcnn.py           # Legacy Mask R-CNN
+└── workers/
+    └── image_processor.py     # Camera processing thread
+```
 
 **Two Main Versions:**
-1. `main.py` (RECOMMENDED) - Flexible camera support with automatic detection:
+1. `main.py` (RECOMMENDED) - Modular, flexible, maintainable:
    - Auto-detects RealSense camera, falls back to webcam
-   - Supports both face tracking (MediaPipe) and object detection (Mask R-CNN)
+   - Supports both face tracking (MediaPipe) and object detection (YOLO/Mask R-CNN)
    - Gracefully handles missing optional dependencies
    - Press 'T' to toggle between detection modes
-2. `main-rd.py` (LEGACY) - RealSense-only with Mask R-CNN object detection:
+   - Clean separation of concerns
+2. `main-rd.py` (LEGACY) - Monolithic, RealSense-only:
    - Requires RealSense camera (no fallback)
    - Object detection only
    - Will crash if hardware/models not available
 
-Both share the same core PyQt6 GUI structure loaded from `draftGUI.ui`.
+Both use the same PyQt6 GUI loaded from `draftGUI.ui`.
 
-### Key Components
+### Module Descriptions
 
-**MainWindow (PyQt6.QtWidgets.QMainWindow)**
-- Loads Qt Designer GUI from `draftGUI.ui`
-- Manages robotic arm control buttons (x_pos/neg, y_pos/neg, z_pos/neg, grip_pos/neg, grip_state)
-- Connects button signals to `Button_Action()` handler
-- Initializes camera tracking and image monitoring threads
+#### config/
+**settings.py** - Application configuration and capability detection
+- `AppConfig`: Dataclass containing all application settings
+- `detect_hardware_capabilities()`: Runtime detection of RealSense, YOLO, Mask R-CNN
+- Centralizes feature flags and configuration
 
-**button_monitor (QtCore.QThread)**
-- Monitors button press/hold duration
-- Differentiates between press (<0.5s) and hold (>0.5s) actions
-- Runs continuously while button is pressed
+#### gui/
+**main_window.py** - Main application window (PyQt6)
+- `MainWindow`: Loads `draftGUI.ui`, manages UI events
+- Handles robotic arm buttons (x/y/z/grip pos/neg, grip state)
+- Camera selection dropdown
+- Keyboard shortcuts (T=toggle detection mode)
+- Delegates to hardware/workers, pure UI logic
 
-**imageMonitor (QtCore.QThread)**
-- main.py (flexible): Automatically detects and uses available camera
-  - Attempts RealSense initialization first, falls back to webcam
-  - Supports two detection modes (toggleable with 'T' key):
-    - Face tracking: MediaPipe face mesh tracking (20 mouth landmarks)
-    - Object detection: Mask R-CNN with optional depth data
-  - Gracefully handles missing hardware/dependencies
-- main-rd.py (legacy): Processes RealSense depth + color frames only
-  - Integrates with RealsenseCamera and MaskRCNN classes
-  - Displays object detection masks and depth information
-  - No fallback - crashes if RealSense unavailable
-- Converts OpenCV frames to PyQt6 QImage format
-- Emits ImageUpdate signal to update GUI label
+#### hardware/
+**camera_manager.py** - Camera detection and enumeration
+- `CameraManager`: Finds available cameras (checks indices 0-2 by default)
+- Platform-specific naming: Windows (winsdk), macOS/Linux (generic)
+- Camera switching support
 
-**camera_tracker**
-- Enumerates available cameras on Windows, macOS, and Linux
-- Windows: Uses `winsdk.windows.devices.enumeration` to get detailed camera names
-- macOS/Linux: Uses generic camera names (e.g., "Camera 0", "Camera 1")
-- Checks up to 3 camera indices by default to minimize startup errors
-- main-rd.py has most camera enumeration code commented out
+**button_controller.py** - Button input handling
+- `ButtonController`: Monitors button press duration in separate thread
+- Differentiates press (<0.5s) vs hold (>0.5s)
+- Thread-safe state management
+
+**realsense_camera.py** - Intel RealSense interface
+- `RealsenseCamera`: Configures pipeline for 1280x720 @ 30fps
+- Streams aligned color (BGR8) and depth (Z16) frames
+- Spatial filtering and hole-filling
+
+#### vision/
+**detection_manager.py** - Detection orchestration
+- `DetectionManager`: Manages face tracking vs object detection modes
+- Initializes appropriate models based on availability
+- `toggle_mode()`: Switches between detection types
+- Delegates to FaceDetector or segmentation models
+
+**face_detector.py** - Face landmark tracking
+- `FaceDetector`: MediaPipe face mesh for 20 mouth landmarks
+- `detect_and_draw()`: Processes frame and visualizes landmarks
+- Calculates mouth center point
+
+**yolov12_seg.py** - Modern object segmentation (RECOMMENDED)
+- `YOLOv12Seg`: YOLOv11/v12 instance segmentation
+- Auto-downloads models (~6MB nano)
+- GPU acceleration: Metal (macOS), CUDA (Windows/Linux), CPU fallback
+- Compatible interface with MaskRCNN for drop-in replacement
+
+**mask_rcnn.py** - Legacy object segmentation
+- `MaskRCNN`: TensorFlow Mask R-CNN (2018 model, ~200MB)
+- Manual model download required
+- Slower than YOLO, kept for compatibility
+
+#### workers/
+**image_processor.py** - Camera processing thread
+- `ImageProcessor`: Main processing loop (QtCore.QThread)
+- Camera capture (RealSense or webcam)
+- Detection processing via DetectionManager
+- OpenCV to Qt image conversion
+- Frame flipping and scaling
+- Emits ImageUpdate signal for GUI
 
 ### Computer Vision Modules
 
