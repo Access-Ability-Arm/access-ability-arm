@@ -57,25 +57,39 @@ python measure_object_distance.py
 
 ### Application Requirements
 
-**main.py (Face Tracking):**
-- Standard webcam (MacBook FaceTime, USB webcam, or Continuity Camera)
-- MediaPipe library (auto-installed via requirements.txt)
-- No additional model files needed
+**main.py (Flexible Camera Support - RECOMMENDED):**
+- **Camera**: Auto-detects RealSense OR standard webcam (MacBook FaceTime, USB webcam, Continuity Camera)
+- **Required**: MediaPipe library (auto-installed via requirements.txt)
+- **Optional**: pyrealsense2 (enables depth sensing with RealSense camera)
+- **Optional**: Mask R-CNN models in `dnn/` directory (enables object detection)
+- **Modes**: Automatically selects best mode based on available hardware:
+  - RealSense + Mask R-CNN → Object detection with depth
+  - Webcam + Mask R-CNN → Object detection without depth
+  - Webcam only → Face tracking
+- **Toggle**: Press 'T' to switch between face tracking and object detection (if Mask R-CNN available)
 - Works on macOS, Windows, Linux
 
-**main-rd.py (Object Detection):**
-- Intel RealSense D400-series camera
-- pyrealsense2 library (manual installation required)
-- DNN model files in `dnn/` directory (must be downloaded separately)
-- Mask R-CNN models (~200MB)
+**main-rd.py (RealSense Only - LEGACY):**
+- **Camera**: Intel RealSense D400-series camera (REQUIRED, no fallback)
+- **Required**: pyrealsense2 library (manual installation required)
+- **Required**: DNN model files in `dnn/` directory (must be downloaded separately)
+- **Mode**: Object detection with depth only
+- Will crash if RealSense not connected
 
 ## Architecture
 
 ### Main Application Structure
 
 **Two Main Versions:**
-1. `Main.py` - Uses standard webcam with MediaPipe face landmark tracking
-2. `Main-rd.py` - Uses RealSense camera with Mask R-CNN object detection
+1. `main.py` (RECOMMENDED) - Flexible camera support with automatic detection:
+   - Auto-detects RealSense camera, falls back to webcam
+   - Supports both face tracking (MediaPipe) and object detection (Mask R-CNN)
+   - Gracefully handles missing optional dependencies
+   - Press 'T' to toggle between detection modes
+2. `main-rd.py` (LEGACY) - RealSense-only with Mask R-CNN object detection:
+   - Requires RealSense camera (no fallback)
+   - Object detection only
+   - Will crash if hardware/models not available
 
 Both share the same core PyQt6 GUI structure loaded from `draftGUI.ui`.
 
@@ -93,12 +107,16 @@ Both share the same core PyQt6 GUI structure loaded from `draftGUI.ui`.
 - Runs continuously while button is pressed
 
 **imageMonitor (QtCore.QThread)**
-- Main.py: Processes webcam feed with MediaPipe face mesh tracking
-  - Tracks mouth landmarks (20 specific points)
-  - Calculates and displays center of mouth
-- Main-rd.py: Processes RealSense depth + color frames
+- main.py (flexible): Automatically detects and uses available camera
+  - Attempts RealSense initialization first, falls back to webcam
+  - Supports two detection modes (toggleable with 'T' key):
+    - Face tracking: MediaPipe face mesh tracking (20 mouth landmarks)
+    - Object detection: Mask R-CNN with optional depth data
+  - Gracefully handles missing hardware/dependencies
+- main-rd.py (legacy): Processes RealSense depth + color frames only
   - Integrates with RealsenseCamera and MaskRCNN classes
   - Displays object detection masks and depth information
+  - No fallback - crashes if RealSense unavailable
 - Converts OpenCV frames to PyQt6 QImage format
 - Emits ImageUpdate signal to update GUI label
 

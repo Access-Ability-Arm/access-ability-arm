@@ -105,23 +105,37 @@ If you're using Zed editor with Jupyter notebook support:
 
 ## Running the Application
 
-### Face Tracking Mode (Standard Webcam)
+### Main Application (Flexible Camera Support)
 ```bash
 source venv/bin/activate  # Activate virtual environment
 python main.py
 ```
-- Works with MacBook FaceTime camera, external USB webcams, or Continuity Camera
-- Tracks 20 facial landmarks around the mouth using MediaPipe
-- No additional model files required
 
-### Object Detection Mode (RealSense Camera)
+**NEW: Automatic Camera Detection**
+- `main.py` now automatically detects and uses the best available camera:
+  - **RealSense camera** (if connected): Object detection with depth measurement
+  - **Standard webcam** (fallback): Face tracking or object detection without depth
+- Automatically switches between detection modes based on available hardware
+
+**Detection Modes:**
+- **Face Tracking Mode** (default if no Mask R-CNN): Tracks 20 facial landmarks around the mouth using MediaPipe
+- **Object Detection Mode** (if Mask R-CNN available): Detects and segments objects using Mask R-CNN
+- **Press 'T'** while running to toggle between modes (if both are available)
+
+**Camera Options:**
+- MacBook FaceTime camera
+- External USB webcams
+- Continuity Camera (iPhone/iPad)
+- Intel RealSense D400-series (with depth sensing)
+
+### Legacy RealSense-Only Version
 ```bash
 source venv/bin/activate  # Activate virtual environment
 python main-rd.py
 ```
-- Requires Intel RealSense D400-series camera
-- Requires DNN model files in `dnn/` directory (see installation section above)
-- Provides object detection, segmentation, and depth measurement
+- **Requires** Intel RealSense D400-series camera (no fallback)
+- **Requires** DNN model files in `dnn/` directory
+- Object detection with depth measurement only
 
 ### Troubleshooting
 
