@@ -18,6 +18,7 @@ help:
 	@echo "  make package-macos   - Build macOS application bundle"
 	@echo "  make package-linux   - Build Linux application package"
 	@echo "  make package-windows - Build Windows executable (on Windows only)"
+	@echo "  make pod-install     - Install CocoaPods dependencies (macOS/iOS)"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test            - Run tests"
@@ -56,6 +57,10 @@ package-macos:
 		--exclude gui \
 		--exclude PyQt6 \
 		--exclude archive
+	@echo "Running CocoaPods installation..."
+	@if [ -f "build/flutter/macos/Podfile" ]; then \
+		cd build/flutter/macos && pod install; \
+	fi
 	@echo "✓ macOS package built in build/macos/"
 
 # Package for Linux
@@ -147,6 +152,19 @@ info:
 	@echo "  ✓ Apple Metal GPU acceleration (macOS)"
 	@echo ""
 	@echo "Run 'make help' for available commands"
+
+# Install CocoaPods dependencies (macOS/iOS)
+pod-install:
+	@echo "Installing CocoaPods dependencies..."
+	@if [ -f "build/flutter/macos/Podfile" ]; then \
+		echo "Installing macOS pods..."; \
+		cd build/flutter/macos && pod install; \
+	fi
+	@if [ -f "build/flutter/ios/Podfile" ]; then \
+		echo "Installing iOS pods..."; \
+		cd build/flutter/ios && pod install; \
+	fi
+	@echo "✓ CocoaPods installation complete"
 
 # Run flutter doctor
 flutter-doctor:
