@@ -96,7 +96,7 @@ class FletMainWindow:
         self.status_text = ft.Text(
             "Initializing...",
             size=12,
-            color=ft.colors.BLUE_GREY_700,
+            color="#455A64",  # Blue Grey 700
         )
 
         # Detection mode toggle button
@@ -138,7 +138,8 @@ class FletMainWindow:
                                         ft.Container(
                                             content=self.video_feed,
                                             border=ft.border.all(
-                                                2, ft.colors.BLUE_GREY_200
+                                                2,
+                                                "#B0BEC5",  # Blue Grey 200
                                             ),
                                             border_radius=10,
                                         ),
@@ -190,8 +191,8 @@ class FletMainWindow:
                                     tooltip=f"{direction} negative",
                                     on_click=lambda e,
                                     d=direction: self._on_button_press(d, "neg"),
-                                    bgcolor=ft.colors.RED_200,
-                                    icon_color=ft.colors.RED_900,
+                                    bgcolor="#EF9A9A",  # Red 200
+                                    icon_color="#B71C1C",  # Red 900
                                 ),
                                 ft.Icon(icon, size=30),
                                 ft.IconButton(
@@ -199,8 +200,8 @@ class FletMainWindow:
                                     tooltip=f"{direction} positive",
                                     on_click=lambda e,
                                     d=direction: self._on_button_press(d, "pos"),
-                                    bgcolor=ft.colors.GREEN_200,
-                                    icon_color=ft.colors.GREEN_900,
+                                    bgcolor="#A5D6A7",  # Green 200
+                                    icon_color="#1B5E20",  # Green 900
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.CENTER,
@@ -210,7 +211,7 @@ class FletMainWindow:
                     spacing=5,
                 ),
                 padding=10,
-                border=ft.border.all(1, ft.colors.BLUE_GREY_100),
+                border=ft.border.all(1, "#CFD8DC"),  # Blue Grey 100
                 border_radius=10,
             )
 
@@ -230,7 +231,7 @@ class FletMainWindow:
                 spacing=10,
             ),
             padding=10,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_100),
+            border=ft.border.all(1, "#CFD8DC"),  # Blue Grey 100
             border_radius=10,
         )
 
@@ -253,7 +254,7 @@ class FletMainWindow:
             ),
             width=300,
             padding=20,
-            bgcolor=ft.colors.BLUE_GREY_50,
+            bgcolor="#ECEFF1",  # Blue Grey 50
             border_radius=10,
         )
 
