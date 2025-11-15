@@ -19,8 +19,9 @@ class AppConfig:
     segmentation_model: Optional[str] = None  # 'yolov11' or 'maskrcnn'
 
     # YOLOv11 model configuration
-    yolo_model_size: str = "m"  # 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
-    # Medium (m) provides excellent accuracy while maintaining real-time performance on modern hardware
+    yolo_model_size: str = "l"  # 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
+    # Large (l) provides superior accuracy for critical assistive robotics applications
+    # Model sizes: nano (~6MB), small (~22MB), medium (~50MB), large (~100MB), xlarge (~200MB)
 
     # Detection settings
     detection_threshold: float = 0.5

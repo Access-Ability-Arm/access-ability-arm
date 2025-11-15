@@ -353,9 +353,9 @@ class YOLOv11Seg:
             # Calculate dynamic label size based on text content
             h, w = bgr_frame.shape[:2]
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.6
+            font_scale = 0.9  # Increased from 0.6 for better legibility
             font_thickness = 2
-            padding = 10
+            padding = 12  # Slightly more padding for larger text
 
             # Build label text
             label_text = f"{class_name.capitalize()} {confidence*100:.0f}%"
