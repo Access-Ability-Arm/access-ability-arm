@@ -111,6 +111,78 @@ pip install pyrealsense2
 
 **Note:** The application works without RealSense using standard webcams (no depth sensing).
 
+## Optional: macOS Application Packaging (Flet)
+
+To build macOS application bundles, you need CocoaPods properly configured:
+
+### 1. Install Homebrew Ruby
+
+macOS includes an old Ruby 2.6. Install a newer version via Homebrew:
+
+```bash
+brew install ruby
+```
+
+### 2. Install CocoaPods via Ruby Gems
+
+**Important:** Install CocoaPods using Ruby gems, NOT Homebrew. Flutter requires the gem version.
+
+```bash
+# If you previously installed via Homebrew, uninstall it first
+brew uninstall cocoapods  # Only if previously installed
+
+# Install via Ruby gems with Homebrew's Ruby
+/opt/homebrew/opt/ruby/bin/gem install cocoapods
+```
+
+### 3. Update Your Shell PATH
+
+Add Homebrew's Ruby and gem binaries to your PATH. Add these lines to `~/.zshrc` (or `~/.bash_profile` for bash):
+
+```bash
+# Homebrew Ruby (for Flutter/CocoaPods)
+export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
+export LDFLAGS="-L/opt/homebrew/opt/ruby/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/ruby/include"
+export PKG_CONFIG_PATH="/opt/homebrew/opt/ruby/lib/pkgconfig"
+
+# Add gem binaries to PATH for CocoaPods
+export PATH="/opt/homebrew/lib/ruby/gems/3.4.0/bin:$PATH"
+```
+
+**Note:** The gem path version (3.4.0) may differ based on your Ruby version. Check with:
+```bash
+/opt/homebrew/opt/ruby/bin/gem environment
+```
+Look for "EXECUTABLE DIRECTORY" in the output.
+
+### 4. Apply Changes
+
+Reload your shell configuration:
+```bash
+source ~/.zshrc  # or source ~/.bash_profile
+```
+
+### 5. Verify Installation
+
+```bash
+which pod && pod --version
+```
+
+Should show:
+```
+/opt/homebrew/lib/ruby/gems/3.4.0/bin/pod
+1.16.2
+```
+
+### 6. Build macOS Application
+
+```bash
+make package-macos
+```
+
+Flutter will now properly detect and use CocoaPods during the build process.
+
 ## Optional: Zed Editor Integration
 
 For Jupyter notebook support in Zed editor:
@@ -166,6 +238,19 @@ This was fixed in recent versions. Update to the latest code.
 ### Camera enumeration warnings on macOS
 
 The `AVCaptureDeviceTypeExternal` warning is harmless and can be ignored. Camera detection will still work correctly.
+
+### "CocoaPods not installed or not in valid state" (Flet build)
+
+This occurs when:
+1. CocoaPods was installed via Homebrew instead of Ruby gems
+2. The gem binary path is not in your PATH
+3. Flutter is using system Ruby 2.6 instead of Homebrew Ruby
+
+**Solution:**
+1. Follow the [macOS Application Packaging](#optional-macos-application-packaging-flet) section above
+2. Ensure CocoaPods is installed via `gem install cocoapods` (not Homebrew)
+3. Verify with: `which pod` should show `/opt/homebrew/lib/ruby/gems/3.4.0/bin/pod`
+4. Open a **new terminal** for PATH changes to take effect
 
 ## Next Steps
 
