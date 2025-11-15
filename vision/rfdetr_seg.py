@@ -43,23 +43,10 @@ class RFDETRSeg:
             print(f"[RF-DETR] Error loading model: {e}")
             raise
 
-        # COCO class names
-        self.class_names = [
-            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-            'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
-            'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog',
-            'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe',
-            'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
-            'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat',
-            'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-            'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-            'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot',
-            'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
-            'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
-            'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
-            'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
-            'scissors', 'teddy bear', 'hair drier', 'toothbrush'
-        ]
+        # COCO class names (RF-DETR uses 1-indexed class IDs)
+        # Model has built-in class_names dict: {1: 'person', 2: 'bicycle', ...}
+        # We'll use the model's class_names directly
+        self.class_names = self.model.class_names
 
     def detect_objects_mask(self, frame, depth_frame=None):
         """
@@ -105,11 +92,11 @@ class RFDETRSeg:
                     x, y, w, h = int(x1), int(y1), int(x2-x1), int(y2-y1)
                     boxes.append([x, y, w, h])
 
-                    # Get class
+                    # Get class (RF-DETR uses 1-indexed class IDs)
                     class_id = int(detections.class_id[i])
-                    class_name = self.class_names[class_id] if class_id < len(
-                        self.class_names
-                    ) else f"class_{class_id}"
+                    class_name = self.class_names.get(
+                        class_id, f"class_{class_id}"
+                    )
                     classes.append(class_name)
 
                     # Get segmentation mask and convert to contour
@@ -203,7 +190,7 @@ class RFDETRSeg:
         depth_frame=None
     ):
         """
-        Draw labels and depth information
+        Draw labels and depth information (no bounding boxes)
 
         Args:
             frame: Input BGR image
@@ -225,10 +212,7 @@ class RFDETRSeg:
             x, y, w, h = box
             cx, cy = center
 
-            # Draw bounding box
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-            # Draw center point
+            # Draw center point and crosshair
             cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
             cv2.drawMarker(
                 frame,
@@ -250,29 +234,32 @@ class RFDETRSeg:
                     if depth > 0:
                         label += f" {depth}mm"
 
-            # Draw label background
+            # Draw label background (semi-transparent black)
             (label_w, label_h), baseline = cv2.getTextSize(
                 label,
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 2
             )
+            # Position label near center point
+            label_x = cx - label_w // 2
+            label_y = cy - 15
             cv2.rectangle(
                 frame,
-                (x, y - label_h - 10),
-                (x + label_w, y),
-                (0, 255, 0),
+                (label_x - 5, label_y - label_h - 5),
+                (label_x + label_w + 5, label_y + 5),
+                (0, 0, 0),
                 -1
             )
 
-            # Draw label text
+            # Draw label text in white
             cv2.putText(
                 frame,
                 label,
-                (x, y - 5),
+                (label_x, label_y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
-                (0, 0, 0),
+                (255, 255, 255),
                 2
             )
 
