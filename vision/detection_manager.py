@@ -123,10 +123,14 @@ class DetectionManager:
         )
 
         # Draw object masks
-        image = self.segmentation_model.draw_object_mask(image)
+        image = self.segmentation_model.draw_object_mask(
+            image, boxes, classes, contours
+        )
 
-        # Draw object info (labels, bounding boxes, depth if available)
-        image = self.segmentation_model.draw_object_info(image, depth_frame)
+        # Draw object info (labels, depth if available)
+        image = self.segmentation_model.draw_object_info(
+            image, boxes, classes, centers, depth_frame
+        )
 
         return image
 
@@ -145,10 +149,14 @@ class DetectionManager:
         )
 
         # Draw object masks
-        image = self.segmentation_model.draw_object_mask(image)
+        image = self.segmentation_model.draw_object_mask(
+            image, boxes, classes, contours
+        )
 
         # Draw object info (labels, depth)
-        image = self.segmentation_model.draw_object_info(image, depth_frame)
+        image = self.segmentation_model.draw_object_info(
+            image, boxes, classes, centers, depth_frame
+        )
 
         # Then overlay face landmarks on top
         image = self.face_detector.detect_and_draw(image)

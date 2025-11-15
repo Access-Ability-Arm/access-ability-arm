@@ -158,16 +158,19 @@ class RFDETRSeg:
         # Create overlay for masks
         overlay = frame.copy()
 
-        # Generate colors for each object
-        num_objects = len(boxes)
-        colors = [
-            (
+        # Generate consistent colors based on class name hash
+        # This ensures same object class gets same color across frames
+        colors = []
+        for class_name in classes:
+            # Hash class name to get consistent color
+            hash_val = hash(class_name)
+            np.random.seed(hash_val % (2**32))
+            color = (
                 np.random.randint(50, 255),
                 np.random.randint(50, 255),
                 np.random.randint(50, 255)
             )
-            for _ in range(num_objects)
-        ]
+            colors.append(color)
 
         # Draw masks
         for i, contour in enumerate(contours):
