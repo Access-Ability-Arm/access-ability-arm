@@ -95,9 +95,14 @@ class RFDETRSeg:
                 if num_detections > 0:
                     if hasattr(detections, 'confidence') and detections.confidence is not None:
                         conf_scores = [f"{detections.confidence[i]:.2f}" for i in range(min(5, num_detections))]
-                        print(f"[RF-DETR] Detected {num_detections} objects, confidences: {conf_scores}"+" (showing first 5)" if num_detections > 5 else "")
+                        classes_detected = [self.class_names.get(int(detections.class_id[i]), 'unknown') for i in range(min(5, num_detections))]
+                        import sys
+                        msg = f"[RF-DETR] Detected {num_detections} objects: {list(zip(classes_detected, conf_scores))}"
+                        print(msg, flush=True)
+                        sys.stderr.write(msg + "\n")
+                        sys.stderr.flush()
                     else:
-                        print(f"[RF-DETR] Detected {num_detections} objects")
+                        print(f"[RF-DETR] Detected {num_detections} objects", flush=True)
 
                 for i in range(num_detections):
                     # Get bbox (xyxy format)
