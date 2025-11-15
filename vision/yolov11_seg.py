@@ -173,7 +173,15 @@ class YOLOv11Seg:
         # Run inference with tracking for smoother video segmentation
         # Tracker reduces jitter and provides more stable bounding boxes/masks
         # YOLO requires dimensions divisible by 32 (stride requirement)
-        # Balance between coverage and performance - 640 is default, 1280 provides better coverage
+        #
+        # imgsz recommendations (Ultralytics official):
+        # - 640: Default, optimal for real-time webcam segmentation (recommended)
+        # - 1280: 2x size, better coverage but slower (~4x more pixels)
+        # - 1920: Full HD, best coverage but very slow, may cause detection issues
+        #
+        # References:
+        # - https://docs.ultralytics.com/tasks/segment/
+        # - https://docs.ultralytics.com/models/yolo11/
         results = self.model.track(
             bgr_frame,
             conf=self.detection_threshold,
@@ -182,7 +190,7 @@ class YOLOv11Seg:
             device=self.device,
             persist=True,  # Persist tracks between frames
             tracker="bytetrack.yaml",  # Use ByteTrack for smooth tracking
-            imgsz=1280,  # Good balance: 2x default size, real-time performance
+            imgsz=640,  # Ultralytics recommended default for real-time segmentation
         )
 
         # Clear previous results
@@ -332,7 +340,7 @@ class YOLOv11Seg:
             device=self.device,
             persist=True,
             tracker="bytetrack.yaml",
-            imgsz=1280,  # Match detection size
+            imgsz=640,  # Match detection size
         )
 
         track_ids = None
