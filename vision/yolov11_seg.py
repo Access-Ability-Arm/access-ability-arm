@@ -65,10 +65,19 @@ class YOLOv11Seg:
             if os.path.exists(local_model):
                 self.model = YOLO(local_model, verbose=False)
             else:
-                # Auto-download if not found locally (only shows message on first run)
+                # Auto-download if not found locally
+                # YOLO downloads to current directory, so we need to move it
                 model_name = f"yolo11{model_size}-seg.pt"
-                print(f"Downloading {model_name} (first run only)...")
+                print(f"Downloading {model_name}...")
                 self.model = YOLO(model_name, verbose=False)
+
+                # Move downloaded model to models/ directory for future use
+                if os.path.exists(model_name) and not os.path.exists(local_model):
+                    import shutil
+                    shutil.move(model_name, local_model)
+                    print(f"Moved {model_name} to models/ directory")
+                    # Reload from correct location
+                    self.model = YOLO(local_model, verbose=False)
 
         print(f"✓ YOLOv11-{model_size}-seg ready")
 
