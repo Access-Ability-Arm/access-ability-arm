@@ -37,7 +37,11 @@ class RFDETRSeg:
             # Load RF-DETR Seg model (Preview version)
             # Model auto-detects device (MPS/CUDA/CPU)
             self.model = RFDETRSegPreview()
-            print("[RF-DETR] Model loaded successfully ✅")
+
+            # Optimize model for inference (reduces latency)
+            print("[RF-DETR] Optimizing model for inference...")
+            self.model.optimize_for_inference()
+            print("[RF-DETR] Model loaded and optimized ✅")
 
         except Exception as e:
             print(f"[RF-DETR] Error loading model: {e}")
