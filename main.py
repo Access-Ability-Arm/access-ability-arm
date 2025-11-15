@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-DE-GUI - Flet Version
-Modern cross-platform GUI for the Drane Engineering assistive robotic arm
-
-This is an alternative Flet-based GUI that provides the same functionality
-as the PyQt6 version with a more modern, cross-platform interface.
+DE-GUI - Access Ability Arm
+Cross-platform GUI for the Drane Engineering assistive robotic arm
 
 Features:
-- YOLOv11 real-time object detection
+- Real-time object detection and segmentation
 - MediaPipe face landmark tracking
 - RealSense depth sensing (optional)
 - Manual robotic arm controls
