@@ -32,3 +32,14 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Model files (large binary files)
+models/*.pt
+*.pt
+
+# DNN model files (not in repo)
+dnn/frozen_inference_graph_coco.pb
+dnn/*.tar.gz
+
+# Archive directory
+archive/

@@ -23,7 +23,11 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
 
         # Load Qt Designer GUI
-        uic.loadUi("draftGUI.ui", self)
+        # Load UI file from same directory as this module
+        import os
+
+        ui_path = os.path.join(os.path.dirname(__file__), "draftGUI.ui")
+        uic.loadUi(ui_path, self)
 
         # Initialize components
         self._setup_button_controls()

@@ -1,49 +1,56 @@
 """
-YOLOv12 Instance Segmentation Wrapper
+YOLOv11 Instance Segmentation Wrapper
 Provides interface compatible with mask_rcnn.py for easy drop-in replacement
 """
+
+import os
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
 
 
-class YOLOv12Seg:
+class YOLOv11Seg:
     def __init__(self, model_size="n"):
         """
-        Initialize YOLOv12 segmentation model
+        Initialize YOLOv11 segmentation model
 
         Args:
             model_size: Model size - 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
                        Nano is fastest, XLarge is most accurate
         """
-        print(f"Loading YOLOv12-{model_size}-seg model...")
+        print(f"Loading YOLOv11-{model_size}-seg model...")
 
         # Detect available device (MPS for Apple Silicon, CUDA for NVIDIA, CPU fallback)
         import torch
 
         if torch.backends.mps.is_available():
             self.device = "mps"
-            print("YOLOv12: Using Apple Metal (MPS) for GPU acceleration")
+            print("YOLOv11: Using Apple Metal (MPS) for GPU acceleration")
         elif torch.cuda.is_available():
             self.device = "cuda"
-            print("YOLOv12: Using NVIDIA CUDA for GPU acceleration")
+            print("YOLOv11: Using NVIDIA CUDA for GPU acceleration")
         else:
             self.device = "cpu"
-            print("YOLOv12: Using CPU (no GPU acceleration available)")
+            print("YOLOv11: Using CPU (no GPU acceleration available)")
 
-        # Load YOLOv12 segmentation model (will auto-download on first use)
-        model_name = f"yolo12{model_size}-seg.pt"
-        try:
+        # Load YOLOv11 segmentation model from models/ directory
+        models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+        local_model = os.path.join(models_dir, f"yolo11{model_size}-seg.pt")
+
+        if os.path.exists(local_model):
+            print(f"Loading local model: {local_model}")
+            self.model = YOLO(local_model)
+        else:
+            # Auto-download if not found locally
+            model_name = f"yolo11{model_size}-seg.pt"
+            print(f"Local model not found, downloading {model_name}...")
             self.model = YOLO(model_name)
-            print(f"YOLOv12-{model_size}-seg loaded successfully")
-        except Exception as e:
-            print(f"Error loading {model_name}: {e}")
-            print("Falling back to YOLOv11n-seg...")
-            self.model = YOLO("yolo11n-seg.pt")
+
+        print(f"YOLOv11-{model_size}-seg loaded successfully")
 
         # Detection confidence threshold
-        self.detection_threshold = 0.5  # Higher than Mask R-CNN's 0.7 for better recall
+        self.detection_threshold = 0.5
 
         # Generate random colors for visualization (80 COCO classes)
         np.random.seed(42)
@@ -158,7 +165,7 @@ class YOLOv12Seg:
             bgr_frame,
             conf=self.detection_threshold,
             verbose=False,
-            device=self.device,  # Auto-detected: 'mps' for Apple Silicon, 'cuda' for NVIDIA, 'cpu' fallback
+            device=self.device,
         )
 
         # Clear previous results

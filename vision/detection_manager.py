@@ -33,10 +33,10 @@ class DetectionManager:
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""
         try:
-            if app_config.segmentation_model == "yolov12":
-                from vision.yolov12_seg import YOLOv12Seg
+            if app_config.segmentation_model == "yolov11":
+                from vision.yolov11_seg import YOLOv11Seg
 
-                model = YOLOv12Seg(model_size="n")  # nano = fastest
+                model = YOLOv11Seg(model_size="n")  # nano = fastest
                 print(f"✓ {app_config.segmentation_model} initialized")
                 return model
             elif app_config.segmentation_model == "maskrcnn":

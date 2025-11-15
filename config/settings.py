@@ -16,7 +16,7 @@ class AppConfig:
 
     # Segmentation model availability
     segmentation_available: bool = False
-    segmentation_model: Optional[str] = None  # 'yolov12' or 'maskrcnn'
+    segmentation_model: Optional[str] = None  # 'yolov11' or 'maskrcnn'
 
     # Detection settings
     detection_threshold: float = 0.5
@@ -50,15 +50,15 @@ def detect_hardware_capabilities() -> AppConfig:
     except ImportError:
         print("✗ RealSense camera not available - using standard webcam only")
 
-    # Try YOLOv12-seg first (preferred), fallback to Mask R-CNN
+    # Try YOLOv11-seg first (preferred), fallback to Mask R-CNN
     try:
-        from vision.yolov12_seg import YOLOv12Seg
+        from vision.yolov11_seg import YOLOv11Seg
 
         config.segmentation_available = True
-        config.segmentation_model = "yolov12"
-        print("✓ YOLOv12-seg object detection available (recommended)")
+        config.segmentation_model = "yolov11"
+        print("✓ YOLOv11-seg object detection available (recommended)")
     except ImportError as e:
-        print(f"✗ YOLOv12-seg not available: {e}")
+        print(f"✗ YOLOv11-seg not available: {e}")
         try:
             from vision.mask_rcnn import MaskRCNN
 

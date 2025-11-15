@@ -17,5 +17,14 @@
         }
       }
     }
+  },
+  "terminal": {
+    "env": {
+      "VIRTUAL_ENV": "$ZED_WORKTREE_ROOT/venv"
+    },
+    "shell": {
+      "program": "/bin/zsh",
+      "args": ["-l", "-c", "source venv/bin/activate && exec zsh"]
+    }
   }
 }
