@@ -4,6 +4,8 @@
 
 **Python Version:** This project requires **Python 3.11** (MediaPipe does not support Python 3.14+).
 
+**Disk Space:** At least **15GB free** (Xcode ~12GB, Android Studio ~3GB, dependencies ~1GB).
+
 ## Setting Up the Virtual Environment
 
 ### 1. Install Python 3.11
@@ -111,7 +113,124 @@ pip install pyrealsense2
 
 **Note:** The application works without RealSense using standard webcams (no depth sensing).
 
-## Optional: macOS Application Packaging (Flet)
+## Development Tools for Application Packaging
+
+To build distributable applications for different platforms, you'll need additional tools. **Note:** These are only required if you plan to package/distribute the app, not for running it in development mode.
+
+### Xcode (Required for macOS/iOS builds)
+
+**Platform:** macOS only
+
+Xcode is required to build macOS and iOS applications.
+
+#### Installation
+
+1. **Install Xcode from the App Store:**
+   - Open the Mac App Store
+   - Search for "Xcode"
+   - Download and install (requires ~12GB disk space)
+   - **Minimum Version:** Xcode 15 (for Apple Silicon Macs)
+
+2. **Install Xcode Command Line Tools:**
+   ```bash
+   xcode-select --install
+   ```
+
+3. **Accept Xcode License:**
+   ```bash
+   sudo xcodebuild -license accept
+   ```
+
+4. **Configure Xcode:**
+   ```bash
+   sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+   ```
+
+5. **Verify Installation:**
+   ```bash
+   xcodebuild -version
+   ```
+   Should show: `Xcode 15.x` or newer
+
+#### Additional Setup for iOS Development
+
+If building for iOS (iPhone/iPad):
+
+1. **Install iOS Simulator:**
+   - Open Xcode
+   - Go to Xcode → Settings → Platforms
+   - Download the iOS platform you want to target
+
+2. **Setup Signing (for device deployment):**
+   - You'll need an Apple Developer account ($99/year)
+   - Configure signing in Xcode project settings
+
+### Flutter SDK (Auto-installed by Flet)
+
+**Platform:** All platforms
+
+**Good news:** You don't need to manually install Flutter! Flet automatically downloads and manages the correct Flutter version when you first run `flet build`.
+
+The Flutter SDK will be installed to: `$HOME/flutter/{version}`
+
+If you want to install Flutter manually or use it for other projects, see: https://docs.flutter.dev/get-started/install
+
+### Android Studio (Required for Android builds)
+
+**Platform:** All platforms (for building Android apps)
+
+Android Studio is only needed if you plan to build Android APK/AAB files.
+
+#### Installation
+
+1. **Download Android Studio:**
+   - Visit: https://developer.android.com/studio
+   - Download for your platform
+   - Install (~3GB disk space)
+
+2. **Run Android Studio Setup Wizard:**
+   - Launch Android Studio
+   - Follow the setup wizard to install:
+     - Android SDK
+     - Android SDK Platform
+     - Android Virtual Device (for testing)
+
+3. **Accept Android Licenses:**
+   ```bash
+   flutter doctor --android-licenses
+   ```
+   **Note:** This requires Flutter to be installed first (happens automatically on first `flet build`)
+
+4. **Verify Installation:**
+   ```bash
+   flutter doctor
+   ```
+   Should show Android toolchain properly configured.
+
+#### Android SDK Requirements
+
+- **Minimum SDK:** API 21 (Android 5.0)
+- **Target SDK:** API 33+ (Android 13+)
+- **Build Tools:** Latest version
+
+### Flutter Doctor (Verify All Requirements)
+
+After installing Xcode and/or Android Studio, verify your setup:
+
+```bash
+# Flet will install Flutter on first build, but you can check manually:
+flutter doctor -v
+```
+
+You should see:
+- ✓ Flutter (automatically managed by Flet)
+- ✓ Xcode - develop for iOS and macOS (if installed)
+- ✓ Android toolchain - develop for Android devices (if installed)
+- ✓ VS Code or Android Studio (optional)
+
+**Note:** You don't need all platforms - only install tools for platforms you're targeting.
+
+## macOS Application Packaging (Flet)
 
 To build macOS application bundles, you need CocoaPods properly configured:
 
@@ -182,6 +301,43 @@ make package-macos
 ```
 
 Flutter will now properly detect and use CocoaPods during the build process.
+
+## Platform Build Commands
+
+Once development tools are installed, you can build for different platforms:
+
+### Desktop
+
+```bash
+# macOS (requires Xcode + CocoaPods)
+make package-macos
+
+# Linux (requires standard build tools)
+make package-linux
+
+# Windows (requires Visual Studio Build Tools)
+make package-windows
+```
+
+### Mobile
+
+```bash
+# Android APK (requires Android Studio)
+flet build apk
+
+# Android App Bundle (requires Android Studio)
+flet build aab
+
+# iOS (requires Xcode + Apple Developer account)
+flet build ipa
+```
+
+### Web
+
+```bash
+# Web application (no additional tools required)
+flet build web
+```
 
 ## Optional: Zed Editor Integration
 
