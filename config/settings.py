@@ -18,7 +18,7 @@ class AppConfig:
 
     # Segmentation model availability
     segmentation_available: bool = False
-    segmentation_model: Optional[str] = None  # 'yolov11' or 'maskrcnn'
+    segmentation_model: Optional[str] = None  # 'rfdetr', 'yolov11', 'maskrcnn'
 
     # YOLOv11 model configuration
     # 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
@@ -63,26 +63,37 @@ def detect_hardware_capabilities() -> AppConfig:
             "RealSense camera not available - using standard webcam only"
         )
 
-    # Try YOLOv11-seg first (preferred), fallback to Mask R-CNN
+    # Try RF-DETR first (SOTA 2025), fallback to YOLOv11, then Mask R-CNN
     try:
-        from vision.yolov11_seg import YOLOv11Seg  # noqa: F401
+        from vision.rfdetr_seg import RFDETRSeg  # noqa: F401
 
         config.segmentation_available = True
-        config.segmentation_model = "yolov11"
+        config.segmentation_model = "rfdetr"
         success(
-            f"{underline('YOLOv11-seg')} object detection available "
-            "(recommended)"
+            f"{underline('RF-DETR Seg')} object detection available "
+            "(SOTA Nov 2025, 44.3 mAP)"
         )
     except ImportError as e:
-        error(f"YOLOv11-seg not available: {e}")
+        error(f"RF-DETR not available: {e}")
         try:
-            from vision.mask_rcnn import MaskRCNN  # noqa: F401
+            from vision.yolov11_seg import YOLOv11Seg  # noqa: F401
 
             config.segmentation_available = True
-            config.segmentation_model = "maskrcnn"
-            success("Mask R-CNN object detection available (legacy)")
-        except ImportError:
-            error("No segmentation model available - face tracking only")
+            config.segmentation_model = "yolov11"
+            success(
+                f"{underline('YOLOv11-seg')} object detection available "
+                "(good)"
+            )
+        except ImportError as e2:
+            error(f"YOLOv11-seg not available: {e2}")
+            try:
+                from vision.mask_rcnn import MaskRCNN  # noqa: F401
+
+                config.segmentation_available = True
+                config.segmentation_model = "maskrcnn"
+                success("Mask R-CNN object detection available (legacy)")
+            except ImportError:
+                error("No segmentation model available - face tracking only")
 
     return config
 

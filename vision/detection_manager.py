@@ -70,7 +70,13 @@ class DetectionManager:
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""
         try:
-            if app_config.segmentation_model == "yolov11":
+            if app_config.segmentation_model == "rfdetr":
+                from vision.rfdetr_seg import RFDETRSeg
+
+                model = RFDETRSeg()
+                print(f"✓ {app_config.segmentation_model.upper()} initialized")
+                return model
+            elif app_config.segmentation_model == "yolov11":
                 from vision.yolov11_seg import YOLOv11Seg
 
                 model = YOLOv11Seg(model_size=app_config.yolo_model_size)

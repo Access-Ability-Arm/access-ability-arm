@@ -26,7 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DE-GUI is a cross-platform GUI application (Flet-based, PyQt6 legacy) for the Drane Engineering assistive robotic arm. It integrates:
 - Intel RealSense camera for depth sensing (optional)
-- **YOLOv11-seg** for real-time object detection and segmentation (recommended)
+- **RF-DETR Seg** for real-time object detection and segmentation (SOTA Nov 2025, 44.3 mAP)
+- YOLOv11-seg for real-time object detection (fallback, good)
 - Mask R-CNN for object detection (legacy, slower)
 - MediaPipe for face landmark tracking
 - Apple Metal GPU acceleration on M-series Macs
@@ -312,11 +313,12 @@ When RealSense camera is active, a fixed reference point is displayed:
 ## Dependencies
 
 Core dependencies (auto-installed via `requirements.txt`):
-- PyQt6 >= 6.6.0 - GUI framework
-- opencv-python >= 4.8.0 - Computer vision
+- Flet >= 0.24.0 - Cross-platform GUI framework
+- opencv-python-headless >= 4.8.0 - Computer vision (headless saves ~60 MB)
 - numpy >= 1.24.0 - Array operations
 - mediapipe >= 0.10.0 - Face tracking
-- ultralytics >= 8.0.0 - YOLOv11 segmentation
+- RF-DETR - Instance segmentation (SOTA Nov 2025)
+- ultralytics >= 8.0.0 - YOLOv11 segmentation (fallback)
 - torch >= 2.0.0 - Deep learning backend
 - ipykernel >= 7.0.0 - Jupyter support (optional)
 

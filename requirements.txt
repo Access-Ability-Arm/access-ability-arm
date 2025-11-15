@@ -7,7 +7,8 @@ opencv-python-headless>=4.8.0  # Headless version saves ~60-70MB vs opencv-pytho
 mediapipe>=0.10.0
 
 # Object Detection & Segmentation
-ultralytics>=8.3.0  # YOLOv12-seg (recommended for real-time object detection)
+git+https://github.com/roboflow/rf-detr.git  # RF-DETR Seg (SOTA Nov 2025, 44.3 mAP)
+ultralytics>=8.3.0  # YOLOv11-seg (fallback option)
 
 # Numerical Computing
 numpy>=1.24.0
