@@ -56,9 +56,9 @@ if __name__ == "__main__":
         header(f"Starting Access Ability Arm ({underline('Web version')})")
         info(f"Open browser to: http://localhost:{args.port}")
         status("Press Ctrl+C to stop the server")
-        ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=args.port)
+        ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=args.port, name="Access Ability Arm")
     else:
         header(f"Starting Access Ability Arm ({underline('Desktop version')})")
         info("Press 'T' to toggle between face tracking and object detection")
         status("Close the window to exit")
-        ft.app(target=main)
+        ft.app(target=main, name="Access Ability Arm")
