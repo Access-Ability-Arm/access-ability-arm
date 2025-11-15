@@ -60,7 +60,7 @@ if __name__ == "__main__":
         header(
             f"Starting Access Ability Arm ({underline('Web version')})"
         )
-        info(f"Open browser to: http://localhost:{args.port}")
+        info(f"Open browser to: {underline(f'http://localhost:{args.port}')}")
         status("Press Ctrl+C to stop the server")
         ft.app(
             target=main, view=ft.AppView.WEB_BROWSER,
