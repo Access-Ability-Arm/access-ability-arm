@@ -26,11 +26,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DE-GUI is a cross-platform GUI application (Flet-based, PyQt6 legacy) for the Drane Engineering assistive robotic arm. It integrates:
 - Intel RealSense camera for depth sensing (optional)
-- **RF-DETR Seg** for real-time object detection and segmentation (SOTA Nov 2025, 44.3 mAP)
-- YOLOv11-seg for real-time object detection (fallback, good)
-- Mask R-CNN for object detection (legacy, slower)
+- **RF-DETR Seg** for real-time object detection and segmentation (PRIMARY, SOTA Nov 2025, 44.3 mAP, ~6MB)
+- YOLOv11-seg for real-time object detection (fallback, good, ~24-140MB depending on size)
+- Mask R-CNN for object detection (legacy fallback, slower, ~200MB)
 - MediaPipe for face landmark tracking
-- Apple Metal GPU acceleration on M-series Macs
+- GPU acceleration: Apple Metal (M-series Macs), NVIDIA CUDA (Windows/Linux), or CPU
 - Manual robotic arm controls (x, y, z, grip)
 
 The application allows users to identify objects in the camera feed and enables the robot to differentiate and pick up those items, with both automated (computer vision) and manual control modes.
@@ -82,15 +82,18 @@ python main_pyqt.py
 **main.py (DEFAULT - FLET VERSION):**
 - **UI Framework**: Flet (Material Design, cross-platform, web-capable)
 - **Camera**: Auto-detects RealSense OR standard webcam (MacBook FaceTime, USB webcam, Continuity Camera)
-- **Required**: Flet, MediaPipe, Ultralytics (auto-installed via requirements.txt)
+- **Required**: Flet, MediaPipe, RF-DETR (auto-installed via requirements.txt)
 - **Optional**: pyrealsense2 (enables depth sensing with RealSense camera)
-- **Object Detection**: YOLOv11-seg (auto-downloads medium model ~50MB on first run)
-  - **Model Size**: Configurable in `config/settings.py` - nano/small/medium (default)/large/xlarge
+- **Object Detection**: RF-DETR Seg (auto-downloads ~6MB model on first run)
+  - **SOTA Performance**: 44.3 mAP@50:95 on COCO (Nov 2025 release)
+  - **Confidence Threshold**: 0.2 (configurable in `vision/rfdetr_seg.py`)
   - **GPU Acceleration**: Automatically uses Apple Metal (MPS) on M-series Macs, CUDA on NVIDIA, or CPU
-  - Much faster and more accurate than legacy Mask R-CNN
-  - Falls back to Mask R-CNN if YOLOv11-seg unavailable
+  - **Visualization**: Colored segmentation masks only (no bounding boxes), consistent colors per class
+  - **Fallback Models**: YOLOv11-seg → Mask R-CNN (if RF-DETR unavailable)
+  - **IMPORTANT**: Do NOT call `model.optimize_for_inference()` - it breaks mask output!
+  - **API Usage**: Pass single image to `predict(image)`, NOT `predict([image])` for proper multi-object detection
 - **Detection Modes**: Three modes available (cycle with 'T' key):
-  1. **Object Detection** (default): YOLOv11 segmentation for 80 COCO classes
+  1. **Object Detection** (default): RF-DETR Seg for 80 COCO classes
   2. **Face Tracking**: MediaPipe face mesh with landmark detection
   3. **Combined**: Simultaneous object detection + face tracking
 - **Toggle**: Press 'T' to cycle through modes (Object → Combined → Face → Object...)
@@ -236,7 +239,22 @@ access-ability-arm/
 - Applies spatial filtering and hole-filling to depth data
 - `get_frame_stream()` returns: (success, color_image, depth_image)
 
-**vision/yolov11_seg.py - YOLOv11Seg class (RECOMMENDED)**
+**vision/rfdetr_seg.py - RFDETRSeg class (PRIMARY)**
+- State-of-the-art real-time instance segmentation using RF-DETR (Roboflow, Nov 2025)
+- **Performance**: 44.3 mAP@50:95 on COCO (3× faster than YOLO11-X-Seg, 10.7% more accurate)
+- **Model**: Auto-downloads `RFDETRSegPreview` (~6MB) on first run
+- **GPU Acceleration**: Automatically detects and uses:
+  - Apple Metal (MPS) on M-series Macs
+  - NVIDIA CUDA on Windows/Linux
+  - CPU fallback for compatibility
+- **Confidence threshold**: 0.2 (lower than YOLO for better recall)
+- **80 COCO classes** (person, bicycle, car, cup, etc.)
+- **Class IDs**: 1-indexed dictionary `{1: 'person', 2: 'bicycle', ...}` (uses `model.class_names`)
+- **CRITICAL**: Do NOT use `model.optimize_for_inference()` - removes segmentation masks!
+- **API**: Pass single PIL image: `model.predict(pil_image, threshold=0.2)` (NOT `[pil_image]`)
+- Returns `supervision.Detections` with xyxy, class_id, confidence, and **mask** (boolean array)
+
+**vision/yolov11_seg.py - YOLOv11Seg class (FALLBACK)**
 - Modern real-time instance segmentation using Ultralytics YOLOv11
 - Model loading priority:
   1. Local file: `models/yolo11{size}-seg.pt`
@@ -249,7 +267,7 @@ access-ability-arm/
 - 80 COCO classes (person, car, cup, etc.)
 - Model sizes: nano (fastest), small, medium, large, xlarge (most accurate)
 
-**vision/mask_rcnn.py - MaskRCNN class (LEGACY)**
+**vision/mask_rcnn.py - MaskRCNN class (LEGACY FALLBACK)**
 - Loads TensorFlow Mask R-CNN model from `dnn/` directory:
   - `frozen_inference_graph_coco.pb` - Pre-trained model weights (~200MB)
   - `mask_rcnn_inception_v2_coco_2018_01_28.pbtxt` - Model configuration
@@ -258,9 +276,9 @@ access-ability-arm/
 - Backend: Skips CUDA on macOS, tries Vulkan, falls back to CPU
 - Slower than YOLOv11, kept for compatibility
 
-### Downloading DNN Model Files (Optional - Legacy Only)
+### Downloading DNN Model Files (Optional - Legacy Fallback Only)
 
-The `dnn/` directory with Mask R-CNN model files is **not included in the repository** and only needed if YOLOv11 is unavailable:
+The `dnn/` directory with Mask R-CNN model files is **not included in the repository** and only needed if both RF-DETR and YOLOv11 are unavailable:
 
 ```bash
 # Create dnn directory
@@ -278,7 +296,7 @@ wget https://raw.githubusercontent.com/opencv/opencv_extra/master/testdata/dnn/m
 wget https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names -O classes.txt
 ```
 
-**Note**: YOLOv11 auto-downloads and is preferred. DNN files only needed as fallback.
+**Note**: RF-DETR Seg is the primary model (auto-downloads ~6MB). YOLOv11 and Mask R-CNN are fallbacks only.
 
 ### Threading Architecture
 

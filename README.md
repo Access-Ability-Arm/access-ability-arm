@@ -4,12 +4,13 @@ AI-powered GUI for the Drane Engineering assistive robotic arm, featuring real-t
 
 ## Features
 
-- **YOLOv11 Object Detection**: Real-time segmentation with Apple Metal GPU acceleration
-- **Face Tracking**: 20-point facial landmark detection with MediaPipe
+- **RF-DETR Seg Object Detection**: State-of-the-art real-time segmentation (44.3 mAP, Nov 2025)
+- **GPU Acceleration**: Automatic support for Apple Metal, NVIDIA CUDA, or CPU
+- **Face Tracking**: Multi-region facial landmark detection with MediaPipe
 - **Depth Sensing**: Intel RealSense support for distance measurement (optional)
 - **Flexible Camera Support**: Auto-detects RealSense, webcams, or Continuity Camera
 - **Manual Controls**: Direct robotic arm control (x, y, z, grip)
-- **Toggle Modes**: Press 'T' to switch between face tracking and object detection
+- **Toggle Modes**: Press 'T' to cycle between face tracking, object detection, and combined modes
 
 ## Quick Start
 
@@ -45,7 +46,7 @@ python main_pyqt.py
 The application will automatically:
 - Detect available cameras (RealSense → webcam → Continuity Camera)
 - Enable GPU acceleration (Apple Metal, CUDA, or CPU)
-- Download YOLOv11-medium model on first run (~50MB)
+- Download RF-DETR Seg model on first run (~6MB)
 
 > **Note**: The default Flet version offers a modern Material Design UI and can run in web browsers. The PyQt version is maintained for compatibility but will be removed in a future release. See [flet_gui/README.md](flet_gui/README.md) for details.
 
@@ -57,17 +58,7 @@ The application will automatically:
 
 ### Configuration
 
-You can customize the YOLO model size in `config/settings.py`:
-```python
-yolo_model_size: str = "m"  # Options: 'n' (nano, ~6MB), 's' (small, ~24MB), 
-                             #          'm' (medium, ~50MB, default), 
-                             #          'l' (large, ~65MB), 'x' (xlarge, ~140MB)
-```
-- **Nano (n)**: Fastest, good accuracy, real-time on mobile
-- **Small (s)**: Very fast, better accuracy
-- **Medium (m)**: Great accuracy, real-time on desktop (default)
-- **Large (l)**: Excellent accuracy
-- **XLarge (x)**: Best accuracy, slower
+The application uses RF-DETR Seg for object detection with a confidence threshold of 0.2 (configurable in `vision/rfdetr_seg.py`). For alternative models, see `config/settings.py` which includes fallback support for YOLOv11-seg and Mask R-CNN.
 
 ## System Requirements
 
@@ -81,9 +72,10 @@ yolo_model_size: str = "m"  # Options: 'n' (nano, ~6MB), 's' (small, ~24MB),
 Press **'T'** to cycle through detection modes:
 
 ### 1. Object Detection (Default)
-- YOLOv11 instance segmentation for 80 COCO object classes
-- Real-time colored segmentation masks with labels
-- Confidence scores with temporal smoothing
+- RF-DETR Seg instance segmentation for 80 COCO object classes
+- Real-time colored segmentation masks with labels (no bounding boxes)
+- State-of-the-art accuracy (44.3 mAP@50:95, Nov 2025)
+- Consistent colors per object class
 - Distance measurement with RealSense camera (optional)
 - Fixed reference point depth indicator
 
