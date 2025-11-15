@@ -52,7 +52,10 @@ package-macos:
 		--project "access-ability-arm" \
 		--product "Access Ability Arm" \
 		--org "com.accessability" \
-		--description "Assistive robotic arm control application"
+		--description "Assistive robotic arm control application" \
+		--exclude gui \
+		--exclude PyQt6 \
+		--exclude archive
 	@echo "✓ macOS package built in build/macos/"
 
 # Package for Linux

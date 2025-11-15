@@ -1,5 +1,5 @@
 # GUI Frameworks
-PyQt6>=6.6.0
+# PyQt6>=6.6.0  # Legacy GUI (deprecated - use Flet instead)
 flet>=0.24.0  # Modern cross-platform UI framework
 
 # Computer Vision

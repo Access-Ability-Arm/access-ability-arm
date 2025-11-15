@@ -1,37 +1,35 @@
 """
 Image Processing Worker Thread
-Handles camera capture, detection processing, and Qt image conversion
+Handles camera capture, detection processing, and image conversion
 """
 
-from typing import Optional
+import threading
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
-from PyQt6 import QtCore, QtGui
 
 from config.console import error, status, success, underline
 from config.settings import app_config
 from vision.detection_manager import DetectionManager
 
 
-class ImageProcessor(QtCore.QThread):
+class ImageProcessor(threading.Thread):
     """
     Worker thread for continuous camera capture and image processing
-    Runs detection algorithms and emits processed frames to GUI
+    Runs detection algorithms and provides processed frames via callback
     """
 
-    ImageUpdate = QtCore.pyqtSignal(QtGui.QImage)
-
-    def __init__(self, display_width: int = 800, display_height: int = 650, callback=None):
+    def __init__(self, display_width: int = 800, display_height: int = 650, callback: Optional[Callable] = None):
         """
         Initialize image processor
 
         Args:
             display_width: Width for display scaling
             display_height: Height for display scaling
-            callback: Optional callback function for non-Qt frameworks (like Flet)
+            callback: Callback function to receive processed frames (numpy array)
         """
-        super(ImageProcessor, self).__init__()
+        super(ImageProcessor, self).__init__(daemon=True)
         status("Image processor initialized")
 
         self.display_width = display_width
@@ -108,11 +106,10 @@ class ImageProcessor(QtCore.QThread):
                         processed_image, depth_frame
                     )
 
-                # Convert to Qt format and emit/callback
-                qt_image = self._convert_to_qt_image(processed_image)
-                self.ImageUpdate.emit(qt_image)
+                # Flip image horizontally for mirror effect
+                processed_image = cv2.flip(processed_image, 1)
 
-                # Also call callback if provided (for Flet)
+                # Call callback if provided
                 if self.callback:
                     self.callback(processed_image)  # Pass numpy array directly to callback
 
@@ -172,36 +169,6 @@ class ImageProcessor(QtCore.QThread):
                 pass  # Silently skip if depth is unavailable at reference point
 
         return image
-
-    def _convert_to_qt_image(self, image: np.ndarray) -> QtGui.QImage:
-        """
-        Convert numpy array to Qt QImage
-
-        Args:
-            image: RGB image array
-
-        Returns:
-            QImage ready for display
-        """
-        # Flip image horizontally for mirror effect
-        flipped_image = cv2.flip(image, 1)
-
-        # Convert to Qt format
-        qt_format = QtGui.QImage(
-            flipped_image.data,
-            flipped_image.shape[1],
-            flipped_image.shape[0],
-            QtGui.QImage.Format.Format_RGB888,
-        )
-
-        # Scale to display size
-        scaled = qt_format.scaled(
-            self.display_width,
-            self.display_height,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-        )
-
-        return scaled
 
     def toggle_detection_mode(self):
         """Toggle between face tracking and object detection"""

@@ -3,18 +3,15 @@ Button Controller for Robotic Arm
 Monitors button press duration to differentiate between press and hold actions
 """
 
+import threading
 import time
 
-from PyQt6 import QtCore
 
-
-class ButtonController(QtCore.QThread):
+class ButtonController(threading.Thread):
     """
     Thread that monitors button press duration
     Differentiates between quick press (<0.5s) and hold (>0.5s)
     """
-
-    button_signal = QtCore.pyqtSignal(str)
 
     def __init__(self, hold_threshold: float = 0.5):
         """
@@ -23,7 +20,7 @@ class ButtonController(QtCore.QThread):
         Args:
             hold_threshold: Time in seconds to distinguish press from hold
         """
-        super(ButtonController, self).__init__()
+        super(ButtonController, self).__init__(daemon=True)
         print("Button controller initialized")
         self.hold_threshold = hold_threshold
         self.current_state = None
