@@ -72,9 +72,10 @@ class RFDETRSeg:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(rgb_frame)
 
-        # Run inference (returns list of Detections for each image)
-        detections_list = self.model.predict(
-            [pil_image],
+        # Run inference
+        # Note: Pass single image, not list - returns single Detections object
+        detections = self.model.predict(
+            pil_image,
             threshold=self.confidence_threshold
         )
 
@@ -83,10 +84,8 @@ class RFDETRSeg:
         contours = []
         centers = []
 
-        # Process results (first image in batch)
-        if detections_list and len(detections_list) > 0:
-            detections = detections_list[0]
-
+        # Process results
+        if detections is not None:
             # Supervision Detections object has: xyxy, class_id, confidence, mask
             if hasattr(detections, 'xyxy') and detections.xyxy is not None:
                 num_detections = len(detections.xyxy)
