@@ -120,7 +120,7 @@ def main():
 
     project_root = get_project_root()
     config_path = project_root / "config.yaml"
-    template_path = project_root / "config.yaml.template"
+    template_path = project_root / "config" / "config.yaml.template"
 
     # Load template as defaults
     if template_path.exists():

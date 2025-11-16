@@ -72,10 +72,15 @@ This will guide you through setting:
 - Movement step sizes and speeds
 - Display dimensions
 
+**Quick Update (Change IP, speeds, etc.):**
+```bash
+python scripts/update_config.py
+```
+
 **Manual Configuration:**
 ```bash
 # Copy template and edit
-cp config.yaml.template config.yaml
+cp config/config.yaml.template config.yaml
 # Edit config.yaml with your settings
 ```
 
