@@ -38,8 +38,8 @@ class FletMainWindow:
         self.page.title = "Access Ability Arm"
         self.page.theme_mode = ft.ThemeMode.LIGHT
         self.page.padding = 5
-        self.page.window.width = 1230
-        self.page.window.height = 695
+        self.page.window.width = app_config.window_width
+        self.page.window.height = app_config.window_height
         self.page.window.resizable = True
 
         # Initialize components
@@ -141,7 +141,7 @@ class FletMainWindow:
         self.camera_dropdown = ft.Dropdown(
             label="Select Camera",
             options=camera_options,
-            value="0" if camera_options else None,
+            value=str(app_config.default_camera) if camera_options else None,
             on_change=self._on_camera_changed,
             width=400,
         )
@@ -323,8 +323,8 @@ class FletMainWindow:
     def _start_image_processor(self):
         """Initialize and start image processing"""
         self.image_processor = ImageProcessor(
-            display_width=800,
-            display_height=650,
+            display_width=app_config.display_width,
+            display_height=app_config.display_height,
             callback=self._update_video_feed,  # Use callback for Flet
         )
 
@@ -433,9 +433,13 @@ class FletMainWindow:
         # Control gripper if arm is connected
         if self.arm_controller and self.arm_controller.arm:
             if is_closed:
-                self.arm_controller.close_gripper(wait=False)
+                self.arm_controller.close_gripper(
+                    speed=app_config.gripper_speed, wait=False
+                )
             else:
-                self.arm_controller.open_gripper(wait=False)
+                self.arm_controller.open_gripper(
+                    speed=app_config.gripper_speed, wait=False
+                )
 
     def _handle_arm_command(self, button_name: str, duration: float):
         """
@@ -462,7 +466,8 @@ class FletMainWindow:
 
         # Determine step size based on button hold duration
         # Short tap: small step, long hold: large step
-        step = 10 if duration < 0.5 else 50  # mm
+        step = (app_config.tap_step_size if duration < app_config.button_hold_threshold
+                else app_config.hold_step_size)
 
         # Apply movement based on button
         if button_name == "x_pos":
@@ -491,7 +496,11 @@ class FletMainWindow:
 
         # Send move command
         print(f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f})")
-        self.arm_controller.move_to(x, y, z, roll, pitch, yaw, speed=100, wait=False)
+        self.arm_controller.move_to(
+            x, y, z, roll, pitch, yaw,
+            speed=app_config.movement_speed,
+            wait=False
+        )
 
     def _on_arm_connection_status(self, connected: bool, message: str):
         """Handle arm connection status updates"""

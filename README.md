@@ -60,7 +60,26 @@ The application will automatically:
 
 ### Configuration
 
-The application uses RF-DETR Seg for object detection with a confidence threshold of 0.3. Configuration is managed in `packages/core/src/aaa_core/config/settings.py` with automatic fallback support for YOLOv11-seg and Mask R-CNN.
+**Interactive Setup (Recommended):**
+```bash
+python scripts/setup_config.py
+```
+
+This will guide you through setting:
+- Lite6 arm IP address and connection settings
+- Camera preferences
+- Detection thresholds
+- Movement step sizes and speeds
+- Display dimensions
+
+**Manual Configuration:**
+```bash
+# Copy template and edit
+cp config.yaml.template config.yaml
+# Edit config.yaml with your settings
+```
+
+The application uses RF-DETR Seg for object detection with automatic fallback support for YOLOv11-seg and Mask R-CNN. All settings can be customized in `config.yaml` without modifying code.
 
 ## System Requirements
 

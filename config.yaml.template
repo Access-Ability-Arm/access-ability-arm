@@ -1,0 +1,59 @@
+# Access Ability Arm Configuration
+# Copy this file to config.yaml and customize for your setup
+
+# Robotic Arm Settings
+arm:
+  # IP address of your UFactory Lite6 arm
+  # Find this in the xArm Studio or your network settings
+  ip: "192.168.1.203"
+
+  # Port number (default: 502 for Modbus TCP)
+  port: 502
+
+  # Auto-connect on startup
+  auto_connect: true
+
+# Camera Settings
+camera:
+  # Maximum number of cameras to check on startup
+  max_cameras_to_check: 3
+
+  # Default camera index (0 = first camera)
+  default_camera: 0
+
+# Object Detection Settings
+detection:
+  # Confidence threshold for object detection (0.0 - 1.0)
+  # Lower = more detections but more false positives
+  # Higher = fewer detections but more accurate
+  threshold: 0.5
+
+  # YOLOv11 model size: n (nano), s (small), m (medium), l (large), x (xlarge)
+  # Larger models are more accurate but slower
+  yolo_model_size: "x"
+
+# Control Settings
+controls:
+  # Button hold threshold in seconds
+  # Press shorter = tap action, press longer = hold action
+  button_hold_threshold: 0.5
+
+  # Movement step sizes in millimeters
+  tap_step_size: 10    # Short button press
+  hold_step_size: 50   # Long button press
+
+  # Movement speed in mm/s
+  movement_speed: 100
+
+  # Gripper speed in pulse/s
+  gripper_speed: 5000
+
+# Display Settings
+display:
+  # Video feed dimensions
+  width: 800
+  height: 650
+
+  # Window startup size
+  window_width: 1230
+  window_height: 695
