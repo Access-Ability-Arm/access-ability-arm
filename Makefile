@@ -28,12 +28,14 @@ help:
 	@echo "Cleanup:"
 	@echo "  make clean           - Remove build artifacts and cache files"
 
-# Install dependencies
+# Install dependencies (monorepo packages)
 install:
-	@echo "Installing dependencies..."
+	@echo "Installing monorepo packages in development mode..."
 	python3.11 -m pip install --upgrade pip
-	pip install -r requirements.txt
-	@echo "✓ Dependencies installed"
+	pip install -e packages/core
+	pip install -e packages/vision
+	pip install -e "packages/gui[flet]"
+	@echo "✓ All packages installed in development mode"
 
 # Run desktop application
 run:
@@ -55,7 +57,6 @@ package-macos:
 		--product "Access Ability Arm" \
 		--org "com.accessability" \
 		--description "Assistive robotic arm control application" \
-		--exclude gui \
 		--exclude PyQt6 \
 		--exclude archive \
 		--cleanup-packages \
@@ -96,7 +97,7 @@ test:
 lint:
 	@echo "Checking code style..."
 	@if command -v flake8 >/dev/null 2>&1; then \
-		flake8 --max-line-length=100 --exclude=venv,build,archive .; \
+		flake8 --max-line-length=100 --exclude=venv,build,archive,data packages/ main.py; \
 	else \
 		echo "flake8 not installed. Install with: pip install flake8"; \
 	fi
@@ -105,7 +106,7 @@ lint:
 format:
 	@echo "Formatting code..."
 	@if command -v black >/dev/null 2>&1; then \
-		black --line-length=100 --exclude='venv|build|archive' .; \
+		black --line-length=100 --exclude='venv|build|archive|data' packages/ main.py; \
 	else \
 		echo "black not installed. Install with: pip install black"; \
 	fi
@@ -143,8 +144,15 @@ info:
 	@echo "Name:        Access Ability Arm"
 	@echo "Description: Assistive robotic arm control application"
 	@echo "Python:      3.11 (required)"
+	@echo "Structure:   Monorepo with 3 packages (core, vision, gui)"
+	@echo ""
+	@echo "Packages:"
+	@echo "  • aaa-core   - Configuration, hardware, workers"
+	@echo "  • aaa-vision - RF-DETR, YOLOv11, face tracking"
+	@echo "  • aaa-gui    - Flet and PyQt6 interfaces"
 	@echo ""
 	@echo "Features:"
+	@echo "  ✓ RF-DETR Seg object detection (SOTA 44.3 mAP)"
 	@echo "  ✓ YOLOv11 object detection and segmentation"
 	@echo "  ✓ MediaPipe face tracking"
 	@echo "  ✓ Intel RealSense depth sensing (optional)"

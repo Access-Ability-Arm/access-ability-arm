@@ -33,13 +33,21 @@ Thumbs.db
 .env
 .env.local
 
-# Model files (large binary files)
-models/*.pt
+# Model files (large binary files) - stored in data/models/
+data/models/*.pt
 *.pt
 
-# DNN model files (not in repo)
-dnn/frozen_inference_graph_coco.pb
-dnn/*.tar.gz
+# DNN model files (not in repo) - stored in data/dnn/
+data/dnn/frozen_inference_graph_coco.pb
+data/dnn/*.tar.gz
 
-# Archive directory
+# Legacy directories (moved to packages/)
 archive/
+models/
+dnn/
+vision/
+gui/
+flet_gui/
+config/
+hardware/
+workers/

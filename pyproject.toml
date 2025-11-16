@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "access-ability-arm"
+version = "0.1.0"
+description = "Assistive robotic arm control with computer vision"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [
+    {name = "Access Ability Arm Team"}
+]
+
+# Workspace configuration - install all packages together
+dependencies = [
+    "aaa-core",
+    "aaa-vision",
+    "aaa-gui[flet]",
+]
+
+[project.optional-dependencies]
+all = [
+    "aaa-gui[all]",
+]
+dev = [
+    "ipykernel>=7.0.0",
+]
+
+[project.scripts]
+aaa-gui = "aaa_gui.flet.main_window:main"
+
+# Workspace packages
+[tool.setuptools.packages.find]
+where = ["."]
+include = []
+
+# Tell pip this is a monorepo workspace
+[tool.setuptools]
+py-modules = []

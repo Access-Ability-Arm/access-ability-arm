@@ -18,8 +18,8 @@ import flet as ft
 # Suppress user warnings
 warnings.simplefilter("ignore", UserWarning)
 
-from config.console import header, info, status, underline  # noqa: E402
-from flet_gui.main_window import FletMainWindow  # noqa: E402
+from aaa_core.config.console import header, info, status, underline  # noqa: E402
+from aaa_gui.flet.main_window import FletMainWindow  # noqa: E402
 
 
 def main(page: ft.Page):
