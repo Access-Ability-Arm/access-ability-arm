@@ -52,13 +52,49 @@ class FletMainWindow:
         self.camera_dropdown = None
         self.arm_status_text = None
 
+        # Show loading screen immediately
+        self._show_initial_loading_screen()
+
         self._setup_components()
         self._build_ui()
         self._start_image_processor()
 
+    def _show_initial_loading_screen(self):
+        """Show loading screen immediately on startup"""
+        loading_text = ft.Text(
+            "Initializing application...",
+            size=18,
+            color="#607D8B",
+            weight=ft.FontWeight.W_500,
+        )
+
+        # Store reference for updates
+        self.loading_text = loading_text
+
+        loading_screen = ft.Container(
+            content=ft.Column(
+                [
+                    ft.ProgressRing(color="#607D8B", width=50, height=50),
+                    loading_text,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=20,
+            ),
+            bgcolor="#ECEFF1",
+            alignment=ft.alignment.center,
+            expand=True,
+        )
+
+        self.page.add(loading_screen)
+        self.page.update()
+
     def _setup_components(self):
         """Initialize hardware and processing components"""
         # Button controller
+        self.loading_text.value = "Initializing button controller..."
+        self.page.update()
+
         self.button_controller = ButtonController(
             hold_threshold=app_config.button_hold_threshold
         )
@@ -66,6 +102,9 @@ class FletMainWindow:
 
         # Arm controller (if available)
         if app_config.lite6_available:
+            self.loading_text.value = f"Connecting to arm at {app_config.lite6_ip}..."
+            self.page.update()
+
             self.arm_controller = ArmControllerFlet(
                 arm_ip=app_config.lite6_ip,
                 port=app_config.lite6_port,
@@ -77,12 +116,22 @@ class FletMainWindow:
                 self.arm_controller.connect_arm()
 
         # Camera manager
+        self.loading_text.value = "Detecting cameras..."
+        self.page.update()
+
         self.camera_manager = CameraManager(
             max_cameras_to_check=app_config.max_cameras_to_check
         )
 
     def _build_ui(self):
         """Build the Flet UI layout"""
+        # Update loading message
+        self.loading_text.value = "Building interface..."
+        self.page.update()
+
+        # Clear the initial loading screen
+        self.page.clean()
+
         # Video feed display (responsive)
         self.video_feed = ft.Image(
             src_base64="",  # Will be updated by image processor
@@ -92,16 +141,17 @@ class FletMainWindow:
         )
 
         # Loading placeholder (shown until first frame arrives)
+        self.camera_loading_text = ft.Text(
+            "Loading camera feed...",
+            size=16,
+            color="#607D8B",  # Blue Grey 500
+            weight=ft.FontWeight.W_400,
+        )
         self.loading_placeholder = ft.Container(
             content=ft.Column(
                 [
                     ft.ProgressRing(color="#607D8B"),  # Blue Grey 500
-                    ft.Text(
-                        "Loading camera...",
-                        size=16,
-                        color="#607D8B",  # Blue Grey 500
-                        weight=ft.FontWeight.W_400,
-                    ),
+                    self.camera_loading_text,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -322,6 +372,11 @@ class FletMainWindow:
 
     def _start_image_processor(self):
         """Initialize and start image processing"""
+        # Update loading message
+        if self.loading_placeholder.visible:
+            self.loading_text.value = "Starting camera..."
+            self.page.update()
+
         self.image_processor = ImageProcessor(
             display_width=app_config.display_width,
             display_height=app_config.display_height,
@@ -505,6 +560,15 @@ class FletMainWindow:
     def _on_arm_connection_status(self, connected: bool, message: str):
         """Handle arm connection status updates"""
         print(f"Arm connection status: {message}")
+
+        # Update initial loading message if still building UI
+        if hasattr(self, 'loading_text'):
+            if connected:
+                self.loading_text.value = "Arm connected. Building interface..."
+            else:
+                self.loading_text.value = "Arm connection failed. Building interface..."
+            self.page.update()
+
         if self.arm_status_text:
             if connected:
                 self.arm_status_text.value = f"Arm: ✓ Connected ({app_config.lite6_ip})"
