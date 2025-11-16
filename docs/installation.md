@@ -188,10 +188,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### "TypeError: 'NoneType' object is not iterable" on macOS
-
-This was fixed in recent versions. Update to the latest code.
-
 ### RealSense camera not detected
 
 - Ensure RealSense SDK is installed
