@@ -74,16 +74,22 @@ class Lite6Arm:
         x: float,
         y: float,
         z: float,
+        roll: Optional[float] = None,
+        pitch: Optional[float] = None,
+        yaw: Optional[float] = None,
         speed: float = 100,
         wait: bool = True
     ) -> bool:
         """
-        Move arm to specified position (mm)
+        Move arm to specified position
 
         Args:
             x: X coordinate in mm
             y: Y coordinate in mm
             z: Z coordinate in mm
+            roll: Roll angle in degrees (optional)
+            pitch: Pitch angle in degrees (optional)
+            yaw: Yaw angle in degrees (optional)
             speed: Movement speed (mm/s)
             wait: Wait for movement to complete
 
@@ -95,14 +101,26 @@ class Lite6Arm:
             return False
 
         try:
-            code = self.arm.set_position(
-                x=x, y=y, z=z,
-                speed=speed,
-                wait=wait
-            )
+            # If orientation provided, use full 6-DOF position
+            if roll is not None and pitch is not None and yaw is not None:
+                code = self.arm.set_position(
+                    x=x, y=y, z=z,
+                    roll=roll, pitch=pitch, yaw=yaw,
+                    speed=speed,
+                    wait=wait
+                )
+                print(f"[Lite6] Moved to: x={x}, y={y}, z={z}, "
+                      f"r={roll}, p={pitch}, y={yaw}")
+            else:
+                # Position only, maintain current orientation
+                code = self.arm.set_position(
+                    x=x, y=y, z=z,
+                    speed=speed,
+                    wait=wait
+                )
+                print(f"[Lite6] Moved to position: x={x}, y={y}, z={z}")
 
             if code == 0:
-                print(f"[Lite6] Moved to position: x={x}, y={y}, z={z}")
                 return True
             else:
                 print(f"[Lite6] Move failed with code: {code}")
@@ -112,20 +130,22 @@ class Lite6Arm:
             print(f"[Lite6] Move error: {e}")
             return False
 
-    def get_position(self) -> Optional[Tuple[float, float, float]]:
+    def get_position(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         """
         Get current arm position
 
         Returns:
-            Tuple of (x, y, z) in mm, or None if error
+            Tuple of (x, y, z, roll, pitch, yaw) in mm and degrees, or None if error
         """
         if not self.connected or not self.arm:
             return None
 
         try:
             code, position = self.arm.get_position()
-            if code == 0 and len(position) >= 3:
-                return (position[0], position[1], position[2])
+            if code == 0 and len(position) >= 6:
+                # Return full position: x, y, z, roll, pitch, yaw
+                return (position[0], position[1], position[2],
+                        position[3], position[4], position[5])
             return None
         except Exception as e:
             print(f"[Lite6] Get position error: {e}")
