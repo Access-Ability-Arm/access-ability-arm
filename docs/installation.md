@@ -147,6 +147,46 @@ For Jupyter notebook support in Zed editor:
 - Run: `repl: refresh kernelspecs`
 - Select "Python (DE-GUI venv)" from kernel selector
 
+## UFactory Lite6 Arm Setup
+
+### Option 1: Physical Arm
+
+For setup with a real UFactory Lite6 arm, see [UFactory Studio Setup Guide](ufactory_studio.md) for:
+- Installing UFactory Studio
+- Finding your arm's IP address
+- Initial configuration and homing
+
+### Option 2: Docker Simulation (UFSim)
+
+**No physical arm needed!** Run a simulated Lite6 in Docker on macOS, Linux, or Windows.
+
+**Requirements:**
+- Docker Desktop ([docker.com](https://www.docker.com/products/docker-desktop/))
+
+**Setup:**
+```bash
+# Pull the simulation image
+docker pull danielwang123321/uf-ubuntu-docker
+
+# Run the simulation (all platforms: macOS/Linux/Windows)
+docker run -it --name uf_software -p 18333:18333 -p 502:502 -p 503:503 -p 504:504 -p 30000:30000 -p 30001:30001 -p 30002:30002 -p 30003:30003 danielwang123321/uf-ubuntu-docker
+
+# Inside the container, start Lite6 simulation
+/xarm_scripts/xarm_start.sh 6 9
+
+# Access 3D visualization in browser: http://localhost:18333
+```
+
+**Configure for simulation:**
+```bash
+# Set arm IP to localhost
+python scripts/update_config.py
+# Select option 1: Update arm IP address
+# Enter: 127.0.0.1
+```
+
+**Note for Apple Silicon Macs:** You may see a platform warning (linux/amd64 vs arm64) - this is normal and the simulation will work correctly via Rosetta 2 emulation.
+
 ## Configuration
 
 After installation, configure your arm and settings:
