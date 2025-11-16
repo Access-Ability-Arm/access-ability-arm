@@ -52,6 +52,9 @@ class ImageProcessor(threading.Thread):
         self.reference_point = (250, 100)  # (x, y) for fixed depth reading
         self.show_reference_point = True
 
+        # Store last raw RGB frame for frozen frame re-processing
+        self._last_rgb_frame = None
+
         self._initialize_camera()
 
         # Detection setup
