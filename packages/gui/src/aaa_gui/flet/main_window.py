@@ -745,6 +745,9 @@ class FletMainWindow:
         """Handle window events (resize, move, etc.)"""
         from aaa_core.config.settings import save_window_geometry
 
+        # Debug: print all window events to see what's being fired
+        print(f"Window event: {e.data}")
+
         # Save geometry on resize or move events
         if e.data in ("resize", "move"):
             if (self.page.window.width and self.page.window.height and
