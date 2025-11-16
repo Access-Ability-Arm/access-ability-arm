@@ -413,7 +413,7 @@ class FletMainWindow:
                     content=auto_tab_content,
                 ),
             ],
-            expand=1,
+            height=600,  # Fixed height for tab content
         )
 
         return ft.Container(
