@@ -117,32 +117,6 @@ The application uses RF-DETR Seg for object detection with automatic fallback su
 - **OS**: macOS, Windows, or Linux
 - **GPU** (optional): Apple Silicon (Metal), NVIDIA (CUDA), or CPU
 
-## Detection Modes
-
-Press **'T'** to cycle through detection modes:
-
-### 1. Object Detection (Default)
-- RF-DETR Seg instance segmentation for 80 COCO object classes
-- Real-time colored segmentation masks with labels (no bounding boxes)
-- State-of-the-art accuracy (44.3 mAP@50:95, Nov 2025)
-- Consistent colors per object class
-- Distance measurement with RealSense camera (optional)
-- Fixed reference point depth indicator
-
-### 2. Face Tracking
-- MediaPipe face mesh with multiple landmark groups
-- Mouth (20 points), eyes, eyebrows, nose, ears
-- Color-coded visualization for each feature
-- Center point calculation
-- Works with any standard webcam
-
-### 3. Combined Mode (Face + Objects)
-- Simultaneous object detection and face tracking
-- Segmentation masks for all objects (including persons)
-- Face landmarks overlaid on detected persons
-- Best for complex assistive tasks requiring both awareness types
-- Runs both models concurrently (~25-33 FPS on Apple Silicon)
-
 ## Monorepo Architecture
 
 The codebase is organized as a Python monorepo with four separate packages:
