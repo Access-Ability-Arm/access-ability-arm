@@ -4,6 +4,7 @@ AI-powered GUI for the Drane Engineering assistive robotic arm, featuring real-t
 
 ## Features
 
+- **UFactory Lite6 Integration**: Direct control of UFactory Lite6 collaborative robotic arm
 - **RF-DETR Seg Object Detection**: State-of-the-art real-time segmentation (44.3 mAP, Nov 2025)
 - **GPU Acceleration**: Automatic support for Apple Metal, NVIDIA CUDA, or CPU
 - **Face Tracking**: Multi-region facial landmark detection with MediaPipe
@@ -11,6 +12,7 @@ AI-powered GUI for the Drane Engineering assistive robotic arm, featuring real-t
 - **Flexible Camera Support**: Auto-detects RealSense, webcams, or Continuity Camera
 - **Manual Controls**: Direct robotic arm control (x, y, z, grip)
 - **Toggle Modes**: Press 'T' to cycle between face tracking, object detection, and combined modes
+- **Easy Configuration**: Interactive setup for arm IP, speeds, and all settings
 - **Monorepo Architecture**: Clean package structure for maintainability and reusability
 
 ## Quick Start
@@ -57,6 +59,16 @@ The application will automatically:
 - **Camera Selection**: Choose camera from dropdown menu
 - **Detection Mode**: Press 'T' to cycle through modes (Object → Combined → Face → Object...)
 - **Robotic Arm**: Use GUI buttons for manual control (x±, y±, z±, grip)
+
+### UFactory Lite6 Setup
+
+Before using the arm with this application, you need to:
+
+1. **Install UFactory Studio** to find your arm's IP address
+2. **Configure the arm** (home position, safety settings)
+3. **Find the IP address** for the Access Ability Arm configuration
+
+See [docs/ufactory_studio.md](docs/ufactory_studio.md) for detailed setup instructions.
 
 ### Configuration
 
