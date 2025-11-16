@@ -41,22 +41,30 @@ python main.py --web        # Web browser
 ```
 access-ability-arm/
 ├── packages/
-│   ├── core/        # aaa-core: config, hardware, workers
-│   ├── vision/      # aaa-vision: RF-DETR, face detection
-│   └── gui/         # aaa-gui: Flet interface
+│   ├── core/         # aaa-core: config, hardware, workers
+│   ├── vision/       # aaa-vision: RF-DETR, face detection
+│   ├── gui/          # aaa-gui: Flet interface
+│   └── lite6_driver/ # aaa-lite6-driver: UFactory Lite6 arm
+├── config/
+│   ├── config.yaml.template  # Config template
+│   └── config.yaml   # User config (git-ignored)
 ├── data/
-│   └── models/      # Auto-downloaded model weights
-├── main.py          # Entry point
-└── requirements.txt # Installs all 3 packages
+│   └── models/       # Auto-downloaded model weights
+├── scripts/
+│   ├── setup_config.py   # Interactive config wizard
+│   └── update_config.py  # Quick config updates
+├── main.py           # Entry point
+└── requirements.txt  # Installs all 4 packages
 ```
 
 ## Key Modules
 
 **aaa_core:**
-- `config.settings` - Configuration & feature detection
+- `config.settings` - Configuration (loads from `config/config.yaml`)
 - `hardware.camera_manager` - Camera enumeration
 - `hardware.button_controller` - Button input (start once, not per press!)
 - `workers.image_processor` - Camera processing thread
+- `workers.arm_controller_flet` - Flet arm controller (callbacks)
 
 **aaa_vision:**
 - `rfdetr_seg` - RF-DETR (0.3 confidence threshold)
@@ -65,6 +73,9 @@ access-ability-arm/
 
 **aaa_gui:**
 - `flet.main_window` - Material Design UI
+
+**aaa_lite6_driver:**
+- `lite6_arm` - UFactory Lite6 6-DOF arm control (xArm SDK)
 
 ## Critical Implementation Notes
 
@@ -117,11 +128,20 @@ make clean           # Remove artifacts
 
 **Slow performance:** Check GPU acceleration in console, switch to face tracking mode
 
+## Configuration
+
+Use interactive scripts (no manual editing required):
+```bash
+python scripts/setup_config.py    # First-time setup wizard
+python scripts/update_config.py   # Quick updates (IP, speeds, etc.)
+```
+
 ## Documentation
 
 - [README.md](README.md) - Quick start
 - [docs/installation.md](docs/installation.md) - Detailed setup
 - [docs/monorepo.md](docs/monorepo.md) - Architecture details
+- [docs/ufactory_studio.md](docs/ufactory_studio.md) - Lite6 arm setup
 
 ## Platform Notes
 
