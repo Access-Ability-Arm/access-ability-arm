@@ -63,6 +63,17 @@ class AppConfig:
     display_height: int = 650
     window_width: int = 1230
     window_height: int = 960
+    window_left: int = 100
+    window_top: int = 100
+
+
+def get_config_path() -> Path:
+    """Get the path to the user config file"""
+    current_file = Path(__file__)
+    # Navigate up: settings.py -> config/ -> aaa_core/ -> src/ ->
+    # core/ -> packages/ -> project_root
+    project_root = current_file.parent.parent.parent.parent.parent.parent
+    return project_root / "config" / "config.yaml"
 
 
 def load_user_config() -> dict:
@@ -75,13 +86,7 @@ def load_user_config() -> dict:
     if not YAML_AVAILABLE:
         return {}
 
-    # Find project root (go up from this file location)
-    current_file = Path(__file__)
-    # Navigate up: settings.py -> config/ -> aaa_core/ -> src/ ->
-    # core/ -> packages/ -> project_root
-    project_root = current_file.parent.parent.parent.parent.parent.parent
-
-    config_path = project_root / "config" / "config.yaml"
+    config_path = get_config_path()
 
     if not config_path.exists():
         return {}
@@ -94,6 +99,41 @@ def load_user_config() -> dict:
     except Exception as e:
         error(f"Error loading config.yaml: {e}")
         return {}
+
+
+def save_window_geometry(width: int, height: int, left: int, top: int):
+    """
+    Save window geometry to config file
+
+    Args:
+        width: Window width in pixels
+        height: Window height in pixels
+        left: Window left position in pixels
+        top: Window top position in pixels
+    """
+    if not YAML_AVAILABLE:
+        return
+
+    config_path = get_config_path()
+
+    # Load existing config
+    user_config = load_user_config()
+
+    # Update display settings
+    if 'display' not in user_config:
+        user_config['display'] = {}
+
+    user_config['display']['window_width'] = width
+    user_config['display']['window_height'] = height
+    user_config['display']['window_left'] = left
+    user_config['display']['window_top'] = top
+
+    # Save back to file
+    try:
+        with open(config_path, 'w') as f:
+            yaml.dump(user_config, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        error(f"Error saving window geometry to config: {e}")
 
 
 def apply_user_config(config: AppConfig, user_config: dict):
@@ -152,6 +192,10 @@ def apply_user_config(config: AppConfig, user_config: dict):
             config.window_width = display['window_width']
         if 'window_height' in display:
             config.window_height = display['window_height']
+        if 'window_left' in display:
+            config.window_left = display['window_left']
+        if 'window_top' in display:
+            config.window_top = display['window_top']
 
 
 def detect_hardware_capabilities() -> AppConfig:

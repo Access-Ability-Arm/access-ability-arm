@@ -42,9 +42,13 @@ class FletMainWindow:
         self.page.window.height = app_config.window_height
         self.page.window.resizable = True
 
-        # Center window on screen
-        self.page.window.left = 100
-        self.page.window.top = 100
+        # Set window position from config
+        self.page.window.left = app_config.window_left
+        self.page.window.top = app_config.window_top
+
+        # Listen for window resize/move events
+        self.page.window.on_resize = self._on_window_resize
+        self.page.window.on_move = self._on_window_move
 
         # Initialize components
         self.button_controller = None
@@ -705,6 +709,28 @@ class FletMainWindow:
         if (e.key == "T" and e.shift is False and
                 e.ctrl is False and e.alt is False):
             self._toggle_detection_mode()
+
+    def _on_window_resize(self, e):
+        """Handle window resize - save new size to config"""
+        from aaa_core.config.settings import save_window_geometry
+        if self.page.window.width and self.page.window.height:
+            save_window_geometry(
+                width=int(self.page.window.width),
+                height=int(self.page.window.height),
+                left=int(self.page.window.left or 100),
+                top=int(self.page.window.top or 100)
+            )
+
+    def _on_window_move(self, e):
+        """Handle window move - save new position to config"""
+        from aaa_core.config.settings import save_window_geometry
+        if self.page.window.left is not None and self.page.window.top is not None:
+            save_window_geometry(
+                width=int(self.page.window.width or app_config.window_width),
+                height=int(self.page.window.height or app_config.window_height),
+                left=int(self.page.window.left),
+                top=int(self.page.window.top)
+            )
 
     def cleanup(self):
         """Clean up resources"""
