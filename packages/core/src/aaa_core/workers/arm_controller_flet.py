@@ -87,6 +87,16 @@ class ArmControllerFlet:
             logger.error(error_msg, exc_info=True)
             return False
 
+    def is_connected(self) -> bool:
+        """
+        Check if arm is currently connected.
+
+        Returns:
+            True if connected, False otherwise
+        """
+        with self._lock:
+            return self.arm is not None and self.arm.connected
+
     def disconnect_arm(self):
         """Disconnect from the arm safely."""
         with self._lock:
