@@ -67,7 +67,4 @@ if __name__ == "__main__":
             port=args.port, name="Access Ability Arm"
         )
     else:
-        header(
-            f"Starting Access Ability Arm ({underline('Desktop version')})"
-        )
         ft.app(target=main, name="Access Ability Arm")
