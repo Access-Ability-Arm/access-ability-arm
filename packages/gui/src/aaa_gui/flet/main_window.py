@@ -630,12 +630,10 @@ class FletMainWindow:
         font_scale = 2.1  # 3x larger than typical 0.7
         thickness = 4  # Thicker for readability
 
-        for i, (center, class_id) in enumerate(zip(centers, classes), start=1):
+        for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
 
-            # Get class name
-            class_name = detection_mgr.segmentation_model.class_names[class_id]
-
+            # classes already contains the class names as strings
             # Create numbered label
             label = f"#{i}: {class_name}"
 
