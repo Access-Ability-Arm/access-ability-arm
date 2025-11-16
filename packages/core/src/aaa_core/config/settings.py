@@ -116,8 +116,16 @@ def save_window_geometry(width: int, height: int, left: int, top: int):
 
     config_path = get_config_path()
 
-    # Load existing config
-    user_config = load_user_config()
+    # Load existing config (suppress success message during save)
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                user_config = yaml.safe_load(f) or {}
+        except Exception as e:
+            error(f"Error loading config.yaml: {e}")
+            return
+    else:
+        user_config = {}
 
     # Update display settings
     if 'display' not in user_config:
@@ -132,6 +140,7 @@ def save_window_geometry(width: int, height: int, left: int, top: int):
     try:
         with open(config_path, 'w') as f:
             yaml.dump(user_config, f, default_flow_style=False, sort_keys=False)
+        print(f"ℹ Window geometry saved: {width}x{height} at ({left}, {top})")
     except Exception as e:
         error(f"Error saving window geometry to config: {e}")
 
