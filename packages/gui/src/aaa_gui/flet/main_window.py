@@ -9,13 +9,17 @@ import time
 from io import BytesIO
 
 import cv2
-import flet as ft
-from PIL import Image
-
 from aaa_core.config.settings import app_config
 from aaa_core.hardware.button_controller import ButtonController
 from aaa_core.hardware.camera_manager import CameraManager
 from aaa_core.workers.image_processor import ImageProcessor
+from PIL import Image
+
+import flet as ft
+
+# Import arm controller only if available
+if app_config.lite6_available:
+    from aaa_core.workers.arm_controller import ArmController
 
 
 class FletMainWindow:
@@ -40,11 +44,13 @@ class FletMainWindow:
 
         # Initialize components
         self.button_controller = None
+        self.arm_controller = None
         self.camera_manager = None
         self.image_processor = None
         self.video_feed = None
         self.status_text = None
         self.camera_dropdown = None
+        self.arm_status_text = None
 
         self._setup_components()
         self._build_ui()
@@ -57,6 +63,18 @@ class FletMainWindow:
             hold_threshold=app_config.button_hold_threshold
         )
         self.button_controller.start()  # Start the thread once
+
+        # Arm controller (if available)
+        if app_config.lite6_available:
+            self.arm_controller = ArmController(
+                arm_ip=app_config.lite6_ip,
+                port=app_config.lite6_port
+            )
+            # Connect signals
+            self.arm_controller.connection_status.connect(self._on_arm_connection_status)
+            self.arm_controller.error_occurred.connect(self._on_arm_error)
+            # Try to connect
+            self.arm_controller.connect_arm()
 
         # Camera manager
         self.camera_manager = CameraManager(
@@ -135,6 +153,13 @@ class FletMainWindow:
             color="#455A64",  # Blue Grey 700
         )
 
+        # Arm status display
+        self.arm_status_text = ft.Text(
+            "Arm: Not connected",
+            size=12,
+            color="#F57C00",  # Orange 700
+        )
+
         # Detection mode toggle button
         self.toggle_mode_btn = ft.ElevatedButton(
             text="Toggle Detection Mode (T)",
@@ -183,7 +208,14 @@ class FletMainWindow:
                     ),
                     # Footer: Status
                     ft.Container(
-                        content=self.status_text,
+                        content=ft.Row(
+                            [
+                                self.status_text,
+                                ft.Text(" | ", size=12),
+                                self.arm_status_text,
+                            ],
+                            spacing=5,
+                        ),
                         margin=ft.margin.only(top=10),
                     ),
                 ],
@@ -384,19 +416,102 @@ class FletMainWindow:
         start_time = time.time()
         self.button_controller.update_button_state("pressed", start_time, button_name)
 
-        # Simulate release after brief moment (you would connect to actual button release events)
-        threading.Timer(
-            0.1,
-            lambda: self.button_controller.update_button_state(
-                "released", 0, button_name
-            ),
-        ).start()
+        # Simulate release after brief moment and execute arm command
+        def on_release():
+            duration = time.time() - start_time
+            self.button_controller.update_button_state("released", 0, button_name)
+            self._handle_arm_command(button_name, duration)
+
+        threading.Timer(0.1, on_release).start()
 
     def _on_grip_state_changed(self, is_closed: bool):
         """Handle grip state toggle"""
         state = "closed" if is_closed else "open"
         print(f"Grip state: {state}")
         self.button_controller.update_button_state("clicked", 0, "grip_state")
+
+        # Control gripper if arm is connected
+        if self.arm_controller and self.arm_controller.arm:
+            if is_closed:
+                self.arm_controller.close_gripper(wait=False)
+            else:
+                self.arm_controller.open_gripper(wait=False)
+
+    def _handle_arm_command(self, button_name: str, duration: float):
+        """
+        Handle arm movement command based on button press
+
+        Args:
+            button_name: Name of button pressed (e.g., "x_pos", "y_neg")
+            duration: Duration of button press in seconds
+        """
+        if not self.arm_controller or not self.arm_controller.arm:
+            return
+
+        if not self.arm_controller.arm.connected:
+            print("Arm not connected - cannot move")
+            return
+
+        # Get current position
+        pos = self.arm_controller.get_position()
+        if not pos or len(pos) < 6:
+            print("Could not get current arm position")
+            return
+
+        x, y, z, roll, pitch, yaw = pos[0], pos[1], pos[2], pos[3], pos[4], pos[5]
+
+        # Determine step size based on button hold duration
+        # Short tap: small step, long hold: large step
+        step = 10 if duration < 0.5 else 50  # mm
+
+        # Apply movement based on button
+        if button_name == "x_pos":
+            x += step
+        elif button_name == "x_neg":
+            x -= step
+        elif button_name == "y_pos":
+            y += step
+        elif button_name == "y_neg":
+            y -= step
+        elif button_name == "z_pos":
+            z += step
+        elif button_name == "z_neg":
+            z -= step
+        elif button_name == "grip_pos":
+            # Grip controls are handled separately via gripper position
+            current_grip = self.arm_controller.arm.get_gripper_position() or 400
+            new_grip = min(800, current_grip + 100)
+            self.arm_controller.set_gripper(new_grip, wait=False)
+            return
+        elif button_name == "grip_neg":
+            current_grip = self.arm_controller.arm.get_gripper_position() or 400
+            new_grip = max(0, current_grip - 100)
+            self.arm_controller.set_gripper(new_grip, wait=False)
+            return
+
+        # Send move command
+        print(f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f})")
+        self.arm_controller.move_to(x, y, z, roll, pitch, yaw, speed=100, wait=False)
+
+    def _on_arm_connection_status(self, connected: bool, message: str):
+        """Handle arm connection status updates"""
+        print(f"Arm connection status: {message}")
+        if self.arm_status_text:
+            if connected:
+                self.arm_status_text.value = f"Arm: ✓ Connected ({app_config.lite6_ip})"
+                self.arm_status_text.color = "#2E7D32"  # Green 800
+            else:
+                self.arm_status_text.value = f"Arm: ✗ {message}"
+                self.arm_status_text.color = "#C62828"  # Red 800
+            self.page.update()
+
+    def _on_arm_error(self, error_message: str):
+        """Handle arm errors"""
+        print(f"Arm error: {error_message}")
+        if self.arm_status_text:
+            self.arm_status_text.value = f"Arm Error: {error_message}"
+            self.arm_status_text.color = "#C62828"  # Red 800
+            self.page.update()
 
     def _toggle_detection_mode(self):
         """Toggle between face tracking and object detection"""
@@ -414,3 +529,5 @@ class FletMainWindow:
         """Clean up resources"""
         if self.image_processor:
             self.image_processor.stop()
+        if self.arm_controller:
+            self.arm_controller.stop()

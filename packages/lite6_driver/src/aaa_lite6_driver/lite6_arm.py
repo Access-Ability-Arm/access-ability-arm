@@ -218,6 +218,25 @@ class Lite6Arm:
             print(f"[Lite6] Gripper error: {e}")
             return False
 
+    def get_gripper_position(self) -> Optional[float]:
+        """
+        Get current gripper position
+
+        Returns:
+            Gripper position (0-800) or None if error
+        """
+        if not self.connected or not self.arm:
+            return None
+
+        try:
+            code, position = self.arm.get_gripper_position()
+            if code == 0:
+                return position
+            return None
+        except Exception as e:
+            print(f"[Lite6] Get gripper position error: {e}")
+            return None
+
     def home(self) -> bool:
         """
         Move arm to home position

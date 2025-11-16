@@ -35,6 +35,11 @@ class AppConfig:
     # Button behavior
     button_hold_threshold: float = 0.5  # seconds
 
+    # Robotic arm settings
+    lite6_ip: str = "192.168.1.203"  # Default IP for UFactory Lite6
+    lite6_port: int = 502  # Modbus TCP port
+    lite6_available: bool = False
+
     # Camera settings
     max_cameras_to_check: int = 3
 
@@ -62,6 +67,15 @@ def detect_hardware_capabilities() -> AppConfig:
         error(
             "RealSense camera not available - using standard webcam only"
         )
+
+    # Try to detect Lite6 arm driver
+    try:
+        from aaa_lite6_driver import Lite6Arm  # noqa: F401
+
+        config.lite6_available = True
+        success(f"{underline('Lite6 arm driver')} available")
+    except ImportError:
+        error("Lite6 arm driver not available")
 
     # Try RF-DETR first (SOTA 2025), fallback to YOLOv11, then Mask R-CNN
     # Note: optimize_for_inference() breaks mask output, so we skip optimization
