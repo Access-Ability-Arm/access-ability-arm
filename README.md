@@ -145,17 +145,22 @@ Press **'T'** to cycle through detection modes:
 
 ## Monorepo Architecture
 
-The codebase is organized as a Python monorepo with three separate packages:
+The codebase is organized as a Python monorepo with four separate packages:
 
 ```
 access-ability-arm/
 ├── packages/
 │   ├── core/           # aaa-core: Config, hardware, workers
 │   ├── vision/         # aaa-vision: RF-DETR, YOLO, face detection
-│   └── gui/            # aaa-gui: Flet interface
+│   ├── gui/            # aaa-gui: Flet & PyQt6 interfaces
+│   └── lite6_driver/   # aaa-lite6-driver: UFactory Lite6 arm control
+├── config/
+│   ├── config.yaml.template  # Configuration template
+│   └── config.yaml     # User config (git-ignored)
 ├── data/
 │   ├── models/         # Model weights (RF-DETR, YOLO)
 │   └── dnn/            # Legacy Mask R-CNN models
+├── scripts/            # Setup and configuration scripts
 ├── docs/               # Documentation
 ├── main.py             # Flet GUI entry point
 └── requirements.txt    # Package installation
@@ -164,24 +169,33 @@ access-ability-arm/
 ### Packages
 
 **aaa-core** (`packages/core/`)
-- Application configuration and feature detection
+- Application configuration and feature detection (loads from `config/config.yaml`)
 - Camera management and enumeration
 - Button controllers and hardware interfaces
 - RealSense camera support (optional)
 - Image processing workers
+- Arm controller workers (PyQt6 and Flet variants)
 
 **aaa-vision** (`packages/vision/`)
-- RF-DETR Seg segmentation (state-of-the-art)
-- YOLOv11 segmentation (fast, accurate)
+- RF-DETR Seg segmentation (state-of-the-art, 44.3 mAP)
+- YOLOv11 segmentation (fast, accurate fallback)
 - Mask R-CNN (legacy fallback)
-- MediaPipe face detection
-- Detection mode orchestration
+- MediaPipe face detection with landmark tracking
+- Detection mode orchestration and management
 
 **aaa-gui** (`packages/gui/`)
-- Modern Flet cross-platform interface
-- Desktop, web, and mobile support
+- Modern Flet cross-platform interface (desktop, web, mobile)
+- Traditional PyQt6 desktop interface
 - Material Design UI
 - Responsive layout
+- Arm control integration
+
+**aaa-lite6-driver** (`packages/lite6_driver/`)
+- UFactory Lite6 robotic arm driver using xArm Python SDK
+- 6-DOF position control (x, y, z, roll, pitch, yaw)
+- Gripper control (open, close, set position)
+- Safety features (home, emergency stop)
+- Context manager support
 
 See [docs/monorepo.md](docs/monorepo.md) for detailed architecture information.
 
@@ -189,7 +203,8 @@ See [docs/monorepo.md](docs/monorepo.md) for detailed architecture information.
 
 - [Installation Guide](docs/installation.md) - Detailed setup instructions
 - [Monorepo Guide](docs/monorepo.md) - Package architecture and structure
-- [Refactoring Guide](docs/refactoring.md) - Code organization details
+- [UFactory Studio Setup](docs/ufactory_studio.md) - Lite6 arm setup and configuration
+- [Application Builds](docs/application-builds.md) - Packaging for distribution
 - [CLAUDE.md](CLAUDE.md) - Developer reference for AI assistants
 
 ## Development
