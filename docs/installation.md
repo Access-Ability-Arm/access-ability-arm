@@ -130,6 +130,15 @@ pip install pyrealsense2
 To build distributable applications for desktop, mobile, or web platforms, see [Application Builds](application-builds.md).
 
 **Not needed for development** - You can run the app directly with `python main.py`.
+
+## Optional: Zed Editor Integration
+
+For Jupyter notebook support in Zed editor:
+
+### 1. Register Jupyter Kernel
+
+```bash
+./venv/bin/python -m ipykernel install --user --name de-gui-venv --display-name "Python (DE-GUI venv)"
 ```
 
 ### 2. Configure Zed
