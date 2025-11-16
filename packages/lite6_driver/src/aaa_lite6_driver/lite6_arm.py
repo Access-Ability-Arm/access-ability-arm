@@ -5,6 +5,9 @@ Provides high-level interface to the UFactory Lite6 robotic arm
 using the xArm Python SDK.
 """
 
+import io
+import sys
+from contextlib import redirect_stdout
 from typing import Optional, Tuple
 
 from xarm.wrapper import XArmAPI
@@ -41,18 +44,25 @@ class Lite6Arm:
             True if connection successful, False otherwise
         """
         try:
-            print("[Lite6] Connecting to arm (xArm SDK output follows)...")
-            self.arm = XArmAPI(self.ip, is_radian=False)
+            # Suppress xArm SDK stdout output during connection
+            with redirect_stdout(io.StringIO()):
+                self.arm = XArmAPI(self.ip, is_radian=False)
 
             # Check connection
             if self.arm.connected:
+                # Get arm version info
+                version = getattr(self.arm, 'version', 'Unknown')
+
+                print(f"[Lite6] Connected to {self.ip}")
+                print(f"[Lite6] Arm firmware version: {version}")
+
                 # Enable motion
                 self.arm.motion_enable(enable=True)
                 self.arm.set_mode(0)  # Position mode
                 self.arm.set_state(state=0)  # Ready state
 
                 self.connected = True
-                print(f"[Lite6] Connected successfully to {self.ip}")
+                print(f"[Lite6] Arm ready for operation")
                 return True
             else:
                 print(f"[Lite6] Failed to connect to {self.ip}")
