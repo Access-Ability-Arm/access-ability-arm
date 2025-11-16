@@ -66,9 +66,9 @@ class FletMainWindow:
         self.video_frozen = False
         self.frozen_frame = None
         self.frozen_detections = None  # Store detection data when frozen
+        self.frozen_raw_frame = None  # Store the raw frozen frame for re-highlighting
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
-        self.last_raw_frame = None  # Store raw frame before labels for re-processing
 
         # Show loading screen immediately
         self._show_initial_loading_screen()
@@ -588,7 +588,11 @@ class FletMainWindow:
             # If video is frozen, store current frame and display frozen frame with enhanced labels
             if self.video_frozen:
                 if self.frozen_frame is None:
-                    # First frame after freezing - store it and enhance labels
+                    # First frame after freezing - store raw frame and enhance labels
+                    # Store the raw frame at freeze time for later re-highlighting
+                    if hasattr(self.image_processor, '_last_rgb_frame'):
+                        self.frozen_raw_frame = self.image_processor._last_rgb_frame.copy()
+
                     self.frozen_frame, self.frozen_detections = self._enhance_frozen_labels(img_array.copy())
                     self._create_object_buttons()
                     print("Find Objects: Frame captured and frozen")
@@ -765,11 +769,11 @@ class FletMainWindow:
         if not detection_mgr.segmentation_model:
             return
 
-        # Get clean image and detection data
-        if not hasattr(self.image_processor, '_last_rgb_frame'):
+        # Use the stored frozen raw frame, not the current one
+        if self.frozen_raw_frame is None:
             return
 
-        clean_img = self.image_processor._last_rgb_frame.copy()
+        clean_img = self.frozen_raw_frame.copy()
         boxes = self.frozen_detections['boxes']
         classes = self.frozen_detections['classes']
         contours = self.frozen_detections['contours']
@@ -832,6 +836,7 @@ class FletMainWindow:
         self.object_buttons_row.controls.clear()
         self.object_buttons_row.visible = False
         self.selected_object = None
+        self.frozen_raw_frame = None
         self.page.update()
 
     def _on_camera_changed(self, e):
