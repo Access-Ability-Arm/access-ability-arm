@@ -60,31 +60,43 @@ The application will automatically:
 
 ### Configuration
 
-**Interactive Setup (Recommended):**
+All settings can be customized in `config.yaml` without modifying code.
+
+**First-Time Setup (Recommended):**
 ```bash
 python scripts/setup_config.py
 ```
 
-This will guide you through setting:
-- Lite6 arm IP address and connection settings
+Interactive wizard that guides you through:
+- Lite6 arm IP address and connection settings (with connection testing)
 - Camera preferences
 - Detection thresholds
 - Movement step sizes and speeds
 - Display dimensions
 
-**Quick Update (Change IP, speeds, etc.):**
+**Quick Updates (When IP changes, etc.):**
 ```bash
 python scripts/update_config.py
 ```
 
-**Manual Configuration:**
+Interactive menu for common changes:
+1. **Arm IP address** - Change IP and test connection before saving
+2. **Default camera** - Switch which camera is used on startup
+3. **Movement speeds** - Adjust tap/hold step sizes, arm speed, gripper speed
+4. **Detection threshold** - Fine-tune object detection sensitivity
+5. **View configuration** - See all current settings
+6. **Run full setup** - Launch the complete setup wizard
+
+No manual file editing required!
+
+**Manual Configuration (Advanced):**
 ```bash
 # Copy template and edit
 cp config/config.yaml.template config.yaml
-# Edit config.yaml with your settings
+# Edit config.yaml with your preferred text editor
 ```
 
-The application uses RF-DETR Seg for object detection with automatic fallback support for YOLOv11-seg and Mask R-CNN. All settings can be customized in `config.yaml` without modifying code.
+The application uses RF-DETR Seg for object detection with automatic fallback support for YOLOv11-seg and Mask R-CNN.
 
 ## System Requirements
 
