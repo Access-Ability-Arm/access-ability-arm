@@ -9,10 +9,17 @@ access-ability-arm/
 ├── packages/
 │   ├── core/           # Core functionality (config, hardware, workers)
 │   ├── vision/         # Computer vision modules
-│   └── gui/            # GUI implementations (Flet, PyQt6)
+│   ├── gui/            # GUI implementations (Flet, PyQt6)
+│   └── lite6_driver/   # UFactory Lite6 arm driver
+├── config/
+│   ├── config.yaml.template  # Configuration template
+│   └── config.yaml     # User config (git-ignored)
 ├── data/
-│   ├── models/         # Model weights (YOLO, etc.)
+│   ├── models/         # Model weights (RF-DETR, YOLO, etc.)
 │   └── dnn/            # Legacy Mask R-CNN models
+├── scripts/
+│   ├── setup_config.py    # Interactive configuration setup
+│   └── update_config.py   # Quick configuration updates
 ├── main.py             # Flet GUI entry point
 └── pyproject.toml      # Workspace configuration
 ```
@@ -23,12 +30,14 @@ access-ability-arm/
 Core modules for configuration, hardware interfaces, and worker threads.
 
 **Modules:**
-- `aaa_core.config.settings` - Application configuration
+- `aaa_core.config.settings` - Application configuration (loads from config/config.yaml)
 - `aaa_core.config.console` - Console output utilities
 - `aaa_core.hardware.camera_manager` - Camera enumeration
 - `aaa_core.hardware.button_controller` - Button input handling
 - `aaa_core.hardware.realsense_camera` - RealSense interface
 - `aaa_core.workers.image_processor` - Camera processing thread
+- `aaa_core.workers.arm_controller` - PyQt6-based arm controller (for PyQt GUI)
+- `aaa_core.workers.arm_controller_flet` - Callback-based arm controller (for Flet GUI)
 
 ### aaa-vision (`packages/vision/`)
 Computer vision modules for object detection and face tracking.
@@ -46,6 +55,16 @@ GUI implementations for desktop, web, and mobile.
 **Modules:**
 - `aaa_gui.flet.main_window` - Modern cross-platform Flet GUI
 - `aaa_gui.pyqt.main_window` - Traditional PyQt6 desktop GUI
+
+### aaa-lite6-driver (`packages/lite6_driver/`)
+UFactory Lite6 robotic arm driver using xArm Python SDK.
+
+**Modules:**
+- `aaa_lite6_driver.lite6_arm` - Lite6Arm class for arm control
+- Position control (x, y, z, roll, pitch, yaw)
+- Gripper control (open, close, set position)
+- Safety features (home, emergency stop)
+- Context manager support
 
 ## Installation
 
@@ -71,6 +90,9 @@ pip install -e "packages/gui[pyqt]"
 
 # GUI package (both)
 pip install -e "packages/gui[all]"
+
+# Lite6 driver (for arm control)
+pip install -e packages/lite6_driver
 ```
 
 ### Development Mode
@@ -93,11 +115,12 @@ python main.py --web --port 8550
 
 ### models/
 Auto-downloaded model weights:
-- `yolo11n-seg.pt` - YOLOv11 nano segmentation model (~6MB)
-- `yolo11m-seg.pt` - YOLOv11 medium model (~45MB)
+- `rf-detr-seg-preview.pt` - RF-DETR segmentation model (~130MB, SOTA 44.3 mAP)
+- `yolo11n-seg.pt` - YOLOv11 nano segmentation model (~6MB, fallback)
+- `yolo11x-seg.pt` - YOLOv11 xlarge model (~200MB, fallback)
 - Additional YOLO variants as needed
 
-RF-DETR models are cached by the Roboflow library (typically in `~/.cache/roboflow/`).
+Models download automatically on first run and are stored in `data/models/`.
 
 ### dnn/
 Legacy Mask R-CNN models (manual download required):
@@ -109,20 +132,25 @@ Legacy Mask R-CNN models (manual download required):
 
 ```
 aaa-core
-  └── opencv-python, numpy
+  ├── opencv-python, numpy
+  └── pyyaml (for config loading)
 
 aaa-vision
   ├── aaa-core
-  ├── mediapipe
-  ├── ultralytics (YOLO)
-  ├── torch
-  └── rfdetr
+  ├── mediapipe (face tracking)
+  ├── ultralytics (YOLOv11 fallback)
+  ├── torch (deep learning backend)
+  └── rfdetr (primary object detection)
 
 aaa-gui
   ├── aaa-core
   ├── aaa-vision
-  ├── flet (optional)
-  └── PyQt6 (optional)
+  ├── flet (optional, for cross-platform GUI)
+  └── PyQt6 (optional, for desktop GUI)
+
+aaa-lite6-driver
+  ├── aaa-core
+  └── xarm-python-sdk (UFactory SDK)
 ```
 
 ## Import Examples
@@ -131,6 +159,7 @@ aaa-gui
 # Core
 from aaa_core.config.settings import app_config
 from aaa_core.hardware.camera_manager import CameraManager
+from aaa_core.workers.arm_controller_flet import ArmControllerFlet
 
 # Vision
 from aaa_vision.rfdetr_seg import RFDETRSeg
@@ -138,6 +167,9 @@ from aaa_vision.detection_manager import DetectionManager
 
 # GUI
 from aaa_gui.flet.main_window import FletMainWindow
+
+# Lite6 Driver
+from aaa_lite6_driver import Lite6Arm
 ```
 
 ## Benefits of Monorepo Structure

@@ -1,4 +1,6 @@
-# Code Refactoring Summary
+# Code Refactoring Summary (Historical)
+
+> **Note:** This document describes the initial refactoring from a monolithic structure to modular packages. The codebase has since evolved into a full monorepo structure. See [monorepo.md](monorepo.md) for the current architecture.
 
 ## Overview
 Complete refactoring of `main.py` from a 450-line monolith to a clean, modular architecture following best practices.
