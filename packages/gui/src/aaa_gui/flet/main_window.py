@@ -454,7 +454,7 @@ class FletMainWindow:
                     content=auto_tab_content,
                 ),
             ],
-            height=730,  # Fixed height for tab content (includes tab bar + speed slider)
+            height=750,  # Fixed height for tab content (includes tab bar + speed slider)
         )
 
         return ft.Container(
