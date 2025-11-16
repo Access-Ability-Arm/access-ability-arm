@@ -1,7 +1,7 @@
 # Makefile for Access Ability Arm
 # Provides convenient commands for running, testing, and packaging the application
 
-.PHONY: help install run web package-macos package-linux package-windows clean test lint format
+.PHONY: help install run run-realsense web package-macos package-linux package-windows clean test lint format
 
 # Default target - show help
 help:
@@ -11,6 +11,7 @@ help:
 	@echo "Development:"
 	@echo "  make install         - Install dependencies (requires Python 3.11)"
 	@echo "  make run             - Run desktop application"
+	@echo "  make run-realsense   - Run with RealSense depth support (requires sudo)"
 	@echo "  make web             - Run web application (localhost:8550)"
 	@echo "  make web PORT=8080   - Run web application on custom port"
 	@echo ""
@@ -40,6 +41,12 @@ install:
 # Run desktop application
 run:
 	python main.py
+
+# Run with RealSense depth support (requires sudo for USB access)
+run-realsense:
+	@echo "Running with RealSense depth support..."
+	@echo "You will be prompted for your password for USB access."
+	@./scripts/launch_with_realsense.sh
 
 # Run web application (default port 8550)
 PORT ?= 8550

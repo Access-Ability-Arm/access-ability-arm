@@ -3,7 +3,7 @@
 # Dependencies are managed in each package's pyproject.toml
 
 # Core package (configuration, hardware, workers)
--e packages/core
+-e packages/core[realsense]
 
 # Vision package (RF-DETR, YOLOv11, face detection)
 -e packages/vision

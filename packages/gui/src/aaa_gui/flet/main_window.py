@@ -71,12 +71,23 @@ class FletMainWindow:
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
 
+        # Track if UI is built to avoid page.update() during initialization
+        self._ui_built = False
+
         # Show loading screen immediately
+        print("[DEBUG] Showing initial loading screen...")
         self._show_initial_loading_screen()
 
+        print("[DEBUG] Setting up components...")
         self._setup_components()
+
+        print("[DEBUG] Building UI...")
         self._build_ui()
+
+        print("[DEBUG] Starting image processor...")
         self._start_image_processor()
+
+        print("[DEBUG] Initialization complete!")
 
     def _show_initial_loading_screen(self):
         """Show loading screen immediately on startup"""
@@ -111,9 +122,7 @@ class FletMainWindow:
     def _setup_components(self):
         """Initialize hardware and processing components"""
         # Button controller
-        self.loading_text.value = "Initializing button controller..."
-        self.page.update()
-
+        print("[DEBUG] Creating button controller...")
         self.button_controller = ButtonController(
             hold_threshold=app_config.button_hold_threshold
         )
@@ -121,27 +130,40 @@ class FletMainWindow:
 
         # Arm controller (if available)
         if app_config.lite6_available:
+            print("[DEBUG] Creating arm controller...")
             self.arm_controller = ArmControllerFlet(
                 arm_ip=app_config.lite6_ip,
                 port=app_config.lite6_port,
                 on_connection_status=self._on_arm_connection_status,
                 on_error=self._on_arm_error
             )
-            # Connect asynchronously in background thread if auto-connect enabled
-            if app_config.lite6_auto_connect:
-                def connect_async():
-                    print(f"[Arm] Connecting to arm at {app_config.lite6_ip}...")
-                    self.arm_controller.connect_arm()
+            print("[DEBUG] Arm controller created")
+            # TEMPORARILY DISABLED: Connect asynchronously in background thread if auto-connect enabled
+            # TODO: Fix deadlock issue with threading during init
+            # if app_config.lite6_auto_connect:
+            #     print("[DEBUG] Starting async arm connection...")
+            #     try:
+            #         def connect_async():
+            #             print(f"[Arm] Connecting to arm at {app_config.lite6_ip}...")
+            #             self.arm_controller.connect_arm()
 
-                threading.Thread(target=connect_async, daemon=True).start()
+            #         t = threading.Thread(target=connect_async, daemon=True)
+            #         print("[DEBUG] Thread created, calling start()...")
+            #         t.start()
+            #         print("[DEBUG] Async arm connection thread started")
+            #     except Exception as e:
+            #         print(f"[DEBUG] Exception starting thread: {e}")
+            #         import traceback
+            #         traceback.print_exc()
+
+        print("[DEBUG] After arm controller section")
 
         # Camera manager
-        self.loading_text.value = "Detecting cameras..."
-        self.page.update()
-
+        print("[DEBUG] Creating camera manager...")
         self.camera_manager = CameraManager(
             max_cameras_to_check=app_config.max_cameras_to_check
         )
+        print("[DEBUG] Camera manager created, _setup_components complete")
 
     def _build_ui(self):
         """Build the Flet UI layout"""
@@ -259,6 +281,15 @@ class FletMainWindow:
             on_click=lambda _: self._toggle_detection_mode(),
         )
 
+        # Flip camera button
+        self.flip_camera_btn = ft.IconButton(
+            icon=ft.Icons.FLIP,
+            tooltip="Flip camera horizontally (mirror)",
+            on_click=lambda _: self._on_flip_camera(),
+            bgcolor="#E0E0E0",  # Grey 300
+            icon_color="#424242",  # Grey 800
+        )
+
         # Control panel with robotic arm buttons
         control_panel = self._build_control_panel()
 
@@ -282,6 +313,7 @@ class FletMainWindow:
                                                     [
                                                         self.camera_dropdown,
                                                         self.toggle_mode_btn,
+                                                        self.flip_camera_btn,
                                                     ],
                                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                                 ),
@@ -321,6 +353,9 @@ class FletMainWindow:
 
         # Keyboard shortcuts
         self.page.on_keyboard_event = self._on_keyboard_event
+
+        # Mark UI as built to allow page.update() in callbacks
+        self._ui_built = True
 
     def _build_control_panel(self) -> ft.Container:
         """Build the robotic arm control panel with Manual/Auto tabs"""
@@ -525,22 +560,44 @@ class FletMainWindow:
 
     def _start_image_processor(self):
         """Initialize and start image processing"""
-        # Update loading message
-        if self.loading_placeholder.visible:
-            self.loading_text.value = "Starting camera..."
-            self.page.update()
-
+        print("[DEBUG MainWindow] Creating ImageProcessor...")
         self.image_processor = ImageProcessor(
             display_width=app_config.display_width,
             display_height=app_config.display_height,
             callback=self._update_video_feed,  # Use callback for Flet
         )
+        print("[DEBUG MainWindow] ImageProcessor created")
+
+        # Set initial camera name for flip detection
+        print("[DEBUG MainWindow] Setting initial camera name for flip detection...")
+        if self.camera_manager.cameras:
+            default_cam_index = app_config.default_camera
+            print(f"[DEBUG MainWindow] Default camera index: {default_cam_index}")
+            for cam in self.camera_manager.cameras:
+                if cam['camera_index'] == default_cam_index:
+                    print(f"[DEBUG MainWindow] Found camera: {cam['camera_name']}")
+                    self.image_processor.current_camera_name = cam['camera_name']
+                    self.image_processor._update_flip_for_camera(cam['camera_name'])
+                    break
+
+        # Update flip button appearance based on initial state
+        print(f"[DEBUG MainWindow] Flip horizontal: {self.image_processor.flip_horizontal}")
+        if self.image_processor.flip_horizontal:
+            self.flip_camera_btn.bgcolor = "#4CAF50"  # Green 500 when enabled
+            self.flip_camera_btn.icon_color = "#FFFFFF"  # White icon
+        else:
+            self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
+            self.flip_camera_btn.icon_color = "#424242"  # Grey 800
 
         # Start processing thread
+        print("[DEBUG MainWindow] Starting ImageProcessor thread...")
         self.image_processor.start()
+        print("[DEBUG MainWindow] ImageProcessor thread started")
 
         # Update status
+        print("[DEBUG MainWindow] Updating status...")
         self._update_status()
+        print("[DEBUG MainWindow] _start_image_processor complete")
 
     def _update_status(self):
         """Update status display"""
@@ -880,7 +937,15 @@ class FletMainWindow:
         if e.control.value:
             camera_index = int(e.control.value)
             print(f"Switching to camera {camera_index}")
-            self.image_processor.camera_changed(camera_index)
+
+            # Get camera name from camera manager
+            camera_name = None
+            for cam in self.camera_manager.cameras:
+                if cam['camera_index'] == camera_index:
+                    camera_name = cam['camera_name']
+                    break
+
+            self.image_processor.camera_changed(camera_index, camera_name)
 
     def _on_button_press(self, direction: str, button_type: str):
         """Handle robotic arm button press"""
@@ -993,15 +1058,15 @@ class FletMainWindow:
         """Handle arm connection status updates"""
         print(f"Arm connection status: {message}")
 
-        # Update initial loading message if still building UI
-        if hasattr(self, 'loading_text'):
+        # Update initial loading message if still building UI (don't call page.update during init)
+        if hasattr(self, 'loading_text') and hasattr(self, '_ui_built') and self._ui_built:
             if connected:
                 self.loading_text.value = "Arm connected. Building interface..."
             else:
                 self.loading_text.value = "Arm connection failed. Building interface..."
             self.page.update()
 
-        if self.arm_status_text:
+        if self.arm_status_text and self._ui_built:
             if connected:
                 self.arm_status_text.value = f"Arm: ✓ Connected ({app_config.lite6_ip})"
                 self.arm_status_text.color = "#2E7D32"  # Green 800
@@ -1023,6 +1088,19 @@ class FletMainWindow:
         if self.image_processor:
             self.image_processor.toggle_detection_mode()
             self._update_status()
+
+    def _on_flip_camera(self):
+        """Toggle horizontal flip for camera"""
+        if self.image_processor:
+            self.image_processor.toggle_flip()
+            # Update button appearance to show flip state
+            if self.image_processor.flip_horizontal:
+                self.flip_camera_btn.bgcolor = "#4CAF50"  # Green 500 when enabled
+                self.flip_camera_btn.icon_color = "#FFFFFF"  # White icon
+            else:
+                self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
+                self.flip_camera_btn.icon_color = "#424242"  # Grey 800
+            self.page.update()
 
     def _on_keyboard_event(self, e: ft.KeyboardEvent):
         """Handle keyboard shortcuts"""

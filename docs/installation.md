@@ -104,26 +104,26 @@ ls dnn/
 
 ## Optional: Intel RealSense Camera Support
 
-For depth sensing capabilities, install RealSense SDK:
+For depth sensing capabilities with RealSense cameras, see the comprehensive setup guide:
 
-### macOS/Linux
+**📖 [RealSense Setup Guide](realsense-setup.md)**
 
-Follow the official guide: [Intel RealSense Installation](https://github.com/IntelRealSense/librealsense/blob/master/doc/installation.md)
+This guide covers:
+- Building librealsense from source on macOS
+- Installing Python bindings
+- Updating camera firmware
+- macOS-specific USB permission issues
+- Troubleshooting and testing
 
-After installing the SDK:
-```bash
-pip install pyrealsense2
-```
+**Quick Summary:**
+- ⚠️ **macOS requires building from source** (~2 hours, no pre-built packages)
+- ⚠️ **Requires `sudo` for all camera operations** (macOS Monterey+ limitation)
+- ⚠️ **Specific USB cable required** - Original Intel cable or Thunderbolt 3/4 only
+- ⚠️ **Firmware bug causes USB 2.0 fallback** with most generic cables
+- ✅ Firmware update recommended (5.17.0.10+)
+- ✅ Test script included: `scripts/test_realsense.py`
 
-### Windows
-
-1. Download and install [Intel RealSense SDK 2.0](https://github.com/IntelRealSense/librealsense/releases)
-2. Install Python wrapper:
-   ```bash
-   pip install pyrealsense2
-   ```
-
-**Note:** The application works without RealSense using standard webcams (no depth sensing).
+**Note:** The application works perfectly with standard webcams (no RealSense needed for basic operation).
 
 ## Application Packaging (Optional)
 
@@ -230,8 +230,11 @@ pip install -r requirements.txt
 
 ### RealSense camera not detected
 
-- Ensure RealSense SDK is installed
-- Install pyrealsense2: `pip install pyrealsense2`
+See the [RealSense Setup Guide](realsense-setup.md#troubleshooting) for detailed troubleshooting.
+
+Quick checks:
+- On macOS: Use `sudo` to run RealSense applications
+- Verify camera is detected: `system_profiler SPUSBDataType | grep -i realsense`
 - The app will fall back to webcam if RealSense is unavailable
 
 ### Camera enumeration warnings on macOS

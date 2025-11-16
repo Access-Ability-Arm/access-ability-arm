@@ -6,6 +6,8 @@ Enumerates available cameras and provides camera switching functionality
 import asyncio
 import os
 import platform
+import re
+import subprocess
 import sys
 from contextlib import contextmanager
 from typing import Dict, List
@@ -60,8 +62,11 @@ class CameraManager:
         Args:
             max_cameras_to_check: Maximum number of camera indices to check
         """
+        print(f"[DEBUG CameraManager] __init__ called with max_cameras={max_cameras_to_check}")
         self.max_cameras_to_check = max_cameras_to_check
         self.cameras: List[Dict[str, any]] = []
+        self._macos_camera_names = None  # Cache for macOS camera names
+        print("[DEBUG CameraManager] __init__ complete")
 
     def get_camera_info(self) -> List[Dict[str, any]]:
         """
@@ -165,20 +170,17 @@ class CameraManager:
             with suppress_output():
                 cap = cv2.VideoCapture(camera_index)
                 if cap.isOpened():
-                    # Try to get camera name from backend
-                    # CAP_PROP_BACKEND_NAME available in newer OpenCV versions
-                    if hasattr(cv2, 'CAP_PROP_BACKEND_NAME'):
-                        backend_name = cap.get(cv2.CAP_PROP_BACKEND_NAME)  # noqa: F841
+                    # Try to get camera name using CAP_PROP_BACKEND property
+                    # This works on some OpenCV builds
+                    camera_name = None
 
-                    # For macOS, try to infer from common patterns
-                    # OpenCV doesn't expose camera names directly, so we use heuristics
+                    # macOS: Use system_profiler to get actual camera names
                     if platform.system() == "Darwin":
-                        # Camera 0 is usually built-in FaceTime
-                        # Camera 1+ are usually external or Continuity Camera
-                        if camera_index == 0:
-                            camera_name = "FaceTime HD Camera (Built-in)"
+                        macos_names = self._get_macos_camera_names()
+                        if camera_index < len(macos_names):
+                            camera_name = macos_names[camera_index]
                         else:
-                            camera_name = f"External Camera {camera_index}"
+                            camera_name = f"Camera {camera_index}"
                     else:
                         # Linux - use Video4Linux naming
                         camera_name = f"Video Device {camera_index}"
@@ -190,6 +192,55 @@ class CameraManager:
 
         # Fallback to generic name
         return f"Camera {camera_index}"
+
+    def _get_macos_camera_names(self) -> List[str]:
+        """
+        Get actual camera names on macOS using system_profiler
+
+        Returns:
+            List of camera names in order they appear in system_profiler
+        """
+        if self._macos_camera_names is not None:
+            return self._macos_camera_names
+
+        try:
+            # Run system_profiler to get camera information
+            result = subprocess.run(
+                ['system_profiler', 'SPCameraDataType'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Suppress AVCaptureDeviceTypeExternal warning
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                # Parse camera names from output
+                # Format is like:
+                #   Intel(R) RealSense(TM) Depth Camera 435 with RGB Module RGB:
+                #   MacBook Pro Camera:
+                #   ckphone24 Camera:
+
+                camera_names = []
+                lines = result.stdout.split('\n')
+
+                for line in lines:
+                    # Look for lines ending with colon (camera names)
+                    # Skip the "Camera:" header line
+                    if ':' in line and not line.strip().startswith('Camera:'):
+                        # Extract camera name (everything before the colon, trimmed)
+                        camera_name = line.split(':')[0].strip()
+                        # Skip empty lines and metadata lines (Model ID, Unique ID)
+                        if camera_name and not camera_name.startswith('Model ID') and not camera_name.startswith('Unique ID'):
+                            camera_names.append(camera_name)
+
+                self._macos_camera_names = camera_names
+                return camera_names
+        except Exception:
+            pass
+
+        # Return empty list if detection fails
+        self._macos_camera_names = []
+        return []
 
     async def _get_camera_information_for_windows(self):
         """Get detailed camera information on Windows platform"""

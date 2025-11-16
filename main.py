@@ -53,7 +53,15 @@ if __name__ == "__main__":
         "--port", type=int, default=8550,
         help="Port for web server (default: 8550)"
     )
+    parser.add_argument(
+        "--enable-realsense", action="store_true",
+        help="Enable RealSense camera support (may hang if camera not working properly)"
+    )
     args = parser.parse_args()
+
+    # Store RealSense override flag globally
+    import sys
+    sys._enable_realsense_override = args.enable_realsense
 
     # Run Flet app
     if args.web:

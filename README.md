@@ -113,9 +113,23 @@ The application uses RF-DETR Seg for object detection with automatic fallback su
 ## System Requirements
 
 - **Python**: 3.11 (required - MediaPipe does not support 3.14+)
-- **Camera**: Any webcam, or Intel RealSense D400-series for depth sensing
+- **Camera**: Any webcam (RealSense optional but complex on macOS - see below)
 - **OS**: macOS, Windows, or Linux
 - **GPU** (optional): Apple Silicon (Metal), NVIDIA (CUDA), or CPU
+
+### Intel RealSense Support (Optional)
+
+**⚠️ Important for macOS Users:**
+
+RealSense depth cameras provide enhanced 3D sensing but require significant setup on macOS:
+- ❌ Must build librealsense from source (2+ hours)
+- ❌ Requires `sudo` for all RealSense operations (macOS Monterey+ limitation)
+- ❌ Specific USB cable required (original Intel cable or Thunderbolt 3/4)
+- ❌ Firmware slow-insertion bug causes USB 2.0 fallback with most cables
+
+**The app works great with regular webcams!** Only install RealSense if you specifically need depth sensing.
+
+📖 See [docs/realsense-setup.md](docs/realsense-setup.md) for complete installation guide
 
 ## Monorepo Architecture
 
