@@ -511,7 +511,8 @@ class FletMainWindow:
         mode_display = {
             "face": "Face Tracking",
             "objects": "Object Detection",
-            "combined": "Combined (Face + Objects)"
+            "combined": "Combined (Face + Objects)",
+            "camera": "Camera Only"
         }.get(mode, mode.upper())
 
         status_msg = (

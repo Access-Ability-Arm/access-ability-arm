@@ -63,7 +63,7 @@ class DetectionManager:
             self.segmentation_model = self._initialize_segmentation_model()
 
         # Set default detection mode
-        # Modes: "face", "objects", "combined" (face + objects simultaneously)
+        # Modes: "face", "objects", "combined" (face + objects), "camera" (raw video)
         self.detection_mode = "objects" if self.segmentation_model else "face"
         status(f"Detection mode: {self.detection_mode}")
 
@@ -105,7 +105,10 @@ class DetectionManager:
         Returns:
             Processed image with detections drawn
         """
-        if self.detection_mode == "objects" and self.segmentation_model:
+        if self.detection_mode == "camera":
+            # Camera only mode - return raw image
+            return image
+        elif self.detection_mode == "objects" and self.segmentation_model:
             return self._process_object_detection(image, depth_frame)
         elif self.detection_mode == "combined" and self.segmentation_model:
             return self._process_combined_detection(image, depth_frame)
@@ -164,22 +167,28 @@ class DetectionManager:
         return image
 
     def toggle_mode(self):
-        """Toggle between face tracking, object detection, and combined modes"""
+        """Toggle between detection modes: objects -> combined -> face -> camera -> objects"""
         if self.segmentation_model:
-            if self.detection_mode == "face":
-                self.detection_mode = "objects"
-                print("✓ Switched to object detection mode")
-            elif self.detection_mode == "objects":
+            if self.detection_mode == "objects":
                 self.detection_mode = "combined"
                 print("✓ Switched to combined mode (face + objects)")
-            else:  # combined
+            elif self.detection_mode == "combined":
                 self.detection_mode = "face"
                 print("✓ Switched to face tracking mode")
+            elif self.detection_mode == "face":
+                self.detection_mode = "camera"
+                print("✓ Switched to camera only mode")
+            else:  # camera
+                self.detection_mode = "objects"
+                print("✓ Switched to object detection mode")
         else:
-            print(
-                "✗ Object detection not available - "
-                "No segmentation model loaded"
-            )
+            # No segmentation model - toggle between face and camera only
+            if self.detection_mode == "face":
+                self.detection_mode = "camera"
+                print("✓ Switched to camera only mode")
+            else:  # camera
+                self.detection_mode = "face"
+                print("✓ Switched to face tracking mode")
 
     @property
     def has_object_detection(self) -> bool:
