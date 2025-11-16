@@ -9,7 +9,6 @@ Speed: 170 FPS on T4 GPU, 30+ FPS on Apple Metal
 """
 
 import os
-import shutil
 
 import cv2
 import numpy as np
