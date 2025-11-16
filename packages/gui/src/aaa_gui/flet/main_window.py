@@ -112,18 +112,19 @@ class FletMainWindow:
 
         # Arm controller (if available)
         if app_config.lite6_available:
-            self.loading_text.value = f"Connecting to arm at {app_config.lite6_ip}..."
-            self.page.update()
-
             self.arm_controller = ArmControllerFlet(
                 arm_ip=app_config.lite6_ip,
                 port=app_config.lite6_port,
                 on_connection_status=self._on_arm_connection_status,
                 on_error=self._on_arm_error
             )
-            # Try to connect if auto-connect enabled
+            # Connect asynchronously in background thread if auto-connect enabled
             if app_config.lite6_auto_connect:
-                self.arm_controller.connect_arm()
+                def connect_async():
+                    print(f"[Arm] Connecting to arm at {app_config.lite6_ip}...")
+                    self.arm_controller.connect_arm()
+
+                threading.Thread(target=connect_async, daemon=True).start()
 
         # Camera manager
         self.loading_text.value = "Detecting cameras..."
