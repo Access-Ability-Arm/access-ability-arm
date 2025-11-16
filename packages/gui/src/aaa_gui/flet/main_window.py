@@ -742,14 +742,11 @@ class FletMainWindow:
             self._toggle_detection_mode()
 
     def _on_window_event(self, e):
-        """Handle window events (resize, move, etc.)"""
+        """Handle window events (resized, moved, etc.)"""
         from aaa_core.config.settings import save_window_geometry
 
-        # Debug: print all window events to see what's being fired
-        print(f"Window event: {e.data}")
-
-        # Save geometry on resize or move events
-        if e.data in ("resize", "move"):
+        # Save geometry on resized or moved events
+        if e.data in ("resized", "moved"):
             if (self.page.window.width and self.page.window.height and
                 self.page.window.left is not None and self.page.window.top is not None):
                 save_window_geometry(
