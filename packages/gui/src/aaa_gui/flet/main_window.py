@@ -66,6 +66,8 @@ class FletMainWindow:
         self.video_frozen = False
         self.frozen_frame = None
         self.frozen_detections = None  # Store detection data when frozen
+        self.object_buttons = []  # Store overlay buttons for frozen objects
+        self.selected_object = None  # Currently selected object index
 
         # Show loading screen immediately
         self._show_initial_loading_screen()
@@ -193,6 +195,14 @@ class FletMainWindow:
             expand=True,
         )
 
+        # Object selection buttons (shown when frozen)
+        self.object_buttons_row = ft.Row(
+            controls=[],
+            spacing=10,
+            wrap=True,
+            visible=False,
+        )
+
         # Track if first frame has been received
         self._first_frame_received = False
 
@@ -263,6 +273,8 @@ class FletMainWindow:
                                     [
                                         # Video container with loading overlay
                                         self.video_container,
+                                        # Object selection buttons (shown when frozen)
+                                        self.object_buttons_row,
                                         # Camera controls and status
                                         ft.Column(
                                             [
@@ -576,7 +588,8 @@ class FletMainWindow:
             if self.video_frozen:
                 if self.frozen_frame is None:
                     # First frame after freezing - store it and enhance labels
-                    self.frozen_frame = self._enhance_frozen_labels(img_array.copy())
+                    self.frozen_frame, self.frozen_detections = self._enhance_frozen_labels(img_array.copy())
+                    self._create_object_buttons()
                     print("Find Objects: Frame captured and frozen")
                 # Display the frozen frame
                 img_array = self.frozen_frame
@@ -611,19 +624,27 @@ class FletMainWindow:
             img_array: Numpy array (RGB format) with existing detections
 
         Returns:
-            Image with enhanced numbered labels (3x larger) only, no original labels
+            Tuple of (image with enhanced labels, detection data dict)
         """
         if not self.image_processor or self.image_processor.detection_mode != "objects":
-            return img_array
+            return img_array, None
 
         # Get detection manager
         detection_mgr = self.image_processor.detection_manager
         if not detection_mgr.segmentation_model:
-            return img_array
+            return img_array, None
 
         # Get a fresh frame without labels - re-detect on original image
         # First, detect objects to get data
         (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(img_array)
+
+        # Store detection data for button creation
+        detections = {
+            'classes': classes,
+            'centers': centers,
+            'boxes': boxes,
+            'contours': contours
+        }
 
         # Draw only the masks, not the labels
         img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
@@ -674,7 +695,54 @@ class FletMainWindow:
                 thickness
             )
 
-        return img_with_masks
+        return img_with_masks, detections
+
+    def _create_object_buttons(self):
+        """Create clickable buttons for each detected object"""
+        if not self.frozen_detections:
+            return
+
+        # Clear existing buttons
+        self.object_buttons_row.controls.clear()
+
+        # Create a button for each detected object
+        classes = self.frozen_detections['classes']
+        for i, class_name in enumerate(classes, start=1):
+            btn = ft.ElevatedButton(
+                text=f"#{i}: {class_name}",
+                on_click=lambda e, idx=i-1: self._on_object_selected(idx),
+                bgcolor=ft.Colors.BLUE_GREY_800,
+                color=ft.Colors.WHITE,
+            )
+            self.object_buttons_row.controls.append(btn)
+
+        # Show the button row
+        self.object_buttons_row.visible = True
+        self.page.update()
+
+    def _on_object_selected(self, object_index: int):
+        """Handle object button click"""
+        self.selected_object = object_index
+        classes = self.frozen_detections['classes']
+        class_name = classes[object_index]
+
+        print(f"Selected object #{object_index + 1}: {class_name}")
+
+        # Highlight the selected button
+        for i, btn in enumerate(self.object_buttons_row.controls):
+            if i == object_index:
+                btn.bgcolor = ft.Colors.GREEN_700
+            else:
+                btn.bgcolor = ft.Colors.BLUE_GREY_800
+
+        self.page.update()
+
+    def _clear_object_buttons(self):
+        """Clear object selection buttons when unfreezing"""
+        self.object_buttons_row.controls.clear()
+        self.object_buttons_row.visible = False
+        self.selected_object = None
+        self.page.update()
 
     def _on_camera_changed(self, e):
         """Handle camera selection change"""
@@ -874,6 +942,7 @@ class FletMainWindow:
             print("Find Objects: Capturing new frame...")
             self.video_frozen = False
             self.frozen_frame = None
+            self._clear_object_buttons()
 
             # Capture video for 1 second then freeze again
             def capture_and_freeze():
