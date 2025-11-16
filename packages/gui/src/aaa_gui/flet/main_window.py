@@ -68,6 +68,7 @@ class FletMainWindow:
         self.frozen_detections = None  # Store detection data when frozen
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
+        self.last_raw_frame = None  # Store raw frame before labels for re-processing
 
         # Show loading screen immediately
         self._show_initial_loading_screen()
@@ -621,7 +622,7 @@ class FletMainWindow:
         Enhance object labels for frozen frame with larger numbered labels
 
         Args:
-            img_array: Numpy array (RGB format) with existing detections
+            img_array: Numpy array (RGB format) with existing detections (will be re-processed)
 
         Returns:
             Tuple of (image with enhanced labels, detection data dict)
@@ -634,8 +635,11 @@ class FletMainWindow:
         if not detection_mgr.segmentation_model:
             return img_array, None
 
-        # Get a fresh frame without labels - re-detect on original image
-        # First, detect objects to get data
+        # We need to start fresh - the img_array already has labels drawn on it
+        # To get a clean image, we'll need to re-capture, but for now we'll work around it
+        # by using the current processed image and just overlaying new labels
+
+        # Detect objects to get data (detection works even on already-processed images)
         (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(img_array)
 
         # Store detection data for button creation
@@ -646,9 +650,20 @@ class FletMainWindow:
             'contours': contours
         }
 
+        # Start with a blank image and redraw everything cleanly
+        # Get the last captured raw frame from the image processor
+        if hasattr(self.image_processor, '_last_rgb_frame'):
+            clean_img = self.image_processor._last_rgb_frame.copy()
+        else:
+            # Fallback: use current image (will have old labels)
+            clean_img = img_array.copy()
+
+        # Detect on clean image
+        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(clean_img)
+
         # Draw only the masks, not the labels
         img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
-            img_array, boxes, classes, contours
+            clean_img, boxes, classes, contours
         )
 
         # Now draw our enhanced numbered labels

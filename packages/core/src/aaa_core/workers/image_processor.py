@@ -107,6 +107,9 @@ class ImageProcessor(threading.Thread):
                 # Convert to RGB
                 image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+                # Store the raw RGB frame (before processing) for frozen frame re-processing
+                self._last_rgb_frame = image_rgb.copy()
+
                 # Process with detection (labels will now be correct orientation)
                 processed_image = self.detection_manager.process_frame(
                     image_rgb, depth_frame
