@@ -11,7 +11,9 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 from typing import Optional, Tuple
 
-from xarm.wrapper import XArmAPI
+# Suppress xArm SDK version output during import
+with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+    from xarm.wrapper import XArmAPI
 
 
 class Lite6Arm:
