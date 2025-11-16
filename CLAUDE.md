@@ -64,7 +64,10 @@ access-ability-arm/
 - `hardware.camera_manager` - Camera enumeration
 - `hardware.button_controller` - Button input (start once, not per press!)
 - `workers.image_processor` - Camera processing thread
+- `workers.daemon_image_processor` - Daemon-based processing (reads from socket)
 - `workers.arm_controller_flet` - Flet arm controller (callbacks)
+- `daemon.camera_daemon_socket` - RealSense daemon (runs with sudo)
+- `daemon.camera_client_socket` - Client (connects to daemon via Unix socket)
 
 **aaa_vision:**
 - `rfdetr_seg` - RF-DETR (0.3 confidence threshold)
@@ -76,6 +79,86 @@ access-ability-arm/
 
 **aaa_lite6_driver:**
 - `lite6_arm` - UFactory Lite6 6-DOF arm control (xArm SDK)
+
+## Camera Daemon Architecture (RealSense on macOS)
+
+**Problem**: macOS Monterey+ requires `sudo` for RealSense USB access, but running GUI with `sudo` breaks Flet/PyQt.
+
+**Solution**: Unix domain socket IPC for cross-user communication:
+
+```
+┌─────────────────────────────────────────┐
+│  User Context (no sudo)                 │
+│  ┌───────────────────────────────────┐  │
+│  │  Flet GUI (main_window.py)        │  │
+│  │  • Auto-detects daemon            │  │
+│  │  • Fallback to webcam if no daemon│  │
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│  ┌──────────▼────────────────────────┐  │
+│  │  DaemonImageProcessor             │  │
+│  │  • Reads from CameraClientSocket  │  │
+│  │  • 30 fps processing              │  │
+│  │  • Full detection support         │  │
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│  ┌──────────▼────────────────────────┐  │
+│  │  CameraClientSocket               │  │
+│  │  • Connects to /tmp/aaa_camera.sock│ │
+│  └──────────┬────────────────────────┘  │
+└─────────────┼────────────────────────────┘
+              │
+      ═══════════════════
+      ║  Unix Socket   ║
+      ║  (mode 0666)   ║
+      ═══════════════════
+              │
+┌─────────────┼────────────────────────────┐
+│  Root Context (sudo)                     │
+│  ┌──────────▼────────────────────────┐  │
+│  │  CameraDaemonSocket               │  │
+│  │  • Captures RealSense at 25-30fps │  │
+│  │  • Broadcasts to all clients      │  │
+│  │  • Frame format: header + RGB +   │  │
+│  │    depth + metadata (JSON)        │  │
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│  ┌──────────▼────────────────────────┐  │
+│  │  RealsenseCamera                  │  │
+│  │  • 1280×720 @ 30fps               │  │
+│  │  • Aligned RGB + depth            │  │
+│  └───────────────────────────────────┘  │
+└──────────────────────────────────────────┘
+```
+
+**Usage:**
+```bash
+# Start daemon (runs with sudo)
+make daemon-start
+
+# Run GUI (no sudo needed)
+make run
+
+# Or combined
+make run-with-daemon
+
+# Daemon management
+make daemon-stop
+make daemon-restart
+make daemon-status
+```
+
+**Implementation Details:**
+- Socket path: `/tmp/aaa_camera.sock` (permissions: 0666)
+- Frame format: `[rgb_size: uint32][depth_size: uint32][metadata_size: uint32][rgb_data][depth_data][json_metadata]`
+- Zero-copy within daemon, single copy on client receive (~2-3ms overhead)
+- Multi-client support (daemon broadcasts to all connected GUIs)
+- GUI auto-detects daemon by checking socket existence
+
+**Why Unix Sockets (not shared memory)?**
+- macOS POSIX shared memory doesn't support cross-user access
+- Unix sockets work perfectly for root→user IPC
+- Performance: 25-30 fps with <5ms latency (same as shared memory would be)
 
 ## Critical Implementation Notes
 

@@ -3,9 +3,9 @@ Application Configuration and Feature Detection
 Handles hardware/software availability detection and app settings
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from aaa_core.config.console import error, success, underline
 
@@ -57,6 +57,7 @@ class AppConfig:
     # Camera settings
     max_cameras_to_check: int = 3
     default_camera: int = 0
+    skip_cameras: List[str] = field(default_factory=list)  # Camera name patterns to skip
 
     # Video display settings
     display_width: int = 800
@@ -167,6 +168,8 @@ def apply_user_config(config: AppConfig, user_config: dict):
             config.max_cameras_to_check = camera['max_cameras_to_check']
         if 'default_camera' in camera:
             config.default_camera = camera['default_camera']
+        if 'skip_cameras' in camera:
+            config.skip_cameras = camera['skip_cameras'] or []
 
     # Detection settings
     if 'detection' in user_config:

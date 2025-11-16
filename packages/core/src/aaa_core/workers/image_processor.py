@@ -65,6 +65,40 @@ class ImageProcessor(threading.Thread):
         # Detection setup
         self.detection_manager = DetectionManager()
 
+    def _is_infrared_stream(self, camera_index: int) -> bool:
+        """
+        Check if a camera outputs infrared/grayscale data (all RGB channels identical)
+
+        NOTE: On macOS, the RealSense D435 RGB module does NOT appear as a separate
+        UVC camera device. Only the infrared/depth stream is accessible without the SDK.
+        To access RealSense RGB color on macOS, use --enable-realsense flag.
+
+        Args:
+            camera_index: Camera index to check
+
+        Returns:
+            True if camera outputs infrared/grayscale, False if true RGB color
+        """
+        try:
+            cap = cv2.VideoCapture(camera_index)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+
+                if ret and frame is not None and len(frame.shape) == 3:
+                    # Check if channels are EXACTLY identical (infrared hardware)
+                    # True infrared has identical channels at hardware level (max_diff = 0)
+                    # RGB cameras have independent sensors with natural noise variance
+                    b, g, r = cv2.split(frame)
+                    diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
+                    diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
+                    max_diff = max(diff_bg.max(), diff_gr.max())
+                    is_infrared = (max_diff == 0)
+                    return is_infrared
+        except Exception:
+            pass
+        return False
+
     def _initialize_camera(self):
         """Initialize camera (RealSense if available, otherwise webcam)"""
         print("[DEBUG ImageProcessor] _initialize_camera called")
@@ -116,19 +150,23 @@ class ImageProcessor(threading.Thread):
             # Use webcam if RealSense failed or timed out
             if not self.use_realsense:
                 print("[DEBUG ImageProcessor] Creating standard webcam capture...")
-                # Try next camera index if default is 0 (likely the failed RealSense)
-                fallback_camera = app_config.default_camera + 1 if app_config.default_camera == 0 else app_config.default_camera
-                print(f"[DEBUG ImageProcessor] Trying camera index {fallback_camera}...")
-                self.camera = cv2.VideoCapture(fallback_camera)
+                camera_index = app_config.default_camera
+                print(f"[DEBUG ImageProcessor] Trying camera index {camera_index}...")
+                self.camera = cv2.VideoCapture(camera_index)
                 print("[DEBUG ImageProcessor] Standard webcam created")
         else:
             print("[DEBUG ImageProcessor] RealSense SDK disabled or not available")
-            if not enable_realsense and app_config.realsense_available:
-                status("Using RealSense RGB camera as standard webcam (depth disabled)")
-
             camera_index = app_config.default_camera
+
+            # On macOS, RealSense RGB module is not accessible as UVC device
+            # Only infrared/depth stream appears. Warn user if on camera 0.
+            if not enable_realsense and app_config.realsense_available and camera_index == 0:
+                status("Note: RealSense camera 0 is infrared (grayscale) on macOS")
+                status("For RGB color from RealSense, use --enable-realsense flag")
+
             print(f"[DEBUG ImageProcessor] Opening camera index {camera_index} with OpenCV")
             self.camera = cv2.VideoCapture(camera_index)
+
             success(f"Using {underline('standard webcam')} (camera {camera_index})")
         print("[DEBUG ImageProcessor] _initialize_camera completed")
 
@@ -166,6 +204,11 @@ class ImageProcessor(threading.Thread):
         self.camera = cv2.VideoCapture(camera_index)
         self.use_realsense = False
         self.current_camera_name = camera_name
+
+        # Warn if this is RealSense infrared stream on macOS
+        if camera_index == 0 and camera_name and "RealSense" in camera_name:
+            status(f"Note: RealSense camera 0 outputs infrared (grayscale) on macOS")
+            status(f"For RGB color from RealSense, restart with --enable-realsense flag")
 
         # Auto-enable flip for built-in MacBook cameras
         self._update_flip_for_camera(camera_name)

@@ -123,9 +123,26 @@ The application uses RF-DETR Seg for object detection with automatic fallback su
 
 RealSense depth cameras provide enhanced 3D sensing but require significant setup on macOS:
 - ❌ Must build librealsense from source (2+ hours)
-- ❌ Requires `sudo` for all RealSense operations (macOS Monterey+ limitation)
 - ❌ Specific USB cable required (original Intel cable or Thunderbolt 3/4)
 - ❌ Firmware slow-insertion bug causes USB 2.0 fallback with most cables
+
+**Solution: Camera Daemon Architecture**
+- ✅ Daemon runs with `sudo` to access RealSense
+- ✅ GUI runs as regular user (no sudo needed!)
+- ✅ Frames streamed via Unix socket (zero-copy IPC)
+- ✅ Full depth data + object detection at 25-30 fps
+
+**Usage:**
+```bash
+# Start RealSense daemon (runs with sudo)
+make daemon-start
+
+# Run GUI (no sudo needed!)
+make run
+
+# Or combined
+make run-with-daemon
+```
 
 **The app works great with regular webcams!** Only install RealSense if you specifically need depth sensing.
 

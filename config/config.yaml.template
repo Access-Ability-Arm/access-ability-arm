@@ -21,6 +21,11 @@ camera:
   # Default camera index (0 = first camera)
   default_camera: 0
 
+  # Skip cameras matching these patterns (optional)
+  # Cameras with names containing these strings will be excluded
+  # Examples: ["iPhone", "ckphone", "Continuity"]
+  skip_cameras: []
+
 # Object Detection Settings
 detection:
   # Confidence threshold for object detection (0.0 - 1.0)

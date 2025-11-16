@@ -16,6 +16,14 @@ from aaa_core.hardware.camera_manager import CameraManager
 from aaa_core.workers.image_processor import ImageProcessor
 from PIL import Image, ImageDraw, ImageFont
 
+# Try to import daemon components (may not be available)
+try:
+    from aaa_core.daemon.camera_client import CameraClient
+    from aaa_core.workers.daemon_image_processor import DaemonImageProcessor
+    DAEMON_AVAILABLE = True
+except ImportError:
+    DAEMON_AVAILABLE = False
+
 import flet as ft
 
 # Import Flet-compatible arm controller
@@ -230,22 +238,49 @@ class FletMainWindow:
         # Track if first frame has been received
         self._first_frame_received = False
 
+        # Check if daemon is running to determine camera options
+        daemon_running = self._check_daemon_running()
+        print(f"[DEBUG] Building UI - daemon_running={daemon_running}")
+
         # Camera selection
-        cameras = self.camera_manager.get_camera_info()
-        camera_options = [
-            ft.dropdown.Option(
-                key=str(cam["camera_index"]),
-                text=f"Camera {cam['camera_index']}: {cam['camera_name']}",
-            )
-            for cam in cameras
-        ]
+        if daemon_running:
+            # Daemon mode: show RealSense as only option, disabled
+            camera_options = [
+                ft.dropdown.Option(
+                    key="daemon",
+                    text="Intel RealSense D435 (via daemon - depth enabled)",
+                )
+            ]
+            dropdown_disabled = True
+            dropdown_value = "daemon"
+        else:
+            # Normal mode: show all available cameras
+            cameras = self.camera_manager.get_camera_info()
+            camera_options = []
+            for cam in cameras:
+                # Shorten long camera names for better display
+                name = cam['camera_name']
+                if len(name) > 40:
+                    # Truncate but keep important parts
+                    name = name[:37] + "..."
+
+                display_text = f"[{cam['camera_index']}] {name} - {cam['resolution']} ({cam['color_type']})"
+                camera_options.append(
+                    ft.dropdown.Option(
+                        key=str(cam["camera_index"]),
+                        text=display_text,
+                    )
+                )
+            dropdown_disabled = False
+            dropdown_value = str(app_config.default_camera) if camera_options else None
 
         self.camera_dropdown = ft.Dropdown(
             label="Select Camera",
             options=camera_options,
-            value=str(app_config.default_camera) if camera_options else None,
+            value=dropdown_value,
             on_change=self._on_camera_changed,
-            width=400,
+            width=600,  # Increased width to accommodate more info
+            disabled=dropdown_disabled,
         )
 
         # Status display
@@ -535,6 +570,7 @@ class FletMainWindow:
         control_tabs = ft.Tabs(
             selected_index=0,
             animation_duration=300,
+            on_change=self._on_tab_changed,
             tabs=[
                 ft.Tab(
                     text="Manual",
@@ -558,14 +594,55 @@ class FletMainWindow:
             border_radius=10,
         )
 
+    def _check_daemon_running(self):
+        """
+        Check if camera daemon is running
+
+        Returns:
+            bool: True if daemon socket exists, False otherwise
+        """
+        print(f"[DEBUG] _check_daemon_running: DAEMON_AVAILABLE={DAEMON_AVAILABLE}")
+        if not DAEMON_AVAILABLE:
+            print("[DEBUG] _check_daemon_running: Daemon components not available")
+            return False
+
+        import os
+        SOCKET_PATH = "/tmp/aaa_camera.sock"
+
+        try:
+            # Check if socket file exists
+            print(f"[DEBUG] _check_daemon_running: Checking for socket at {SOCKET_PATH}...")
+            if os.path.exists(SOCKET_PATH):
+                print("[DEBUG] _check_daemon_running: Socket found - daemon is running")
+                return True
+            else:
+                print(f"[DEBUG] _check_daemon_running: Socket not found")
+                return False
+        except Exception as e:
+            print(f"[DEBUG] _check_daemon_running: Error checking daemon - {e}")
+            return False
+
     def _start_image_processor(self):
         """Initialize and start image processing"""
         print("[DEBUG MainWindow] Creating ImageProcessor...")
-        self.image_processor = ImageProcessor(
-            display_width=app_config.display_width,
-            display_height=app_config.display_height,
-            callback=self._update_video_feed,  # Use callback for Flet
-        )
+
+        # Check if daemon is running
+        daemon_running = self._check_daemon_running()
+
+        if daemon_running:
+            print("[INFO] Camera daemon detected - using RealSense with depth")
+            self.image_processor = DaemonImageProcessor(
+                display_width=app_config.display_width,
+                display_height=app_config.display_height,
+                callback=self._update_video_feed,
+            )
+        else:
+            print("[INFO] No daemon - using direct camera access (RGB only)")
+            self.image_processor = ImageProcessor(
+                display_width=app_config.display_width,
+                display_height=app_config.display_height,
+                callback=self._update_video_feed,  # Use callback for Flet
+            )
         print("[DEBUG MainWindow] ImageProcessor created")
 
         # Set initial camera name for flip detection
@@ -1101,6 +1178,15 @@ class FletMainWindow:
                 self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
                 self.flip_camera_btn.icon_color = "#424242"  # Grey 800
             self.page.update()
+
+    def _on_tab_changed(self, e):
+        """Handle tab change - unfreeze video when switching to Manual mode"""
+        if e.control.selected_index == 0:  # Manual tab (index 0)
+            if self.video_frozen:
+                print("Switching to Manual mode - resuming real-time camera")
+                self.video_frozen = False
+                self.frozen_frame = None
+                self._clear_object_buttons()
 
     def _on_keyboard_event(self, e: ft.KeyboardEvent):
         """Handle keyboard shortcuts"""

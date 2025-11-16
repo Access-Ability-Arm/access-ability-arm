@@ -158,7 +158,82 @@ Python ML Backend (PyInstaller bundle)
 
 ---
 
-### 6. **PyObjC (macOS Native)**
+### 6. **Dear PyGui (Immediate Mode GUI)** ⭐
+
+**Bundle Size**: 80-250 MB
+- Dear PyGui: **5-10 MB**
+- Python packages: **50-200 MB**
+- OpenGL/Metal dependencies: **20-40 MB**
+- **Total estimated**: **80-250 MB**
+
+**Pros**:
+- ✅ **GPU-accelerated** (OpenGL/Metal/DirectX)
+- ✅ **Modern, fast rendering** (60+ fps)
+- ✅ Cross-platform (Windows, macOS, Linux)
+- ✅ Pure Python
+- ✅ **Perfect for real-time applications** (robotics, CV, games)
+- ✅ Built-in: plots, node editor, image display, tables
+- ✅ **Works with sudo** (uses OpenGL context, not Electron/Flutter)
+- ✅ Very active development (2025)
+- ✅ Simple immediate mode paradigm
+- ✅ No XML/QML - all Python code
+
+**Cons**:
+- ❌ **No mobile support** (desktop only: Windows/macOS/Linux)
+- ❌ Different paradigm from traditional GUI (immediate mode vs retained mode)
+- ❌ Less polished for "business apps" (optimized for tools/dashboards)
+- ❌ Smaller ecosystem than Qt
+
+**Best for**:
+- ✅ Computer vision applications
+- ✅ Robotics control interfaces
+- ✅ Real-time data visualization
+- ✅ Game development tools
+- ✅ Scientific/engineering applications
+
+**Not ideal for**:
+- ❌ Mobile apps
+- ❌ Traditional business applications
+- ❌ Web deployment
+
+**Implementation effort**: Low-Medium (2-4 days)
+
+**Example Code**:
+```python
+import dearpygui.dearpygui as dpg
+
+dpg.create_context()
+
+# Create window
+with dpg.window(label="Access Ability Arm", width=1200, height=800):
+    # Display camera feed
+    with dpg.texture_registry():
+        dpg.add_raw_texture(width=640, height=480, 
+                           default_value=rgb_frame.flatten(),
+                           tag="camera_texture", format=dpg.mvFormat_Float_rgb)
+    
+    dpg.add_image("camera_texture")
+    
+    # Control buttons
+    with dpg.group(horizontal=True):
+        dpg.add_button(label="X+", callback=lambda: move_arm('x', 1))
+        dpg.add_button(label="X-", callback=lambda: move_arm('x', -1))
+    
+    # Real-time plots
+    dpg.add_plot(label="Depth Data", height=200, width=-1)
+
+dpg.create_viewport(title='Access Ability Arm', width=1280, height=720)
+dpg.setup_dearpygui()
+dpg.show_viewport()
+dpg.start_dearpygui()
+dpg.destroy_context()
+```
+
+**Website**: https://github.com/hoffstadt/DearPyGui
+
+---
+
+### 7. **PyObjC (macOS Native)**
 
 **Bundle Size**: 50-150 MB (macOS only)
 - PyObjC: **~1 MB** (semi-standalone)
@@ -182,15 +257,21 @@ Python ML Backend (PyInstaller bundle)
 
 ## Size Comparison Summary
 
-| Framework | Bundle Size | Reduction | Cross-Platform | Effort |
-|-----------|-------------|-----------|----------------|--------|
-| **Flet (current)** | **2.2 GB** | 0% | ✅ | - |
-| **Tauri + React** | **60-210 MB** | 90-97% | ✅ | Medium |
-| **Pywebview** | **60-210 MB** | 90-97% | ✅ | Medium |
-| **PyObjC** | **60-160 MB** | 93-97% | ❌ macOS only | Medium-High |
-| **Tkinter** | **50-200 MB** | 91-98% | ✅ | Low |
-| **PyQt6** | **100-300 MB** | 86-95% | ✅ | Low |
-| **Rust (egui)** | **5-20 MB** | 99% | ✅ | Very High |
+| Framework | Bundle Size | Reduction | Cross-Platform | Mobile | Works with sudo | Effort |
+|-----------|-------------|-----------|----------------|--------|----------------|--------|
+| **Flet (current)** | **2.2 GB** | 0% | ✅ | ✅ | ❌ | - |
+| **Dear PyGui** | **80-250 MB** | 89-96% | ✅ Desktop | ❌ | ✅ | Low-Med |
+| **Tauri + React** | **60-210 MB** | 90-97% | ✅ | ❌ | ⚠️ | Medium |
+| **Pywebview** | **60-210 MB** | 90-97% | ✅ | ❌ | ⚠️ | Medium |
+| **PyObjC** | **60-160 MB** | 93-97% | ❌ macOS | ❌ | ✅ | Med-High |
+| **Tkinter** | **50-200 MB** | 91-98% | ✅ | ❌ | ✅ | Low |
+| **PyQt6** | **100-300 MB** | 86-95% | ✅ | ❌ | ✅ | Low |
+| **Rust (egui)** | **5-20 MB** | 99% | ✅ | ❌ | ✅ | Very High |
+
+**Legend**:
+- ✅ = Fully supported
+- ❌ = Not supported
+- ⚠️ = Possible but complex (needs daemon architecture)
 
 ## Recommended Migration Path
 

@@ -1,7 +1,7 @@
 # Makefile for Access Ability Arm
 # Provides convenient commands for running, testing, and packaging the application
 
-.PHONY: help install run run-realsense web package-macos package-linux package-windows clean test lint format
+.PHONY: help install run run-realsense web package-macos package-linux package-windows clean test lint format daemon-start daemon-stop daemon-restart daemon-status run-with-daemon
 
 # Default target - show help
 help:
@@ -10,10 +10,19 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make install         - Install dependencies (requires Python 3.11)"
-	@echo "  make run             - Run desktop application"
+	@echo "  make run             - Run desktop application (webcam/USB camera)"
 	@echo "  make run-realsense   - Run with RealSense depth support (requires sudo)"
 	@echo "  make web             - Run web application (localhost:8550)"
 	@echo "  make web PORT=8080   - Run web application on custom port"
+	@echo ""
+	@echo "Camera Daemon (RealSense ONLY - enables depth with GUI, no sudo needed):"
+	@echo "  make daemon-start    - Start RealSense camera daemon (requires sudo)"
+	@echo "  make daemon-stop     - Stop camera daemon (requires sudo)"
+	@echo "  make daemon-restart  - Restart camera daemon (requires sudo)"
+	@echo "  make daemon-status   - Show daemon status"
+	@echo "  make run-with-daemon - Start daemon and run GUI (RealSense depth mode)"
+	@echo ""
+	@echo "Note: Webcams (MacBook FaceTime, USB, Continuity) don't need daemon - just use 'make run'"
 	@echo ""
 	@echo "Packaging:"
 	@echo "  make package-macos   - Build macOS application bundle"
@@ -47,6 +56,36 @@ run-realsense:
 	@echo "Running with RealSense depth support..."
 	@echo "You will be prompted for your password for USB access."
 	@./scripts/launch_with_realsense.sh
+
+# Camera daemon commands
+daemon-start:
+	@echo "Starting camera daemon..."
+	@echo "Checking for processes using RealSense camera..."
+	@-pkill -f "python.*main.py" 2>/dev/null || true
+	@sleep 0.5
+	@sudo ./scripts/daemon_control.sh start
+
+daemon-stop:
+	@echo "Stopping camera daemon..."
+	@sudo ./scripts/daemon_control.sh stop
+
+daemon-restart:
+	@echo "Restarting camera daemon..."
+	@sudo ./scripts/daemon_control.sh restart
+
+daemon-status:
+	@./scripts/daemon_control.sh status
+
+run-with-daemon:
+	@echo "Starting camera daemon and GUI..."
+	@echo "Terminating any existing GUI instances..."
+	@-pkill -f "python.*main.py" 2>/dev/null || true
+	@sleep 0.5
+	@sudo ./scripts/daemon_control.sh start
+	@sleep 2
+	@echo "Launching GUI with sudo (required for shared memory access)..."
+	@echo "Note: On macOS, shared memory created by root requires sudo to access"
+	@sudo python main.py
 
 # Run web application (default port 8550)
 PORT ?= 8550

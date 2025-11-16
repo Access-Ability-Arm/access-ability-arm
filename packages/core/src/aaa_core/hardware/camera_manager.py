@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from typing import Dict, List
 
 import cv2
+import numpy as np
 
 from aaa_core.config.console import success, underline
 from aaa_core.config.console import warning as warn_msg
@@ -75,6 +76,8 @@ class CameraManager:
         Returns:
             List of dictionaries with camera_index and camera_name
         """
+        from aaa_core.config.settings import app_config
+
         self.cameras = []
 
         camera_indexes = self._get_camera_indexes()
@@ -83,19 +86,34 @@ class CameraManager:
             warn_msg("No cameras detected")
             return self.cameras
 
-        self.cameras = self._add_camera_information(camera_indexes)
+        all_cameras = self._add_camera_information(camera_indexes)
 
-        # Print detected cameras
+        # Filter out skipped cameras
+        skip_patterns = app_config.skip_cameras
+        for cam in all_cameras:
+            # Check if camera name matches any skip pattern
+            should_skip = False
+            for pattern in skip_patterns:
+                if pattern.lower() in cam['camera_name'].lower():
+                    print(f"    ⊘ Skipping camera [{cam['camera_index']}] {cam['camera_name']} (matches '{pattern}')")
+                    should_skip = True
+                    break
+
+            if not should_skip:
+                self.cameras.append(cam)
+
+        # Print detected cameras with details
         if len(self.cameras) > 0:
-            camera_names = [underline(c['camera_name']) for c in self.cameras]
-            camera_list = ', '.join(camera_names)
-            success(f"Detected {underline(str(len(self.cameras)))} camera(s): {camera_list}")
+            success(f"Detected {underline(str(len(self.cameras)))} camera(s):")
+            for cam in self.cameras:
+                cam_info = f"  [{cam['camera_index']}] {underline(cam['camera_name'])} - {cam['resolution']} ({cam['color_type']})"
+                print(f"    {cam_info}")
 
         return self.cameras
 
     def _get_camera_indexes(self) -> List[int]:
         """
-        Find all available camera indices
+        Find all available camera indices with their properties
 
         Returns:
             List of camera indices that are accessible
@@ -104,14 +122,47 @@ class CameraManager:
         camera_indexes = []
         remaining_checks = self.max_cameras_to_check
 
+        # Cache properties during detection to avoid reopening cameras
+        self._camera_properties_cache = {}
+
         # Use low-level file descriptor suppression to hide all warnings
         # including macOS AVCaptureDevice system warnings
         with suppress_output():
             while remaining_checks > 0:
                 capture = cv2.VideoCapture(index)
-                if capture.read()[0]:
+                ret, frame = capture.read()
+                if ret:
                     camera_indexes.append(index)
-                    capture.release()
+
+                    # Cache resolution and color type while camera is already open
+                    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    resolution = f"{width}x{height}"
+
+                    # Check if infrared by testing channel independence
+                    # True infrared cameras have perfectly identical channels at hardware level
+                    # RGB cameras may show grayscale content, but channels are independent
+                    color_type = "Unknown"
+                    if frame is not None and len(frame.shape) == 3:
+                        b, g, r = cv2.split(frame)
+
+                        # Check if channels are EXACTLY identical (same memory/hardware source)
+                        # Use variance to detect if channels are truly independent
+                        # For infrared: b-g and g-r differences are always zero
+                        # For RGB: even in dark scenes, there's some sensor noise difference
+                        diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
+                        diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
+
+                        # If max difference is 0, channels are identical (infrared)
+                        # RGB cameras always have some sensor noise even in dark scenes
+                        max_diff = max(diff_bg.max(), diff_gr.max())
+                        is_infrared = (max_diff == 0)
+
+                        color_type = "Infrared" if is_infrared else "RGB"
+
+                    self._camera_properties_cache[index] = (resolution, color_type)
+
+                capture.release()
                 index += 1
                 remaining_checks -= 1
 
@@ -121,13 +172,13 @@ class CameraManager:
         self, camera_indexes: List[int]
     ) -> List[Dict[str, any]]:
         """
-        Add platform-specific camera names to indices
+        Add platform-specific camera names, resolution, and color type to indices
 
         Args:
             camera_indexes: List of camera indices
 
         Returns:
-            List of dictionaries with camera_index and camera_name
+            List of dictionaries with camera_index, camera_name, resolution, and color_type
         """
         platform_name = platform.system()
         cameras = []
@@ -142,18 +193,79 @@ class CameraManager:
                     camera_name = cameras_info_windows.get_at(
                         camera_index
                     ).name.replace("\n", "")
-                    cameras.append(
-                        {"camera_index": camera_index, "camera_name": camera_name}
-                    )
+
+                    # Get resolution and color type
+                    resolution, color_type = self._get_camera_properties(camera_index)
+
+                    cameras.append({
+                        "camera_index": camera_index,
+                        "camera_name": camera_name,
+                        "resolution": resolution,
+                        "color_type": color_type
+                    })
         else:
             # For macOS and Linux, try to get actual camera names
             for camera_index in camera_indexes:
                 camera_name = self._get_camera_name_opencv(camera_index)
-                cameras.append(
-                    {"camera_index": camera_index, "camera_name": camera_name}
-                )
+
+                # Get resolution and color type
+                resolution, color_type = self._get_camera_properties(camera_index)
+
+                cameras.append({
+                    "camera_index": camera_index,
+                    "camera_name": camera_name,
+                    "resolution": resolution,
+                    "color_type": color_type
+                })
 
         return cameras
+
+    def _get_camera_properties(self, camera_index: int) -> tuple:
+        """
+        Get camera resolution and color type (RGB or Infrared)
+        Uses cached values from camera detection to avoid reopening cameras
+
+        Args:
+            camera_index: Camera index
+
+        Returns:
+            Tuple of (resolution_string, color_type_string)
+        """
+        # Try to use cached properties first
+        if hasattr(self, '_camera_properties_cache') and camera_index in self._camera_properties_cache:
+            return self._camera_properties_cache[camera_index]
+
+        # Fallback: open camera if not cached
+        try:
+            with suppress_output():
+                cap = cv2.VideoCapture(camera_index)
+                if cap.isOpened():
+                    # Get resolution
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    resolution = f"{width}x{height}"
+
+                    # Check if infrared by testing channel independence
+                    ret, frame = cap.read()
+                    color_type = "Unknown"
+                    if ret and frame is not None and len(frame.shape) == 3:
+                        b, g, r = cv2.split(frame)
+
+                        # Check if channels are EXACTLY identical (infrared hardware)
+                        # vs independent RGB sensors with natural noise variance
+                        diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
+                        diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
+                        max_diff = max(diff_bg.max(), diff_gr.max())
+                        is_infrared = (max_diff == 0)
+
+                        color_type = "Infrared" if is_infrared else "RGB"
+
+                    cap.release()
+                    return resolution, color_type
+        except Exception:
+            pass
+
+        return "Unknown", "Unknown"
 
     def _get_camera_name_opencv(self, camera_index: int) -> str:
         """

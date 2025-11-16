@@ -43,21 +43,23 @@ Python's threading cannot interrupt a blocked C/C++ library call, making timeout
 
 ### Current Workaround
 
-**RealSense as Standard Webcam (Default, Recommended)**:
+**Important macOS Limitation**: The RealSense D435 RGB module does NOT appear as a UVC camera on macOS. Only the infrared/depth stream is accessible through OpenCV without the SDK.
+
+**Option 1: Use Standard Webcam (Default, Recommended)**:
 
 ```bash
-# Run with RealSense RGB only (no depth, no sudo required)
+# Run with MacBook camera or other webcam (camera index 1+)
 python main.py
 # or
 make run
 ```
 
-The RealSense camera's RGB sensor is accessed through OpenCV like a standard webcam. Depth sensing is disabled, but the RGB camera works perfectly without elevated privileges.
+On macOS, camera 0 = RealSense infrared (grayscale), camera 1+ = other cameras (MacBook, etc.). Use camera 1 for RGB color without RealSense SDK.
 
-**RealSense with Depth Support (Advanced)**:
+**Option 2: RealSense with Depth Support (Advanced)**:
 
 ```bash
-# Run with full RealSense SDK (depth enabled, requires sudo)
+# Run with full RealSense SDK (RGB color + depth enabled, requires sudo)
 ./scripts/launch_with_realsense.sh
 # or
 make run-realsense
@@ -67,15 +69,20 @@ make run-realsense
 
 **Why this happens**:
 - macOS restricts USB bulk/control transfers for security
-- RealSense SDK needs direct USB access for depth data
+- RealSense SDK needs direct USB access for RGB color + depth data
 - Flet/Flutter run in user context and cannot display GUI under sudo
 - No workaround exists without rewriting the app architecture
+
+**macOS Camera Mapping**:
+- Camera 0: RealSense infrared/depth stream (grayscale, UVC)
+- Camera 1+: MacBook Pro, Continuity, etc. (RGB color, UVC)
+- RealSense RGB: NOT accessible as UVC device on macOS (SDK only)
 
 **Implementation**:
 - `main.py`: Added `--enable-realsense` command-line flag
 - `image_processor.py`: Checks `sys._enable_realsense_override` flag
-- When disabled: Uses OpenCV to access RealSense RGB camera (no depth)
-- When enabled: Uses RealSense SDK with depth (requires sudo, GUI issues)
+- When disabled: Uses OpenCV with camera index 1+ for RGB color (MacBook camera)
+- When enabled: Uses RealSense SDK for RGB color + depth (requires sudo, GUI issues)
 
 ### Attempted Solutions
 
@@ -150,6 +157,68 @@ make run-realsense
 
 ---
 
-**Last Updated**: 2025-01-16  
-**Reported By**: System  
+**Last Updated**: 2025-01-16
+**Reported By**: System
 **Assigned To**: Unassigned
+
+---
+
+## RealSense RGB Module Not Accessible on macOS (UVC Limitation)
+
+**Status**: Won't Fix (macOS limitation)
+**Severity**: Medium
+**Affects**: macOS only (all versions)
+
+### Description
+
+The Intel RealSense D435 camera exposes different video streams on macOS vs Windows:
+
+**Windows (UVC Full Support)**:
+- Camera 0: RealSense Infrared/Depth (grayscale)
+- Camera 1: RealSense RGB Color (1920x1080)
+- Both accessible via OpenCV without SDK
+
+**macOS (UVC Limited Support)**:
+- Camera 0: RealSense Infrared/Depth (grayscale) ✅
+- Camera X: RealSense RGB Color ❌ NOT ACCESSIBLE
+- RGB only available through RealSense SDK
+
+### Root Cause
+
+This is a platform-specific limitation:
+- macOS AVFoundation does not expose the RealSense RGB module as a UVC device
+- Windows UVC driver properly enumerates both infrared and RGB streams
+- Only the infrared/depth stream appears in `system_profiler SPCameraDataType`
+- The RGB module requires librealsense SDK for access on macOS
+
+### Workarounds
+
+**1. Use MacBook Pro Camera (Recommended)**:
+```bash
+# config/config.yaml
+camera:
+  default_camera: 1  # 0=RealSense IR, 1=MacBook Pro RGB
+```
+
+**2. Enable RealSense SDK for RGB + Depth**:
+```bash
+python main.py --enable-realsense  # Requires sudo, GUI issues
+```
+
+### Impact
+
+- **Minor**: Most users have built-in MacBook cameras for RGB
+- **Moderate**: Users specifically wanting RealSense RGB must use SDK
+- **No Workaround**: Cannot get RealSense RGB via OpenCV on macOS
+
+### References
+
+- [GitHub Issue #3874](https://github.com/IntelRealSense/librealsense/issues/3874): RGB camera doesn't show up on Mac
+- [StackOverflow](https://stackoverflow.com/questions/63235022): Changing RealSense default from depth to RGB with OpenCV
+- Intel Forums: Multiple reports of macOS UVC limitations
+
+---
+
+**Last Updated**: 2025-11-16
+**Reported By**: User Testing
+**Status**: Documented (platform limitation)
