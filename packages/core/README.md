@@ -6,7 +6,7 @@ Core modules for the Access Ability Arm project.
 
 - **Configuration**: Application settings and hardware capability detection
 - **Hardware**: Camera management, button controllers, RealSense interface
-- **Workers**: Image processing threads
+- **Workers**: Image processing threads, arm controller (Flet and PyQt6 variants)
 
 ## Installation
 
@@ -32,3 +32,5 @@ Note: `pyrealsense2` requires manual installation from source. See installation 
 - `aaa_core.hardware.button_controller` - Button press/hold detection
 - `aaa_core.hardware.realsense_camera` - RealSense camera interface
 - `aaa_core.workers.image_processor` - Camera processing thread
+- `aaa_core.workers.arm_controller` - PyQt6-based arm controller
+- `aaa_core.workers.arm_controller_flet` - Flet-compatible arm controller (callback-based)
