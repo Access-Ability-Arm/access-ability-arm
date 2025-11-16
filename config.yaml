@@ -1,0 +1,21 @@
+arm:
+  ip: 192.168.64.3
+  port: 502
+  auto_connect: true
+camera:
+  max_cameras_to_check: 3
+  default_camera: 0
+detection:
+  threshold: 0.5
+  yolo_model_size: x
+controls:
+  button_hold_threshold: 0.5
+  tap_step_size: 10
+  hold_step_size: 50
+  movement_speed: 100
+  gripper_speed: 5000
+display:
+  width: 800
+  height: 650
+  window_width: 1230
+  window_height: 695

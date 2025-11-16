@@ -119,7 +119,7 @@ def main():
     print("Press Enter to accept default values (shown in brackets).\n")
 
     project_root = get_project_root()
-    config_path = project_root / "config.yaml"
+    config_path = project_root / "config" / "config.yaml"
     template_path = project_root / "config" / "config.yaml.template"
 
     # Load template as defaults

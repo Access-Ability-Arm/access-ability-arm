@@ -81,7 +81,7 @@ def load_user_config() -> dict:
     # core/ -> packages/ -> project_root
     project_root = current_file.parent.parent.parent.parent.parent.parent
 
-    config_path = project_root / "config.yaml"
+    config_path = project_root / "config" / "config.yaml"
 
     if not config_path.exists():
         return {}

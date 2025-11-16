@@ -60,7 +60,7 @@ The application will automatically:
 
 ### Configuration
 
-All settings can be customized in `config.yaml` without modifying code.
+All settings can be customized in `config/config.yaml` without modifying code.
 
 **First-Time Setup (Recommended):**
 ```bash
@@ -92,8 +92,8 @@ No manual file editing required!
 **Manual Configuration (Advanced):**
 ```bash
 # Copy template and edit
-cp config/config.yaml.template config.yaml
-# Edit config.yaml with your preferred text editor
+cp config/config.yaml.template config/config.yaml
+# Edit config/config.yaml with your preferred text editor
 ```
 
 The application uses RF-DETR Seg for object detection with automatic fallback support for YOLOv11-seg and Mask R-CNN.

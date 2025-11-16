@@ -24,7 +24,7 @@ def get_project_root() -> Path:
 def load_config() -> dict:
     """Load existing config or create from template"""
     project_root = get_project_root()
-    config_path = project_root / "config.yaml"
+    config_path = project_root / "config" / "config.yaml"
     template_path = project_root / "config" / "config.yaml.template"
 
     if config_path.exists():
@@ -46,7 +46,7 @@ def load_config() -> dict:
 def save_config(config: dict):
     """Save configuration to file"""
     project_root = get_project_root()
-    config_path = project_root / "config.yaml"
+    config_path = project_root / "config" / "config.yaml"
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
