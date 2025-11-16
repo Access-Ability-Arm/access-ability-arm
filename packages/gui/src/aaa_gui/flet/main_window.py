@@ -245,12 +245,27 @@ class FletMainWindow:
                                     [
                                         # Video container with loading overlay
                                         self.video_container,
-                                        ft.Row(
+                                        # Camera controls and status
+                                        ft.Column(
                                             [
-                                                self.camera_dropdown,
-                                                self.toggle_mode_btn,
+                                                ft.Row(
+                                                    [
+                                                        self.camera_dropdown,
+                                                        self.toggle_mode_btn,
+                                                    ],
+                                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                                ),
+                                                # Status row
+                                                ft.Row(
+                                                    [
+                                                        self.status_text,
+                                                        ft.Text(" | ", size=12),
+                                                        self.arm_status_text,
+                                                    ],
+                                                    spacing=5,
+                                                ),
                                             ],
-                                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                            spacing=5,
                                         ),
                                     ],
                                     spacing=10,
@@ -267,18 +282,6 @@ class FletMainWindow:
                         alignment=ft.MainAxisAlignment.CENTER,
                         spacing=20,
                         expand=True,
-                    ),
-                    # Footer: Status
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                self.status_text,
-                                ft.Text(" | ", size=12),
-                                self.arm_status_text,
-                            ],
-                            spacing=5,
-                        ),
-                        margin=ft.margin.only(top=10),
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
