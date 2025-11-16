@@ -750,7 +750,82 @@ class FletMainWindow:
             else:
                 btn.bgcolor = ft.Colors.BLUE_GREY_800
 
+        # Redraw frozen frame with highlighted label
+        self._update_frozen_frame_highlight()
+
         self.page.update()
+
+    def _update_frozen_frame_highlight(self):
+        """Redraw frozen frame with selected object highlighted"""
+        if not self.frozen_detections or self.selected_object is None:
+            return
+
+        # Get detection manager
+        detection_mgr = self.image_processor.detection_manager
+        if not detection_mgr.segmentation_model:
+            return
+
+        # Get clean image and detection data
+        if not hasattr(self.image_processor, '_last_rgb_frame'):
+            return
+
+        clean_img = self.image_processor._last_rgb_frame.copy()
+        boxes = self.frozen_detections['boxes']
+        classes = self.frozen_detections['classes']
+        contours = self.frozen_detections['contours']
+        centers = self.frozen_detections['centers']
+
+        # Draw only the masks
+        img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
+            clean_img, boxes, classes, contours
+        )
+
+        # Draw numbered labels with highlighting for selected object
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 2.1
+        thickness = 4
+        padding = 10
+
+        for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
+            x, y = center
+            label = f"#{i}: {class_name}"
+            is_selected = (i - 1) == self.selected_object
+
+            # Get text size
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label, font, font_scale, thickness
+            )
+
+            # Calculate background rectangle
+            bg_x1 = x - padding
+            bg_y1 = y - text_height - padding
+            bg_x2 = x + text_width + padding
+            bg_y2 = y + baseline + padding
+
+            # Draw background (yellow for selected, black for others)
+            bg_color = (255, 255, 0) if is_selected else (0, 0, 0)  # Yellow or black
+            cv2.rectangle(
+                img_with_masks,
+                (bg_x1, bg_y1),
+                (bg_x2, bg_y2),
+                bg_color,
+                -1
+            )
+
+            # Draw text (black for selected to contrast yellow bg, green for others)
+            text_color = (0, 0, 0) if is_selected else (0, 255, 0)  # Black or green
+            cv2.putText(
+                img_with_masks,
+                label,
+                (x, y),
+                font,
+                font_scale,
+                text_color,
+                thickness
+            )
+
+        # Update frozen frame
+        self.frozen_frame = img_with_masks
 
     def _clear_object_buttons(self):
         """Clear object selection buttons when unfreezing"""
