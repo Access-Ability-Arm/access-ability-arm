@@ -41,6 +41,7 @@ class Lite6Arm:
             True if connection successful, False otherwise
         """
         try:
+            print("[Lite6] Connecting to arm (xArm SDK output follows)...")
             self.arm = XArmAPI(self.ip, is_radian=False)
 
             # Check connection
