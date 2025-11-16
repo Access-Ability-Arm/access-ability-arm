@@ -290,7 +290,7 @@ class FletMainWindow:
         self.page.on_keyboard_event = self._on_keyboard_event
 
     def _build_control_panel(self) -> ft.Container:
-        """Build the robotic arm control panel"""
+        """Build the robotic arm control panel with Manual/Auto tabs"""
 
         def create_direction_controls(direction: str, icon: str) -> ft.Container:
             """Create positive/negative button pair for a direction"""
@@ -357,14 +357,10 @@ class FletMainWindow:
             border_radius=10,
         )
 
-        return ft.Container(
+        # Manual controls tab content
+        manual_tab_content = ft.Container(
             content=ft.Column(
                 [
-                    ft.Text(
-                        "Manual Controls",
-                        size=20,
-                        weight=ft.FontWeight.BOLD,
-                    ),
                     create_direction_controls("x", ft.Icons.SWAP_HORIZ),
                     create_direction_controls("y", ft.Icons.SWAP_VERT),
                     create_direction_controls("z", ft.Icons.HEIGHT),
@@ -373,13 +369,59 @@ class FletMainWindow:
                 ],
                 spacing=10,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER,  # Center vertically
+                scroll=ft.ScrollMode.AUTO,
             ),
+            padding=10,
+        )
+
+        # Auto controls tab content (placeholder for now)
+        auto_tab_content = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(
+                        "Automatic Controls",
+                        size=16,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                    ft.Text(
+                        "Auto mode controls will be added here",
+                        size=12,
+                        color="#607D8B",
+                        italic=True,
+                    ),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=20,
+            ),
+            padding=20,
+        )
+
+        # Create tabs
+        control_tabs = ft.Tabs(
+            selected_index=0,
+            animation_duration=300,
+            tabs=[
+                ft.Tab(
+                    text="Manual",
+                    icon=ft.Icons.TOUCH_APP,
+                    content=manual_tab_content,
+                ),
+                ft.Tab(
+                    text="Auto",
+                    icon=ft.Icons.AUTO_MODE,
+                    content=auto_tab_content,
+                ),
+            ],
+            expand=1,
+        )
+
+        return ft.Container(
+            content=control_tabs,
             width=220,
-            padding=15,
+            padding=5,
             bgcolor="#ECEFF1",  # Blue Grey 50
             border_radius=10,
-            # border=ft.border.all(2, "#0000FF"),  # Blue debug border
         )
 
     def _start_image_processor(self):
