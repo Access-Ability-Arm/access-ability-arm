@@ -670,11 +670,11 @@ class FletMainWindow:
             clean_img, boxes, classes, contours
         )
 
-        # Now draw our enhanced numbered labels
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 2.1  # 3x larger than typical 0.7
-        thickness = 4  # Thicker for readability
-        padding = 10  # Padding around text
+        # Now draw our enhanced numbered labels with better font rendering
+        font = cv2.FONT_HERSHEY_DUPLEX  # Cleaner font than SIMPLEX
+        font_scale = 1.8  # Slightly smaller for better appearance
+        thickness = 2  # Thinner for cleaner look
+        padding = 12  # Padding around text
 
         for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
@@ -694,7 +694,7 @@ class FletMainWindow:
             bg_x2 = x + text_width + padding
             bg_y2 = y + baseline + padding
 
-            # Draw background rectangle
+            # Draw background rectangle (filled)
             cv2.rectangle(
                 img_with_masks,
                 (bg_x1, bg_y1),
@@ -703,7 +703,7 @@ class FletMainWindow:
                 -1
             )
 
-            # Draw text (origin at bottom-left of text)
+            # Draw text with anti-aliasing (LINE_AA)
             cv2.putText(
                 img_with_masks,
                 label,
@@ -711,7 +711,8 @@ class FletMainWindow:
                 font,
                 font_scale,
                 (0, 255, 0),  # Green text
-                thickness
+                thickness,
+                cv2.LINE_AA  # Anti-aliased for smoother appearance
             )
 
         return img_with_masks, detections
@@ -785,10 +786,10 @@ class FletMainWindow:
         )
 
         # Draw numbered labels with highlighting for selected object
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 2.1
-        thickness = 4
-        padding = 10
+        font = cv2.FONT_HERSHEY_DUPLEX  # Cleaner font
+        font_scale = 1.8
+        thickness = 2
+        padding = 12
 
         for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
@@ -816,7 +817,19 @@ class FletMainWindow:
                 -1
             )
 
-            # Draw text (black for selected to contrast yellow bg, green for others)
+            # Draw border for selected object
+            if is_selected:
+                border_color = (0, 200, 0)  # Green border
+                border_thickness = 3
+                cv2.rectangle(
+                    img_with_masks,
+                    (bg_x1, bg_y1),
+                    (bg_x2, bg_y2),
+                    border_color,
+                    border_thickness
+                )
+
+            # Draw text with anti-aliasing (black for selected, green for others)
             text_color = (0, 0, 0) if is_selected else (0, 255, 0)  # Black or green
             cv2.putText(
                 img_with_masks,
@@ -825,7 +838,8 @@ class FletMainWindow:
                 font,
                 font_scale,
                 text_color,
-                thickness
+                thickness,
+                cv2.LINE_AA  # Anti-aliased
             )
 
         # Update frozen frame
