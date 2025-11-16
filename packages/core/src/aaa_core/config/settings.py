@@ -62,7 +62,7 @@ class AppConfig:
     display_width: int = 800
     display_height: int = 650
     window_width: int = 1230
-    window_height: int = 720
+    window_height: int = 800
 
 
 def load_user_config() -> dict:
