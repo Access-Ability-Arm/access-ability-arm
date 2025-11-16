@@ -11,6 +11,9 @@
 # GUI package with Flet interface (cross-platform)
 -e packages/gui[flet]
 
+# Lite6 robotic arm driver (UFactory xArm SDK)
+-e packages/lite6_driver
+
 # Optional: Install with PyQt6 GUI instead
 # -e packages/gui[pyqt]
 

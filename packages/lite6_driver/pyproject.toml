@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aaa-lite6-driver"
+version = "0.1.0"
+description = "UFactory Lite6 robotic arm driver for Access Ability Arm"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [
+    {name = "Access Ability Arm Team"}
+]
+dependencies = [
+    "aaa-core",
+    "xarm-python-sdk>=1.11.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
