@@ -203,11 +203,23 @@ class FletMainWindow:
             color="#455A64",  # Blue Grey 700
         )
 
-        # Arm status display
+        # Arm status display - check actual connection status
+        arm_connected = (
+            app_config.lite6_available
+            and self.arm_controller
+            and self.arm_controller.is_connected()
+        )
+        if arm_connected:
+            arm_status_text = f"Arm: ✓ Connected ({app_config.lite6_ip})"
+            arm_status_color = "#2E7D32"  # Green 800
+        else:
+            arm_status_text = "Arm: Not connected"
+            arm_status_color = "#F57C00"  # Orange 700
+
         self.arm_status_text = ft.Text(
-            "Arm: Not connected",
+            arm_status_text,
             size=12,
-            color="#F57C00",  # Orange 700
+            color=arm_status_color,
         )
 
         # Detection mode toggle button
