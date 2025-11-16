@@ -9,11 +9,12 @@ import time
 from io import BytesIO
 
 import cv2
+import numpy as np
 from aaa_core.config.settings import app_config
 from aaa_core.hardware.button_controller import ButtonController
 from aaa_core.hardware.camera_manager import CameraManager
 from aaa_core.workers.image_processor import ImageProcessor
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 import flet as ft
 
@@ -621,6 +622,70 @@ class FletMainWindow:
         except Exception as e:
             print(f"Error updating video feed: {e}")
 
+    def _draw_text_pil(self, img, text, position, font_size=48,
+                       text_color=(0, 255, 0), bg_color=(0, 0, 0),
+                       border_color=None, border_width=3, padding=12):
+        """
+        Draw text using PIL for better font rendering
+
+        Args:
+            img: numpy array (RGB)
+            text: text to draw
+            position: (x, y) position for text
+            font_size: size of font
+            text_color: RGB tuple for text
+            bg_color: RGB tuple for background
+            border_color: RGB tuple for border (None for no border)
+            border_width: width of border
+            padding: padding around text
+
+        Returns:
+            Modified image
+        """
+        # Convert to PIL Image
+        pil_img = Image.fromarray(img)
+        draw = ImageDraw.Draw(pil_img)
+
+        # Try to use a system font, fallback to default
+        try:
+            # Try common modern fonts
+            font = ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", font_size)  # macOS San Francisco
+        except:
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)  # macOS Helvetica
+            except:
+                try:
+                    font = ImageFont.truetype("arial.ttf", font_size)  # Windows
+                except:
+                    font = ImageFont.load_default()  # Fallback
+
+        # Get text bounding box
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        x, y = position
+
+        # Calculate background rectangle
+        bg_x1 = x - padding
+        bg_y1 = y - text_height - padding
+        bg_x2 = x + text_width + padding
+        bg_y2 = y + padding
+
+        # Draw background
+        draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color)
+
+        # Draw border if specified
+        if border_color:
+            draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2],
+                          outline=border_color, width=border_width)
+
+        # Draw text
+        draw.text((x, y - text_height), text, font=font, fill=text_color)
+
+        # Convert back to numpy array
+        return np.array(pil_img)
+
     def _enhance_frozen_labels(self, img_array):
         """
         Enhance object labels for frozen frame with larger numbered labels
@@ -670,49 +735,21 @@ class FletMainWindow:
             clean_img, boxes, classes, contours
         )
 
-        # Now draw our enhanced numbered labels with better font rendering
-        font = cv2.FONT_HERSHEY_DUPLEX  # Cleaner font than SIMPLEX
-        font_scale = 1.8  # Slightly smaller for better appearance
-        thickness = 2  # Thinner for cleaner look
-        padding = 12  # Padding around text
-
+        # Now draw our enhanced numbered labels with PIL for professional font rendering
         for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
-
-            # Create numbered label
             label = f"#{i}: {class_name}"
 
-            # Get text size for background
-            (text_width, text_height), baseline = cv2.getTextSize(
-                label, font, font_scale, thickness
-            )
-
-            # Calculate background rectangle with proper padding
-            # Text origin is at bottom-left, so we need to adjust for that
-            bg_x1 = x - padding
-            bg_y1 = y - text_height - padding
-            bg_x2 = x + text_width + padding
-            bg_y2 = y + baseline + padding
-
-            # Draw background rectangle (filled)
-            cv2.rectangle(
-                img_with_masks,
-                (bg_x1, bg_y1),
-                (bg_x2, bg_y2),
-                (0, 0, 0),  # Black background
-                -1
-            )
-
-            # Draw text with anti-aliasing (LINE_AA)
-            cv2.putText(
+            # Draw using PIL for much better font rendering
+            img_with_masks = self._draw_text_pil(
                 img_with_masks,
                 label,
                 (x, y),
-                font,
-                font_scale,
-                (0, 255, 0),  # Green text
-                thickness,
-                cv2.LINE_AA  # Anti-aliased for smoother appearance
+                font_size=42,
+                text_color=(0, 255, 0),  # Green
+                bg_color=(0, 0, 0),  # Black
+                border_color=None,
+                padding=12
             )
 
         return img_with_masks, detections
@@ -785,61 +822,33 @@ class FletMainWindow:
             clean_img, boxes, classes, contours
         )
 
-        # Draw numbered labels with highlighting for selected object
-        font = cv2.FONT_HERSHEY_DUPLEX  # Cleaner font
-        font_scale = 1.8
-        thickness = 2
-        padding = 12
-
+        # Draw numbered labels with highlighting for selected object using PIL
         for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
             label = f"#{i}: {class_name}"
             is_selected = (i - 1) == self.selected_object
 
-            # Get text size
-            (text_width, text_height), baseline = cv2.getTextSize(
-                label, font, font_scale, thickness
-            )
-
-            # Calculate background rectangle
-            bg_x1 = x - padding
-            bg_y1 = y - text_height - padding
-            bg_x2 = x + text_width + padding
-            bg_y2 = y + baseline + padding
-
-            # Draw background (yellow for selected, black for others)
-            bg_color = (255, 255, 0) if is_selected else (0, 0, 0)  # Yellow or black
-            cv2.rectangle(
-                img_with_masks,
-                (bg_x1, bg_y1),
-                (bg_x2, bg_y2),
-                bg_color,
-                -1
-            )
-
-            # Draw border for selected object
+            # Set colors based on selection
             if is_selected:
+                text_color = (0, 0, 0)  # Black text
+                bg_color = (255, 255, 0)  # Yellow background
                 border_color = (0, 200, 0)  # Green border
-                border_thickness = 3
-                cv2.rectangle(
-                    img_with_masks,
-                    (bg_x1, bg_y1),
-                    (bg_x2, bg_y2),
-                    border_color,
-                    border_thickness
-                )
+            else:
+                text_color = (0, 255, 0)  # Green text
+                bg_color = (0, 0, 0)  # Black background
+                border_color = None  # No border
 
-            # Draw text with anti-aliasing (black for selected, green for others)
-            text_color = (0, 0, 0) if is_selected else (0, 255, 0)  # Black or green
-            cv2.putText(
+            # Draw using PIL for professional font rendering
+            img_with_masks = self._draw_text_pil(
                 img_with_masks,
                 label,
                 (x, y),
-                font,
-                font_scale,
-                text_color,
-                thickness,
-                cv2.LINE_AA  # Anti-aliased
+                font_size=42,
+                text_color=text_color,
+                bg_color=bg_color,
+                border_color=border_color,
+                border_width=3,
+                padding=12
             )
 
         # Update frozen frame
