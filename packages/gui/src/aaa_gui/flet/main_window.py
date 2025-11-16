@@ -17,9 +17,9 @@ from PIL import Image
 
 import flet as ft
 
-# Import arm controller only if available
+# Import Flet-compatible arm controller
 if app_config.lite6_available:
-    from aaa_core.workers.arm_controller import ArmController
+    from aaa_core.workers.arm_controller_flet import ArmControllerFlet
 
 
 class FletMainWindow:
@@ -66,15 +66,15 @@ class FletMainWindow:
 
         # Arm controller (if available)
         if app_config.lite6_available:
-            self.arm_controller = ArmController(
+            self.arm_controller = ArmControllerFlet(
                 arm_ip=app_config.lite6_ip,
-                port=app_config.lite6_port
+                port=app_config.lite6_port,
+                on_connection_status=self._on_arm_connection_status,
+                on_error=self._on_arm_error
             )
-            # Connect signals
-            self.arm_controller.connection_status.connect(self._on_arm_connection_status)
-            self.arm_controller.error_occurred.connect(self._on_arm_error)
-            # Try to connect
-            self.arm_controller.connect_arm()
+            # Try to connect if auto-connect enabled
+            if app_config.lite6_auto_connect:
+                self.arm_controller.connect_arm()
 
         # Camera manager
         self.camera_manager = CameraManager(
@@ -539,4 +539,4 @@ class FletMainWindow:
         if self.image_processor:
             self.image_processor.stop()
         if self.arm_controller:
-            self.arm_controller.stop()
+            self.arm_controller.disconnect_arm()
