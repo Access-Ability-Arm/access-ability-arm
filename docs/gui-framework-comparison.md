@@ -18,6 +18,7 @@ This document compares alternative GUI frameworks to reduce the Access Ability A
 **Cons**:
 - ❌ Large bundle size (bundles Flutter engine)
 - ❌ Heavy framework for desktop apps
+- ❌ **Startup loading screen issue**: `FLET_APP_HIDDEN` feature is broken since v0.16.0 ([#2705](https://github.com/flet-dev/flet/issues/2705), [#3223](https://github.com/flet-dev/flet/issues/3223)). Cannot hide window during initialization to prevent white screen on startup. Workaround (`page.window.visible = False`) causes event loop to close prematurely when loading screen tries to update.
 
 ## Alternative GUI Frameworks
 

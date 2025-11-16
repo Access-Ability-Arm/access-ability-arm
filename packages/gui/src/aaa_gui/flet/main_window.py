@@ -275,8 +275,6 @@ class FletMainWindow:
                                     [
                                         # Video container with loading overlay
                                         self.video_container,
-                                        # Object selection buttons (shown when frozen)
-                                        self.object_buttons_row,
                                         # Camera controls and status
                                         ft.Column(
                                             [
@@ -459,6 +457,8 @@ class FletMainWindow:
                         width=180,
                         height=50,
                     ),
+                    # Object selection buttons (shown when frozen)
+                    self.object_buttons_row,
                     # Execute button
                     ft.ElevatedButton(
                         text="Execute",
@@ -624,20 +624,21 @@ class FletMainWindow:
 
     def _draw_text_pil(self, img, text, position, font_size=48,
                        text_color=(0, 255, 0), bg_color=(0, 0, 0),
-                       border_color=None, border_width=3, padding=12):
+                       border_color=None, border_width=2, padding=12, corner_radius=8):
         """
-        Draw text using PIL for better font rendering
+        Draw text using PIL for better font rendering with rounded corners
 
         Args:
             img: numpy array (RGB)
             text: text to draw
-            position: (x, y) position for text
+            position: (x, y) position for text center
             font_size: size of font
             text_color: RGB tuple for text
             bg_color: RGB tuple for background
             border_color: RGB tuple for border (None for no border)
             border_width: width of border
             padding: padding around text
+            corner_radius: radius for rounded corners
 
         Returns:
             Modified image
@@ -663,25 +664,39 @@ class FletMainWindow:
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
+        bbox_top_offset = bbox[1]  # Distance from baseline to top of bbox
 
         x, y = position
 
-        # Calculate background rectangle
-        bg_x1 = x - padding
-        bg_y1 = y - text_height - padding
-        bg_x2 = x + text_width + padding
-        bg_y2 = y + padding
+        # Calculate background rectangle centered vertically on position
+        total_width = text_width + 2 * padding
+        total_height = text_height + 2 * padding
 
-        # Draw background
-        draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color)
+        bg_x1 = x - padding
+        bg_y1 = y - total_height // 2
+        bg_x2 = bg_x1 + total_width
+        bg_y2 = bg_y1 + total_height
+
+        # Draw rounded rectangle background
+        draw.rounded_rectangle(
+            [bg_x1, bg_y1, bg_x2, bg_y2],
+            radius=corner_radius,
+            fill=bg_color
+        )
 
         # Draw border if specified
         if border_color:
-            draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2],
-                          outline=border_color, width=border_width)
+            draw.rounded_rectangle(
+                [bg_x1, bg_y1, bg_x2, bg_y2],
+                radius=corner_radius,
+                outline=border_color,
+                width=border_width
+            )
 
-        # Draw text
-        draw.text((x, y - text_height), text, font=font, fill=text_color)
+        # Draw text centered vertically in the box, accounting for bbox offset
+        text_x = x
+        text_y = bg_y1 + padding - bbox_top_offset
+        draw.text((text_x, text_y), text, font=font, fill=text_color)
 
         # Convert back to numpy array
         return np.array(pil_img)
@@ -704,12 +719,15 @@ class FletMainWindow:
         if not detection_mgr.segmentation_model:
             return img_array, None
 
-        # We need to start fresh - the img_array already has labels drawn on it
-        # To get a clean image, we'll need to re-capture, but for now we'll work around it
-        # by using the current processed image and just overlaying new labels
+        # Get the clean raw frame to detect on
+        if hasattr(self.image_processor, '_last_rgb_frame'):
+            clean_img = self.image_processor._last_rgb_frame.copy()
+        else:
+            # Fallback: use current image (will have old labels)
+            clean_img = img_array.copy()
 
-        # Detect objects to get data (detection works even on already-processed images)
-        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(img_array)
+        # Detect on clean image - this is the ONLY detection we do
+        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(clean_img)
 
         # Store detection data for button creation
         detections = {
@@ -718,17 +736,6 @@ class FletMainWindow:
             'boxes': boxes,
             'contours': contours
         }
-
-        # Start with a blank image and redraw everything cleanly
-        # Get the last captured raw frame from the image processor
-        if hasattr(self.image_processor, '_last_rgb_frame'):
-            clean_img = self.image_processor._last_rgb_frame.copy()
-        else:
-            # Fallback: use current image (will have old labels)
-            clean_img = img_array.copy()
-
-        # Detect on clean image
-        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(clean_img)
 
         # Draw only the masks, not the labels
         img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
@@ -746,9 +753,10 @@ class FletMainWindow:
                 label,
                 (x, y),
                 font_size=42,
-                text_color=(0, 255, 0),  # Green
-                bg_color=(0, 0, 0),  # Black
-                border_color=None,
+                text_color=(70, 70, 70),  # Dark gray text
+                bg_color=(255, 255, 255),  # White background
+                border_color=(70, 70, 70),  # Dark gray border
+                border_width=2,
                 padding=12
             )
 
@@ -778,16 +786,21 @@ class FletMainWindow:
         self.page.update()
 
     def _on_object_selected(self, object_index: int):
-        """Handle object button click"""
-        self.selected_object = object_index
+        """Handle object button click - toggle selection if already selected"""
         classes = self.frozen_detections['classes']
         class_name = classes[object_index]
 
-        print(f"Selected object #{object_index + 1}: {class_name}")
+        # Toggle selection if clicking the same object
+        if self.selected_object == object_index:
+            self.selected_object = None
+            print(f"Deselected object #{object_index + 1}: {class_name}")
+        else:
+            self.selected_object = object_index
+            print(f"Selected object #{object_index + 1}: {class_name}")
 
         # Highlight the selected button
         for i, btn in enumerate(self.object_buttons_row.controls):
-            if i == object_index:
+            if i == self.selected_object:
                 btn.bgcolor = ft.Colors.GREEN_700
             else:
                 btn.bgcolor = ft.Colors.BLUE_GREY_800
@@ -799,7 +812,7 @@ class FletMainWindow:
 
     def _update_frozen_frame_highlight(self):
         """Redraw frozen frame with selected object highlighted"""
-        if not self.frozen_detections or self.selected_object is None:
+        if not self.frozen_detections:
             return
 
         # Get detection manager
@@ -830,13 +843,13 @@ class FletMainWindow:
 
             # Set colors based on selection
             if is_selected:
-                text_color = (0, 0, 0)  # Black text
-                bg_color = (255, 255, 0)  # Yellow background
-                border_color = (0, 200, 0)  # Green border
+                text_color = (255, 255, 255)  # White text
+                bg_color = (100, 149, 237)  # Blue background (Cornflower blue)
+                border_color = (25, 25, 112)  # Dark blue border (Midnight blue)
             else:
-                text_color = (0, 255, 0)  # Green text
-                bg_color = (0, 0, 0)  # Black background
-                border_color = None  # No border
+                text_color = (70, 70, 70)  # Dark gray text
+                bg_color = (240, 240, 240)  # Very light gray background
+                border_color = (70, 70, 70)  # Dark gray border
 
             # Draw using PIL for professional font rendering
             img_with_masks = self._draw_text_pil(
