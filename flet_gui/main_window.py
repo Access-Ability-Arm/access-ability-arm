@@ -33,9 +33,9 @@ class FletMainWindow:
         self.page = page
         self.page.title = "Access Ability Arm"
         self.page.theme_mode = ft.ThemeMode.LIGHT
-        self.page.padding = 10
-        self.page.window.width = 1200
-        self.page.window.height = 820
+        self.page.padding = 5
+        self.page.window.width = 1230
+        self.page.window.height = 695
         self.page.window.resizable = True
 
         # Initialize components
@@ -56,6 +56,7 @@ class FletMainWindow:
         self.button_controller = ButtonController(
             hold_threshold=app_config.button_hold_threshold
         )
+        self.button_controller.start()  # Start the thread once
 
         # Camera manager
         self.camera_manager = CameraManager(
@@ -124,7 +125,7 @@ class FletMainWindow:
             options=camera_options,
             value="0" if camera_options else None,
             on_change=self._on_camera_changed,
-            width=300,
+            width=400,
         )
 
         # Status display
@@ -167,9 +168,11 @@ class FletMainWindow:
                                     ],
                                     spacing=10,
                                     expand=True,
+                                    alignment=ft.MainAxisAlignment.START,  # Align to top
                                 ),
                                 padding=0,
                                 expand=2,  # Takes 2/3 of available space
+                                # border=ft.border.all(2, "#FF0000"),  # Red debug border
                             ),
                             # Right: Control panel (fixed width)
                             control_panel,
@@ -200,7 +203,7 @@ class FletMainWindow:
             return ft.Container(
                 content=ft.Column(
                     [
-                        ft.Text(direction.upper(), weight=ft.FontWeight.BOLD, size=28),
+                        ft.Text(direction.upper(), weight=ft.FontWeight.BOLD, size=16),
                         ft.Row(
                             [
                                 ft.IconButton(
@@ -210,11 +213,11 @@ class FletMainWindow:
                                     d=direction: self._on_button_press(d, "neg"),
                                     bgcolor="#EF9A9A",  # Red 200
                                     icon_color="#B71C1C",  # Red 900
-                                    icon_size=60,
-                                    width=100,
-                                    height=100,
+                                    icon_size=30,
+                                    width=50,
+                                    height=50,
                                 ),
-                                ft.Icon(icon, size=80),
+                                ft.Icon(icon, size=40),
                                 ft.IconButton(
                                     icon=ft.Icons.ADD,
                                     tooltip=f"{direction} positive",
@@ -222,18 +225,18 @@ class FletMainWindow:
                                     d=direction: self._on_button_press(d, "pos"),
                                     bgcolor="#A5D6A7",  # Green 200
                                     icon_color="#1B5E20",  # Green 900
-                                    icon_size=60,
-                                    width=100,
-                                    height=100,
+                                    icon_size=30,
+                                    width=50,
+                                    height=50,
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=10,
+                    spacing=5,
                 ),
-                padding=20,
+                padding=10,
                 border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
                 border_radius=10,
             )
@@ -242,20 +245,20 @@ class FletMainWindow:
         grip_toggle = ft.Container(
             content=ft.Column(
                 [
-                    ft.Text("GRIP STATE", weight=ft.FontWeight.BOLD, size=28),
+                    ft.Text("GRIP STATE", weight=ft.FontWeight.BOLD, size=16),
                     ft.Switch(
                         label="Open/Close",
-                        label_style=ft.TextStyle(size=20),
+                        label_style=ft.TextStyle(size=14),
                         on_change=lambda e: self._on_grip_state_changed(
                             e.control.value
                         ),
-                        scale=2.0,
+                        scale=1.0,
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=20,
+                spacing=10,
             ),
-            padding=20,
+            padding=10,
             border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
             border_radius=10,
         )
@@ -265,7 +268,7 @@ class FletMainWindow:
                 [
                     ft.Text(
                         "Manual Controls",
-                        size=32,
+                        size=20,
                         weight=ft.FontWeight.BOLD,
                     ),
                     create_direction_controls("x", ft.Icons.SWAP_HORIZ),
@@ -274,13 +277,15 @@ class FletMainWindow:
                     create_direction_controls("grip", ft.Icons.BACK_HAND),
                     grip_toggle,
                 ],
-                spacing=20,
+                spacing=10,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,  # Center vertically
             ),
-            width=400,
-            padding=30,
+            width=220,
+            padding=15,
             bgcolor="#ECEFF1",  # Blue Grey 50
             border_radius=10,
+            # border=ft.border.all(2, "#0000FF"),  # Blue debug border
         )
 
     def _start_image_processor(self):
@@ -377,7 +382,6 @@ class FletMainWindow:
         print(f"Button {button_name} pressed")
 
         start_time = time.time()
-        self.button_controller.start()
         self.button_controller.update_button_state("pressed", start_time, button_name)
 
         # Simulate release after brief moment (you would connect to actual button release events)
