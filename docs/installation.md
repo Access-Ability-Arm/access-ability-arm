@@ -4,7 +4,15 @@
 
 **Python Version:** This project requires **Python 3.11** (MediaPipe does not support Python 3.14+).
 
-**Disk Space:** At least **15GB free** (Xcode ~12GB, Android Studio ~3GB, dependencies ~1GB).
+**Disk Space:** 
+- **Minimum:** ~500MB (Python packages + RF-DETR model)
+- **With packaging tools:** ~15GB (Xcode ~12GB, Android Studio ~3GB)
+  - Only needed if building distributable apps
+
+**Hardware:**
+- **UFactory Lite6 robotic arm** (optional - app works without arm)
+- **Intel RealSense camera** (optional - app works with standard webcams)
+- **Any webcam** for basic operation
 
 ## Setting Up the Virtual Environment
 
@@ -45,13 +53,20 @@ pip install -r requirements.txt
 
 ## Model Files
 
-### YOLOv11 (Recommended - Used by main.py)
+### RF-DETR Seg (Recommended - State-of-the-art, Nov 2025)
 
-**No setup required!** Models download automatically on first run (~6MB for nano model).
+**No setup required!** The RF-DETR model downloads automatically on first run (~130MB).
+- Stored in `data/models/`
+- Best accuracy: 44.3 mAP@50:95
+- Automatic GPU acceleration (Metal/CUDA/CPU)
 
-### Mask R-CNN (Legacy - Used by main-rd.py)
+### YOLOv11 (Fallback)
 
-If you need the legacy Mask R-CNN version, download model files manually:
+**No setup required!** Auto-downloads if RF-DETR unavailable (~6MB for nano model).
+
+### Mask R-CNN (Legacy)
+
+**No longer recommended.** The legacy Mask R-CNN is slower and less accurate than RF-DETR and YOLOv11. If you still need it:
 
 #### 1. Create dnn Directory
 
@@ -88,7 +103,7 @@ ls dnn/
 # - classes.txt
 ```
 
-**Note:** These files are large (~200MB) and only required for legacy `main-rd.py`.
+**Note:** These files are large (~200MB) and only required if using Mask R-CNN fallback.
 
 ## Optional: Intel RealSense Camera Support
 
@@ -360,19 +375,34 @@ For Jupyter notebook support in Zed editor:
 - Run: `repl: refresh kernelspecs`
 - Select "Python (DE-GUI venv)" from kernel selector
 
+## Configuration
+
+After installation, configure your arm and settings:
+
+```bash
+# Interactive setup (recommended for first-time)
+python scripts/setup_config.py
+
+# Quick updates (change IP, speeds, etc.)
+python scripts/update_config.py
+```
+
+See [README.md Configuration section](../README.md#configuration) for details.
+
 ## Verifying Installation
 
 Test that everything is installed correctly:
 
 ```bash
 source venv/bin/activate  # or venv\Scripts\activate on Windows
-python -c "from config.settings import app_config; print('✓ Installation successful')"
+python -c "from aaa_core.config.settings import app_config; print('✓ Installation successful')"
 ```
 
 You should see:
 ```
 ✓ RealSense camera support available  (or ✗ if not installed)
-✓ YOLOv11-seg object detection available (recommended)
+✓ Lite6 arm driver available  (or ✗ if not installed)
+✓ RF-DETR Seg object detection available (SOTA Nov 2025, 44.3 mAP)
 ✓ Installation successful
 ```
 
