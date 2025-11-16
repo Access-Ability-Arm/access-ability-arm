@@ -70,9 +70,5 @@ if __name__ == "__main__":
         header(
             f"Starting Access Ability Arm ({underline('Desktop version')})"
         )
-        info(
-            "Press 'T' to toggle between face tracking "
-            "and object detection"
-        )
         status("Close the window to exit")
         ft.app(target=main, name="Access Ability Arm")
