@@ -42,6 +42,10 @@ class FletMainWindow:
         self.page.window.height = app_config.window_height
         self.page.window.resizable = True
 
+        # Center window on screen
+        self.page.window.left = 100
+        self.page.window.top = 100
+
         # Initialize components
         self.button_controller = None
         self.arm_controller = None
