@@ -529,14 +529,12 @@ class FletMainWindow:
         Update video feed with new frame
 
         Args:
-            img_array: Numpy array (BGR format from OpenCV)
+            img_array: Numpy array (RGB format from image processor)
         """
         try:
-            # Convert BGR to RGB
-            img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-
+            # Image is already in RGB format from image_processor
             # Convert to PIL Image
-            pil_image = Image.fromarray(img_rgb)
+            pil_image = Image.fromarray(img_array)
 
             # Convert to base64
             buffered = BytesIO()
