@@ -419,7 +419,7 @@ class FletMainWindow:
             padding=10,
         )
 
-        # Auto controls tab content (placeholder for now)
+        # Auto controls tab content
         auto_tab_content = ft.Container(
             content=ft.Column(
                 [
@@ -428,16 +428,49 @@ class FletMainWindow:
                         size=16,
                         weight=ft.FontWeight.BOLD,
                     ),
-                    ft.Text(
-                        "Auto mode controls will be added here",
-                        size=12,
-                        color="#607D8B",
-                        italic=True,
+                    # Find Objects button
+                    ft.ElevatedButton(
+                        text="Find Objects",
+                        icon=ft.Icons.SEARCH,
+                        on_click=lambda e: self._on_find_objects(),
+                        bgcolor="#2196F3",  # Blue 500
+                        color="#FFFFFF",
+                        width=180,
+                        height=50,
+                    ),
+                    # Execute button
+                    ft.ElevatedButton(
+                        text="Execute",
+                        icon=ft.Icons.PLAY_ARROW,
+                        on_click=lambda e: self._on_execute(),
+                        bgcolor="#4CAF50",  # Green 500
+                        color="#FFFFFF",
+                        width=180,
+                        height=50,
+                    ),
+                    # Stop button
+                    ft.ElevatedButton(
+                        text="Stop",
+                        icon=ft.Icons.STOP,
+                        on_click=lambda e: self._on_stop(),
+                        bgcolor="#F44336",  # Red 500
+                        color="#FFFFFF",
+                        width=180,
+                        height=50,
+                    ),
+                    # Home button
+                    ft.ElevatedButton(
+                        text="Home",
+                        icon=ft.Icons.HOME,
+                        on_click=lambda e: self._on_home(),
+                        bgcolor="#FF9800",  # Orange 500
+                        color="#FFFFFF",
+                        width=180,
+                        height=50,
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=20,
+                spacing=15,
             ),
             padding=20,
         )
@@ -730,6 +763,56 @@ class FletMainWindow:
                 left=int(self.page.window.left),
                 top=int(self.page.window.top)
             )
+
+    def _on_find_objects(self):
+        """Handle Find Objects button - triggers arm movement and object detection scan"""
+        print("Find Objects: Starting object detection scan...")
+        if not self.arm_controller or not self.arm_controller.arm:
+            print("Arm not connected - cannot scan for objects")
+            return
+
+        # TODO: Implement object scanning logic
+        # - Move arm through scanning positions
+        # - Detect objects in each position
+        # - Build list of detected objects with positions
+        print("Object scanning not yet implemented")
+
+    def _on_execute(self):
+        """Handle Execute button - confirms grasp plan and begins arm motion"""
+        print("Execute: Beginning grasp motion...")
+        if not self.arm_controller or not self.arm_controller.arm:
+            print("Arm not connected - cannot execute grasp")
+            return
+
+        # TODO: Implement grasp execution logic
+        # - Move to pre-grasp position
+        # - Approach target object
+        # - Close gripper
+        # - Lift object
+        # - Move to drop position
+        print("Grasp execution not yet implemented")
+
+    def _on_stop(self):
+        """Handle Stop button - immediately halts all arm movement"""
+        print("Stop: Halting all arm movement...")
+        if not self.arm_controller or not self.arm_controller.arm:
+            print("Arm not connected")
+            return
+
+        # Emergency stop - halt all motion immediately
+        self.arm_controller.emergency_stop()
+        print("Arm stopped")
+
+    def _on_home(self):
+        """Handle Home button - returns arm to safe rest position"""
+        print("Home: Returning to rest position...")
+        if not self.arm_controller or not self.arm_controller.arm:
+            print("Arm not connected - cannot move to home")
+            return
+
+        # Move to home position
+        self.arm_controller.home()
+        print("Moving to home position")
 
     def cleanup(self):
         """Clean up resources"""
