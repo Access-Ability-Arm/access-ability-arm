@@ -65,6 +65,7 @@ class FletMainWindow:
         # Video freeze state for object detection
         self.video_frozen = False
         self.frozen_frame = None
+        self.frozen_detections = None  # Store detection data when frozen
 
         # Show loading screen immediately
         self._show_initial_loading_screen()
@@ -571,11 +572,11 @@ class FletMainWindow:
             img_array: Numpy array (RGB format from image processor)
         """
         try:
-            # If video is frozen, store current frame and display frozen frame
+            # If video is frozen, store current frame and display frozen frame with enhanced labels
             if self.video_frozen:
                 if self.frozen_frame is None:
-                    # First frame after freezing - store it
-                    self.frozen_frame = img_array.copy()
+                    # First frame after freezing - store it and enhance labels
+                    self.frozen_frame = self._enhance_frozen_labels(img_array.copy())
                     print("Find Objects: Frame captured and frozen")
                 # Display the frozen frame
                 img_array = self.frozen_frame
@@ -601,6 +602,69 @@ class FletMainWindow:
 
         except Exception as e:
             print(f"Error updating video feed: {e}")
+
+    def _enhance_frozen_labels(self, img_array):
+        """
+        Enhance object labels for frozen frame with larger numbered labels
+
+        Args:
+            img_array: Numpy array (RGB format) with existing detections
+
+        Returns:
+            Image with enhanced numbered labels (3x larger)
+        """
+        # This is a simplified approach - we re-run detection to get object data
+        if not self.image_processor or self.image_processor.detection_mode != "objects":
+            return img_array
+
+        # Get detection manager
+        detection_mgr = self.image_processor.detection_manager
+        if not detection_mgr.segmentation_model:
+            return img_array
+
+        # Re-detect objects to get centers and classes
+        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(img_array)
+
+        # Draw numbered labels with 3x larger text
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 2.1  # 3x larger than typical 0.7
+        thickness = 4  # Thicker for readability
+
+        for i, (center, class_id) in enumerate(zip(centers, classes), start=1):
+            x, y = center
+
+            # Get class name
+            class_name = detection_mgr.segmentation_model.class_names[class_id]
+
+            # Create numbered label
+            label = f"#{i}: {class_name}"
+
+            # Get text size for background
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label, font, font_scale, thickness
+            )
+
+            # Draw background rectangle
+            cv2.rectangle(
+                img_array,
+                (x - 5, y - text_height - baseline - 5),
+                (x + text_width + 5, y + 5),
+                (0, 0, 0),  # Black background
+                -1
+            )
+
+            # Draw text
+            cv2.putText(
+                img_array,
+                label,
+                (x, y),
+                font,
+                font_scale,
+                (0, 255, 0),  # Green text
+                thickness
+            )
+
+        return img_array
 
     def _on_camera_changed(self, e):
         """Handle camera selection change"""
