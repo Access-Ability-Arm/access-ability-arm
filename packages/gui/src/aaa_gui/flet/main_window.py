@@ -611,9 +611,8 @@ class FletMainWindow:
             img_array: Numpy array (RGB format) with existing detections
 
         Returns:
-            Image with enhanced numbered labels (3x larger)
+            Image with enhanced numbered labels (3x larger) only, no original labels
         """
-        # This is a simplified approach - we re-run detection to get object data
         if not self.image_processor or self.image_processor.detection_mode != "objects":
             return img_array
 
@@ -622,18 +621,24 @@ class FletMainWindow:
         if not detection_mgr.segmentation_model:
             return img_array
 
-        # Re-detect objects to get centers and classes
+        # Get a fresh frame without labels - re-detect on original image
+        # First, detect objects to get data
         (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(img_array)
 
-        # Draw numbered labels with 3x larger text
+        # Draw only the masks, not the labels
+        img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
+            img_array, boxes, classes, contours
+        )
+
+        # Now draw our enhanced numbered labels
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 2.1  # 3x larger than typical 0.7
         thickness = 4  # Thicker for readability
+        padding = 10  # Padding around text
 
         for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
             x, y = center
 
-            # classes already contains the class names as strings
             # Create numbered label
             label = f"#{i}: {class_name}"
 
@@ -642,18 +647,25 @@ class FletMainWindow:
                 label, font, font_scale, thickness
             )
 
+            # Calculate background rectangle with proper padding
+            # Text origin is at bottom-left, so we need to adjust for that
+            bg_x1 = x - padding
+            bg_y1 = y - text_height - padding
+            bg_x2 = x + text_width + padding
+            bg_y2 = y + baseline + padding
+
             # Draw background rectangle
             cv2.rectangle(
-                img_array,
-                (x - 5, y - text_height - baseline - 5),
-                (x + text_width + 5, y + 5),
+                img_with_masks,
+                (bg_x1, bg_y1),
+                (bg_x2, bg_y2),
                 (0, 0, 0),  # Black background
                 -1
             )
 
-            # Draw text
+            # Draw text (origin at bottom-left of text)
             cv2.putText(
-                img_array,
+                img_with_masks,
                 label,
                 (x, y),
                 font,
@@ -662,7 +674,7 @@ class FletMainWindow:
                 thickness
             )
 
-        return img_array
+        return img_with_masks
 
     def _on_camera_changed(self, e):
         """Handle camera selection change"""
