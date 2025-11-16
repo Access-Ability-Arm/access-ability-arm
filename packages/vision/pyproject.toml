@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aaa-vision"
+version = "0.1.0"
+description = "Computer vision modules for Access Ability Arm"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [
+    {name = "Access Ability Arm Team"}
+]
+dependencies = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "mediapipe>=0.10.0",
+    "ultralytics>=8.0.0",
+    "torch>=2.0.0",
+    "rfdetr @ git+https://github.com/roboflow/rf-detr.git@0c1e8330e41db310e4d86ddf7a5c1b26e7f67489",
+]
+
+[project.optional-dependencies]
+maskrcnn = [
+    "tensorflow>=2.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

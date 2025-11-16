@@ -43,11 +43,3 @@ data/dnn/*.tar.gz
 
 # Legacy directories (moved to packages/)
 archive/
-models/
-dnn/
-vision/
-gui/
-flet_gui/
-config/
-hardware/
-workers/
