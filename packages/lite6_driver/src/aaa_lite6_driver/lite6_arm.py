@@ -6,8 +6,9 @@ using the xArm Python SDK.
 """
 
 import io
+import os
 import sys
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from typing import Optional, Tuple
 
 from xarm.wrapper import XArmAPI
@@ -44,8 +45,8 @@ class Lite6Arm:
             True if connection successful, False otherwise
         """
         try:
-            # Suppress xArm SDK stdout output during connection
-            with redirect_stdout(io.StringIO()):
+            # Suppress xArm SDK stdout and stderr output during connection
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 self.arm = XArmAPI(self.ip, is_radian=False)
 
             # Check connection
