@@ -26,22 +26,49 @@ pip install -e packages/lite6_driver
 
 ## Usage
 
+### Basic Usage
+
 ```python
 from aaa_lite6_driver import Lite6Arm
 
 # Connect to the arm
-arm = Lite6Arm(ip="192.168.1.xxx")
-
-# Move to position
-arm.move_to_position(x=300, y=0, z=200)
-
-# Control gripper
-arm.open_gripper()
-arm.close_gripper()
-
-# Disconnect
-arm.disconnect()
+arm = Lite6Arm(ip="192.168.1.203")
+if arm.connect():
+    # Move to position (x, y, z in mm)
+    arm.move_to_position(x=300, y=0, z=200)
+    
+    # Move with orientation (x, y, z, roll, pitch, yaw)
+    arm.move_to_position(x=300, y=0, z=200, roll=0, pitch=0, yaw=0)
+    
+    # Control gripper
+    arm.open_gripper()
+    arm.close_gripper()
+    arm.set_gripper_position(400)  # 0=closed, 800=open
+    
+    # Get current position
+    pos = arm.get_position()  # Returns (x, y, z, roll, pitch, yaw)
+    
+    # Home position
+    arm.home()
+    
+    # Disconnect
+    arm.disconnect()
 ```
+
+### Context Manager (Recommended)
+
+```python
+from aaa_lite6_driver import Lite6Arm
+
+with Lite6Arm("192.168.1.203") as arm:
+    arm.move_to_position(x=300, y=0, z=200)
+    arm.close_gripper()
+    # Automatically disconnects when done
+```
+
+### Example Script
+
+See [examples/basic_control.py](examples/basic_control.py) for a complete working example.
 
 ## Configuration
 
