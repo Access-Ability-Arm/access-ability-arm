@@ -39,7 +39,6 @@ install:
 
 # Run desktop application
 run:
-	@echo "Starting Access Ability Arm (Desktop)..."
 	python main.py
 
 # Run web application (default port 8550)

@@ -67,4 +67,5 @@ if __name__ == "__main__":
             port=args.port, name="Access Ability Arm"
         )
     else:
+        header("Starting Access Ability Arm")
         ft.app(target=main, name="Access Ability Arm")
