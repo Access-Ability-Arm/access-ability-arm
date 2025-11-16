@@ -8,10 +8,10 @@ from typing import Callable, Optional
 
 import cv2
 import numpy as np
+from aaa_vision.detection_manager import DetectionManager
 
 from aaa_core.config.console import error, status, success, underline
 from aaa_core.config.settings import app_config
-from aaa_vision.detection_manager import DetectionManager
 
 
 class ImageProcessor(threading.Thread):
@@ -182,6 +182,15 @@ class ImageProcessor(threading.Thread):
     def toggle_detection_mode(self):
         """Toggle between face tracking and object detection"""
         self.detection_manager.toggle_mode()
+
+    def set_detection_mode(self, mode: str):
+        """
+        Set detection mode directly
+
+        Args:
+            mode: Detection mode ("objects", "face", "combined", "camera")
+        """
+        self.detection_manager.detection_mode = mode
 
     @property
     def detection_mode(self) -> str:

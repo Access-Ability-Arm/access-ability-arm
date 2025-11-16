@@ -773,12 +773,28 @@ class FletMainWindow:
                 )
 
     def _on_find_objects(self):
-        """Handle Find Objects button - freeze/unfreeze video for object detection"""
+        """Handle Find Objects button - switch to object detection and capture for 1 second"""
+        if not self.image_processor:
+            print("Find Objects: Image processor not ready")
+            return
+
         if not self.video_frozen:
-            # First click: freeze the current frame
-            print("Find Objects: Freezing video for object detection...")
-            self.video_frozen = True
-            # The frozen frame will be captured on the next _update_video_feed call
+            # First click: switch to object detection mode, capture for 1 second, then freeze
+            print("Find Objects: Switching to object detection mode...")
+
+            # Switch to object detection mode
+            current_mode = self.image_processor.detection_mode
+            if current_mode != "objects":
+                self.image_processor.set_detection_mode("objects")
+                self._update_status()
+
+            # Capture video for 1 second then freeze
+            def capture_and_freeze():
+                time.sleep(1.0)
+                self.video_frozen = True
+                print("Find Objects: Video frozen on detected objects")
+
+            threading.Thread(target=capture_and_freeze, daemon=True).start()
         else:
             # Second click: unfreeze and capture for 1 second, then freeze again
             print("Find Objects: Capturing new frame...")
