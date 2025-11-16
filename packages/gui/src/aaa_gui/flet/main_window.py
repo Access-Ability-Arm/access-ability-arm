@@ -62,6 +62,10 @@ class FletMainWindow:
         # Movement speed percentage (1-100%)
         self.movement_speed_percent = 20  # Default 20%
 
+        # Video freeze state for object detection
+        self.video_frozen = False
+        self.frozen_frame = None
+
         # Show loading screen immediately
         self._show_initial_loading_screen()
 
@@ -565,6 +569,15 @@ class FletMainWindow:
             img_array: Numpy array (RGB format from image processor)
         """
         try:
+            # If video is frozen, store current frame and display frozen frame
+            if self.video_frozen:
+                if self.frozen_frame is None:
+                    # First frame after freezing - store it
+                    self.frozen_frame = img_array.copy()
+                    print("Find Objects: Frame captured and frozen")
+                # Display the frozen frame
+                img_array = self.frozen_frame
+
             # Image is already in RGB format from image_processor
             # Convert to PIL Image
             pil_image = Image.fromarray(img_array)
@@ -758,17 +771,25 @@ class FletMainWindow:
                 )
 
     def _on_find_objects(self):
-        """Handle Find Objects button - triggers arm movement and object detection scan"""
-        print("Find Objects: Starting object detection scan...")
-        if not self.arm_controller or not self.arm_controller.arm:
-            print("Arm not connected - cannot scan for objects")
-            return
+        """Handle Find Objects button - freeze/unfreeze video for object detection"""
+        if not self.video_frozen:
+            # First click: freeze the current frame
+            print("Find Objects: Freezing video for object detection...")
+            self.video_frozen = True
+            # The frozen frame will be captured on the next _update_video_feed call
+        else:
+            # Second click: unfreeze and capture for 1 second, then freeze again
+            print("Find Objects: Capturing new frame...")
+            self.video_frozen = False
+            self.frozen_frame = None
 
-        # TODO: Implement object scanning logic
-        # - Move arm through scanning positions
-        # - Detect objects in each position
-        # - Build list of detected objects with positions
-        print("Object scanning not yet implemented")
+            # Capture video for 1 second then freeze again
+            def capture_and_freeze():
+                time.sleep(1.0)
+                self.video_frozen = True
+                print("Find Objects: Video frozen on new frame")
+
+            threading.Thread(target=capture_and_freeze, daemon=True).start()
 
     def _on_execute(self):
         """Handle Execute button - confirms grasp plan and begins arm motion"""
