@@ -56,6 +56,9 @@ class FletMainWindow:
         self.camera_dropdown = None
         self.arm_status_text = None
 
+        # Movement speed percentage (1-100%)
+        self.movement_speed_percent = 20  # Default 20%
+
         # Show loading screen immediately
         self._show_initial_loading_screen()
 
@@ -364,10 +367,41 @@ class FletMainWindow:
             border_radius=10,
         )
 
+        # Speed slider
+        self.speed_label = ft.Text(
+            f"Speed: {self.movement_speed_percent}%",
+            size=14,
+            weight=ft.FontWeight.BOLD,
+        )
+
+        speed_slider = ft.Slider(
+            min=1,
+            max=100,
+            value=self.movement_speed_percent,
+            divisions=99,
+            label="{value}%",
+            on_change=self._on_speed_changed,
+        )
+
+        speed_control = ft.Container(
+            content=ft.Column(
+                [
+                    self.speed_label,
+                    speed_slider,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=5,
+            ),
+            padding=10,
+            border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
+            border_radius=10,
+        )
+
         # Manual controls tab content
         manual_tab_content = ft.Container(
             content=ft.Column(
                 [
+                    speed_control,
                     create_direction_controls("x", ft.Icons.SWAP_HORIZ),
                     create_direction_controls("y", ft.Icons.SWAP_VERT),
                     create_direction_controls("z", ft.Icons.HEIGHT),
@@ -540,6 +574,13 @@ class FletMainWindow:
 
         threading.Timer(0.1, on_release).start()
 
+    def _on_speed_changed(self, e):
+        """Handle speed slider change"""
+        self.movement_speed_percent = int(e.control.value)
+        self.speed_label.value = f"Speed: {self.movement_speed_percent}%"
+        self.page.update()
+        print(f"Movement speed set to: {self.movement_speed_percent}%")
+
     def _on_grip_state_changed(self, is_closed: bool):
         """Handle grip state toggle"""
         state = "closed" if is_closed else "open"
@@ -582,8 +623,11 @@ class FletMainWindow:
 
         # Determine step size based on button hold duration
         # Short tap: small step, long hold: large step
-        step = (app_config.tap_step_size if duration < app_config.button_hold_threshold
-                else app_config.hold_step_size)
+        base_step = (app_config.tap_step_size if duration < app_config.button_hold_threshold
+                     else app_config.hold_step_size)
+
+        # Apply speed percentage to step size
+        step = base_step * (self.movement_speed_percent / 100.0)
 
         # Apply movement based on button
         if button_name == "x_pos":
@@ -599,22 +643,25 @@ class FletMainWindow:
         elif button_name == "z_neg":
             z -= step
         elif button_name == "grip_pos":
-            # Grip controls are handled separately via gripper position
+            # Grip controls - apply speed percentage
             current_grip = self.arm_controller.arm.get_gripper_position() or 400
-            new_grip = min(800, current_grip + 100)
-            self.arm_controller.set_gripper(new_grip, wait=False)
+            grip_step = 100 * (self.movement_speed_percent / 100.0)
+            new_grip = min(800, current_grip + grip_step)
+            self.arm_controller.set_gripper(int(new_grip), wait=False)
             return
         elif button_name == "grip_neg":
             current_grip = self.arm_controller.arm.get_gripper_position() or 400
-            new_grip = max(0, current_grip - 100)
-            self.arm_controller.set_gripper(new_grip, wait=False)
+            grip_step = 100 * (self.movement_speed_percent / 100.0)
+            new_grip = max(0, current_grip - grip_step)
+            self.arm_controller.set_gripper(int(new_grip), wait=False)
             return
 
-        # Send move command
-        print(f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f})")
+        # Send move command with speed percentage applied
+        movement_speed = app_config.movement_speed * (self.movement_speed_percent / 100.0)
+        print(f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f}) at {self.movement_speed_percent}% speed")
         self.arm_controller.move_to(
             x, y, z, roll, pitch, yaw,
-            speed=app_config.movement_speed,
+            speed=movement_speed,
             wait=False
         )
 
