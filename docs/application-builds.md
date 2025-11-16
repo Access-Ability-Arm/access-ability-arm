@@ -233,7 +233,9 @@ flet build web
 
 ## Troubleshooting
 
-### "CocoaPods not installed or not in valid state" (Flet build)
+### "CocoaPods not installed or not in valid state"
+
+**Error:** Flet build fails with CocoaPods errors during macOS app packaging.
 
 This occurs when:
 1. CocoaPods was installed via Homebrew instead of Ruby gems

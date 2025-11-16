@@ -198,10 +198,6 @@ pip install -r requirements.txt
 
 The `AVCaptureDeviceTypeExternal` warning is harmless and can be ignored. Camera detection will still work correctly.
 
-### "CocoaPods not installed or not in valid state" (Flet build)
-
-If you're building macOS applications and encounter CocoaPods errors, see the [Application Builds](application-builds.md#macos-application-packaging-flet) guide for detailed setup instructions.
-
 ## Next Steps
 
 Once installation is complete, see [README.md](../README.md) for usage instructions.
