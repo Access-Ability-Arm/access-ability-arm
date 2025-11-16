@@ -179,6 +179,7 @@ class FletMainWindow:
         )
 
         # Video container with Stack to overlay loading on video
+        # Set fixed height to prevent layout shift when camera loads
         self.video_container = ft.Container(
             content=ft.Stack(
                 [
@@ -187,6 +188,7 @@ class FletMainWindow:
                 ],
                 expand=True,
             ),
+            height=app_config.display_height,  # Fixed height from config (650px)
             expand=True,
         )
 
