@@ -261,11 +261,12 @@ class DetectionManager:
             # Prepare label
             label = class_name
 
-            # Add smoothed depth if available
+            # Add smoothed depth if available (convert mm to cm with 1 decimal)
             if depths is not None and i < len(depths):
                 depth = depths[i]
                 if depth is not None and depth > 0:
-                    label += f" {depth}mm"
+                    depth_cm = depth / 10.0
+                    label += f" {depth_cm:.1f}cm"
 
             # Draw label background (semi-transparent black)
             (label_w, label_h), baseline = cv2.getTextSize(
