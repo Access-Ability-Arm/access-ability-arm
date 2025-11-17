@@ -343,11 +343,11 @@ class FletMainWindow:
         )
 
         # RealSense exposure slider (hidden by default, shown when RealSense detected)
-        self.exposure_value_text = ft.Text("Exposure: 166", size=12, color="#666")
+        self.exposure_value_text = ft.Text("Exposure: 250", size=12, color="#666")
         self.exposure_slider = ft.Slider(
             min=50,
             max=300,
-            value=166,
+            value=250,
             divisions=25,
             label="Exposure: {value}",
             on_change=self._on_exposure_change,
