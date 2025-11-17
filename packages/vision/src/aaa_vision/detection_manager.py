@@ -70,11 +70,13 @@ class DetectionManager:
         # Temporal smoothing for object detection
         self.smoothing_enabled = True
         self.smoothing_alpha = 0.9  # Higher = more smoothing (0.0-1.0)
-        self.iou_threshold = 0.4  # Higher = stricter matching (0.3-0.6)
+        self.iou_threshold = 0.35  # Minimum IoU for matching (lower = more lenient)
+
+        # Track object history
         self.prev_boxes = None
         self.prev_classes = None
         self.prev_centers = None
-        self.prev_depths = None  # Track depth values for smoothing
+        self.prev_depths = None
 
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""
@@ -160,7 +162,7 @@ class DetectionManager:
     def _smooth_detections(self, boxes, classes, centers, depths=None):
         """
         Apply temporal smoothing to detection boxes, centers, and depths
-        Uses exponential moving average to reduce jitter
+        Uses exponential moving average and multi-frame tracking to reduce jitter
 
         Args:
             boxes: Current frame bounding boxes
@@ -169,15 +171,25 @@ class DetectionManager:
             depths: Optional depth values at centers
 
         Returns:
-            Smoothed boxes, centers, and depths
+            Filtered and smoothed boxes, centers, and depths
         """
         if self.prev_boxes is None or len(self.prev_boxes) == 0:
-            # First frame or no previous detections - use current as-is
-            self.prev_boxes = boxes
-            self.prev_classes = classes
-            self.prev_centers = centers
-            self.prev_depths = depths
-            return boxes, centers, depths
+            # First frame - initialize but don't show anything yet
+            self.prev_boxes = []
+            self.prev_classes = []
+            self.prev_centers = []
+            self.prev_depths = [] if depths is not None else None
+            self.object_frame_counts = {}
+            self.object_missed_counts = {}
+
+            # Process all current detections as new
+            for i, (box, class_name, center) in enumerate(zip(boxes, classes, centers)):
+                obj_key = f"{class_name}_{i}"
+                self.object_frame_counts[obj_key] = 1
+                self.object_missed_counts[obj_key] = 0
+
+            # Don't show anything on first frame
+            return [], [], [] if depths is not None else None
 
         # Match current detections with previous ones
         smoothed_boxes = []
