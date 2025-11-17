@@ -331,17 +331,9 @@ class CameraManager:
             with suppress_output():
                 cap = cv2.VideoCapture(camera_index)
                 if cap.isOpened():
-                    # Try to get camera name using CAP_PROP_BACKEND property
-                    # This works on some OpenCV builds
-                    camera_name = None
-
-                    # macOS: Use system_profiler to get actual camera names
+                    # macOS: Match camera by properties, not array position
                     if platform.system() == "Darwin":
-                        macos_names = self._get_macos_camera_names()
-                        if camera_index < len(macos_names):
-                            camera_name = macos_names[camera_index]
-                        else:
-                            camera_name = f"Camera {camera_index}"
+                        camera_name = self._match_macos_camera_name(camera_index, cap)
                     else:
                         # Linux - use Video4Linux naming
                         camera_name = f"Video Device {camera_index}"
@@ -352,6 +344,57 @@ class CameraManager:
             pass
 
         # Fallback to generic name
+        return f"Camera {camera_index}"
+
+    def _match_macos_camera_name(self, camera_index: int, cap) -> str:
+        """
+        Match OpenCV camera index to system_profiler camera name
+
+        Cannot rely on array position matching - must use heuristics
+
+        Args:
+            camera_index: OpenCV camera index
+            cap: Open cv2.VideoCapture object
+
+        Returns:
+            Best matching camera name
+        """
+        macos_names = self._get_macos_camera_names()
+
+        if len(macos_names) == 0:
+            return f"Camera {camera_index}"
+
+        # Get resolution of this camera
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Heuristic 1: Built-in MacBook cameras are usually index 0
+        if camera_index == 0:
+            for name in macos_names:
+                if any(keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]):
+                    return name
+
+        # Heuristic 2: Match by characteristic resolutions
+        # RealSense depth module: typically 1280x720 or lower
+        # RealSense RGB module: 1920x1080
+        # MacBook camera: typically 1280x720
+        if width == 1920 and height == 1080:
+            # Likely RealSense RGB module
+            for name in macos_names:
+                if "RealSense" in name and "RGB" in name:
+                    return name
+
+        # Heuristic 3: External cameras (USB) are typically higher indices
+        if camera_index > 0:
+            # Prefer names that don't match built-in patterns
+            for name in macos_names:
+                if not any(keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]):
+                    return name
+
+        # Fallback: Use position matching (may be wrong)
+        if camera_index < len(macos_names):
+            return macos_names[camera_index]
+
         return f"Camera {camera_index}"
 
     def _get_macos_camera_names(self) -> List[str]:
