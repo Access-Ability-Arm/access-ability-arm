@@ -174,22 +174,12 @@ class DetectionManager:
             Filtered and smoothed boxes, centers, and depths
         """
         if self.prev_boxes is None or len(self.prev_boxes) == 0:
-            # First frame - initialize but don't show anything yet
-            self.prev_boxes = []
-            self.prev_classes = []
-            self.prev_centers = []
-            self.prev_depths = [] if depths is not None else None
-            self.object_frame_counts = {}
-            self.object_missed_counts = {}
-
-            # Process all current detections as new
-            for i, (box, class_name, center) in enumerate(zip(boxes, classes, centers)):
-                obj_key = f"{class_name}_{i}"
-                self.object_frame_counts[obj_key] = 1
-                self.object_missed_counts[obj_key] = 0
-
-            # Don't show anything on first frame
-            return [], [], [] if depths is not None else None
+            # First frame - initialize and show current detections
+            self.prev_boxes = boxes
+            self.prev_classes = classes
+            self.prev_centers = centers
+            self.prev_depths = depths
+            return boxes, centers, depths
 
         # Match current detections with previous ones
         smoothed_boxes = []
