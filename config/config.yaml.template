@@ -55,6 +55,27 @@ detection:
     # More iterations = smoother boundaries but more processing time
     iterations: 2
 
+  # Temporal tracking settings (ByteTrack)
+  # Maintains object identity across frames for stable grasp planning
+  temporal_tracking:
+    # Enable/disable temporal tracking (default: true)
+    enabled: true
+
+    # High-confidence detection threshold (0.0-1.0, default: 0.6)
+    # Higher values reduce false positives for stationary objects
+    track_thresh: 0.6
+
+    # Track buffer: frames to keep lost tracks (default: 60 = 2 sec @ 30fps)
+    # High value compensates for detector inconsistency
+    track_buffer: 60
+
+    # IoU threshold for matching detections (0.0-1.0, default: 0.7)
+    match_thresh: 0.7
+
+    # Exponential moving average alpha (0.0-1.0, default: 0.97)
+    # High value (0.95-0.98) for stationary scenes, lower (0.8-0.9) for moving objects
+    smoothing_alpha: 0.97
+
 # Control Settings
 controls:
   # Button hold threshold in seconds

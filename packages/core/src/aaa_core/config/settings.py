@@ -47,6 +47,13 @@ class AppConfig:
     spatial_smoothing_large_kernel: int = 7
     spatial_smoothing_iterations: int = 2
 
+    # Temporal tracking settings (ByteTrack)
+    temporal_tracking_enabled: bool = True
+    temporal_tracking_thresh: float = 0.6
+    temporal_tracking_buffer: int = 60
+    temporal_tracking_match: float = 0.7
+    temporal_smoothing_alpha: float = 0.97
+
     # Button behavior
     button_hold_threshold: float = 0.5  # seconds
 
@@ -202,6 +209,20 @@ def apply_user_config(config: AppConfig, user_config: dict):
                 config.spatial_smoothing_large_kernel = smoothing['large_object_kernel']
             if 'iterations' in smoothing:
                 config.spatial_smoothing_iterations = smoothing['iterations']
+
+        # Temporal tracking settings
+        if 'temporal_tracking' in detection:
+            tracking = detection['temporal_tracking']
+            if 'enabled' in tracking:
+                config.temporal_tracking_enabled = tracking['enabled']
+            if 'track_thresh' in tracking:
+                config.temporal_tracking_thresh = tracking['track_thresh']
+            if 'track_buffer' in tracking:
+                config.temporal_tracking_buffer = tracking['track_buffer']
+            if 'match_thresh' in tracking:
+                config.temporal_tracking_match = tracking['match_thresh']
+            if 'smoothing_alpha' in tracking:
+                config.temporal_smoothing_alpha = tracking['smoothing_alpha']
 
     # Control settings
     if 'controls' in user_config:

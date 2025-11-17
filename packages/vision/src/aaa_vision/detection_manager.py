@@ -15,6 +15,7 @@ from aaa_core.config.settings import app_config
 from aaa_vision.detection_logger import DetectionLogger
 from aaa_vision.face_detector import FaceDetector
 from aaa_vision.object_tracker import ObjectTracker
+from aaa_vision.temporal_tracker import TemporalTracker
 
 
 @contextmanager
@@ -69,13 +70,26 @@ class DetectionManager:
         self.detection_mode = "objects" if self.segmentation_model else "face"
         status(f"Detection mode: {self.detection_mode}")
 
-        # Initialize advanced object tracker with Kalman filter and multi-frame consensus
-        # Optimized for stationary home assistant objects (cups, books, etc. on table)
+        # Initialize temporal tracker with ByteTrack
+        # Uses SOTA tracking algorithm optimized for stationary objects
+        self.temporal_tracker = TemporalTracker(
+            track_thresh=app_config.temporal_tracking_thresh if hasattr(app_config, 'temporal_tracking_thresh') else 0.6,
+            track_buffer=app_config.temporal_tracking_buffer if hasattr(app_config, 'temporal_tracking_buffer') else 60,
+            match_thresh=app_config.temporal_tracking_match if hasattr(app_config, 'temporal_tracking_match') else 0.7,
+            frame_rate=30,
+            smoothing_alpha=app_config.temporal_smoothing_alpha if hasattr(app_config, 'temporal_smoothing_alpha') else 0.97,
+            enabled=app_config.temporal_tracking_enabled if hasattr(app_config, 'temporal_tracking_enabled') else True
+        )
+
+        if self.temporal_tracker.enabled:
+            print(f"✓ ByteTrack temporal tracking enabled (alpha: {self.temporal_tracker.smoothing_alpha})")
+
+        # Keep legacy object tracker as fallback
         self.object_tracker = ObjectTracker(
-            iou_threshold=0.35,        # Minimum IoU for matching objects across frames
-            min_frames_to_show=3,      # Objects must appear in N consecutive frames (lower for stationary objects)
-            max_frames_missing=15,     # Keep showing for N frames after disappear (high for detector inconsistency)
-            smoothing_alpha=0.9        # Reserved for future depth smoothing if needed
+            iou_threshold=0.35,
+            min_frames_to_show=3,
+            max_frames_missing=15,
+            smoothing_alpha=0.9
         )
 
         # Initialize detection logger (disabled by default, enable with toggle_logging())
@@ -146,8 +160,15 @@ class DetectionManager:
         if depth_frame is not None and len(centers) > 0:
             depths = self._extract_depths(centers, depth_frame)
 
-        # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
-        tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
+        # Update tracker with new detections
+        # Use ByteTrack temporal tracker if enabled, otherwise fallback to legacy tracker
+        if self.temporal_tracker.enabled:
+            tracked_objects = self.temporal_tracker.update(
+                boxes, classes, contours, centers,
+                confidences=None, depths=depths
+            )
+        else:
+            tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
 
         # Log detections for analysis (if logging enabled)
         if self.logger.enabled:
@@ -158,29 +179,13 @@ class DetectionManager:
 
         # Extract data from tracked objects for drawing
         if len(tracked_objects) > 0:
-            # Get contours for tracked objects by matching centers
             tracked_boxes = [obj.box for obj in tracked_objects]
             tracked_classes = [obj.class_name for obj in tracked_objects]
             tracked_centers = [obj.center for obj in tracked_objects]
             tracked_depths = [obj.smoothed_depth for obj in tracked_objects]
 
-            # Match contours to tracked objects
-            tracked_contours = []
-            for tracked_center in tracked_centers:
-                # Find matching contour from original detections
-                best_match_idx = None
-                best_dist = float('inf')
-                for i, center in enumerate(centers):
-                    dist = ((tracked_center[0] - center[0])**2 +
-                           (tracked_center[1] - center[1])**2)**0.5
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_match_idx = i
-
-                if best_match_idx is not None and best_dist < 50:  # Within 50 pixels
-                    tracked_contours.append(contours[best_match_idx])
-                else:
-                    tracked_contours.append([])  # No matching contour
+            # Contours are already stored in tracked objects from TemporalTracker
+            tracked_contours = [obj.contour for obj in tracked_objects]
         else:
             tracked_boxes = []
             tracked_classes = []
@@ -320,8 +325,15 @@ class DetectionManager:
         if depth_frame is not None and len(centers) > 0:
             depths = self._extract_depths(centers, depth_frame)
 
-        # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
-        tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
+        # Update tracker with new detections
+        # Use ByteTrack temporal tracker if enabled, otherwise fallback to legacy tracker
+        if self.temporal_tracker.enabled:
+            tracked_objects = self.temporal_tracker.update(
+                boxes, classes, contours, centers,
+                confidences=None, depths=depths
+            )
+        else:
+            tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
 
         # Log detections for analysis (if logging enabled)
         if self.logger.enabled:
@@ -337,22 +349,8 @@ class DetectionManager:
             tracked_centers = [obj.center for obj in tracked_objects]
             tracked_depths = [obj.smoothed_depth for obj in tracked_objects]
 
-            # Match contours to tracked objects
-            tracked_contours = []
-            for tracked_center in tracked_centers:
-                best_match_idx = None
-                best_dist = float('inf')
-                for i, center in enumerate(centers):
-                    dist = ((tracked_center[0] - center[0])**2 +
-                           (tracked_center[1] - center[1])**2)**0.5
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_match_idx = i
-
-                if best_match_idx is not None and best_dist < 50:
-                    tracked_contours.append(contours[best_match_idx])
-                else:
-                    tracked_contours.append([])
+            # Contours are already stored in tracked objects from TemporalTracker
+            tracked_contours = [obj.contour for obj in tracked_objects]
         else:
             tracked_boxes = []
             tracked_classes = []
