@@ -42,7 +42,7 @@ class RealsenseCamera:
                     rgb_sensor.set_option(rs.option.enable_auto_exposure, 0)
                     # Set fixed exposure (adjust based on lighting - range typically 1-10000)
                     # Lower = darker but less noise, Higher = brighter but more noise
-                    rgb_sensor.set_option(rs.option.exposure, 500)  # Default: 500 (bright)
+                    rgb_sensor.set_option(rs.option.exposure, 800)  # Default: 800 (very bright)
                     status("✓ RealSense: Fixed exposure enabled (reduces fluorescent light noise)")
                 except Exception as e:
                     status(f"  RealSense: Using auto exposure ({e})")
@@ -71,17 +71,23 @@ class RealsenseCamera:
 
     def get_frame_stream(self):
         # Wait for a coherent pair of frames: depth and color
-        frames = self.pipeline.wait_for_frames()
-        aligned_frames = self.align.process(frames)
-        depth_frame = aligned_frames.get_depth_frame()
-        color_frame = aligned_frames.get_color_frame()
+        try:
+            # Use longer timeout (10 seconds) to handle exposure adjustments
+            frames = self.pipeline.wait_for_frames(timeout_ms=10000)
+            aligned_frames = self.align.process(frames)
+            depth_frame = aligned_frames.get_depth_frame()
+            color_frame = aligned_frames.get_color_frame()
 
-        if not depth_frame or not color_frame:
-            # If there is no frame, probably camera not connected
-            error(
-                "Impossible to get the frame, make sure that the Intel "
-                "Realsense camera is correctly connected"
-            )
+            if not depth_frame or not color_frame:
+                # If there is no frame, probably camera not connected
+                error(
+                    "Impossible to get the frame, make sure that the Intel "
+                    "Realsense camera is correctly connected"
+                )
+                return False, None, None
+        except RuntimeError as e:
+            # Timeout or other runtime error
+            error(f"RealSense frame timeout: {e}")
             return False, None, None
 
         # Apply filter to fill the Holes in the depth image
@@ -130,6 +136,10 @@ class RealsenseCamera:
                     # Set exposure
                     sensor.set_option(rs.option.exposure, exposure_value)
                     status(f"✓ RealSense exposure set to {exposure_value}")
+
+                    # Give camera time to adjust (prevent frame timeout)
+                    import time
+                    time.sleep(0.3)
                     return True
 
             error("RGB sensor not found")

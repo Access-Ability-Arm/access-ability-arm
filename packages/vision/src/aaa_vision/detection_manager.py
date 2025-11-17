@@ -160,7 +160,7 @@ class DetectionManager:
             tracked_boxes = [obj.box for obj in tracked_objects]
             tracked_classes = [obj.class_name for obj in tracked_objects]
             tracked_centers = [obj.center for obj in tracked_objects]
-            tracked_depths = [obj.depth for obj in tracked_objects]
+            tracked_depths = [obj.smoothed_depth for obj in tracked_objects]
 
             # Match contours to tracked objects
             tracked_contours = []
@@ -333,7 +333,7 @@ class DetectionManager:
             tracked_boxes = [obj.box for obj in tracked_objects]
             tracked_classes = [obj.class_name for obj in tracked_objects]
             tracked_centers = [obj.center for obj in tracked_objects]
-            tracked_depths = [obj.depth for obj in tracked_objects]
+            tracked_depths = [obj.smoothed_depth for obj in tracked_objects]
 
             # Match contours to tracked objects
             tracked_contours = []

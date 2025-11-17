@@ -154,18 +154,35 @@ class DaemonImageProcessor(threading.Thread):
 
     def set_realsense_exposure(self, exposure_value: int) -> bool:
         """
-        Set RealSense camera exposure
+        Set RealSense camera exposure via daemon command socket
 
         Args:
-            exposure_value: Exposure value (50-300)
+            exposure_value: Exposure value (50-1000)
 
         Returns:
-            bool: True if successful (not implemented for daemon mode yet)
-
-        Note:
-            Daemon mode doesn't support runtime exposure control yet.
-            Exposure is set when daemon starts.
-            Future: Add command socket to daemon for runtime control.
+            bool: True if command sent successfully
         """
-        status(f"Exposure control not available in daemon mode (requested: {exposure_value})")
-        return False
+        try:
+            import json
+            import socket
+
+            # Create UDP socket
+            cmd_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+
+            # Send command to daemon
+            command = {
+                'command': 'set_exposure',
+                'value': int(exposure_value)
+            }
+
+            cmd_socket.sendto(
+                json.dumps(command).encode('utf-8'),
+                '/tmp/aaa_camera_cmd.sock'
+            )
+
+            cmd_socket.close()
+            return True
+
+        except Exception as e:
+            error(f"Failed to send exposure command: {e}")
+            return False

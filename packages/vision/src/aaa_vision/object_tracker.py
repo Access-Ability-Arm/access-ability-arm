@@ -29,6 +29,10 @@ class TrackedObject:
         self.center = center
         self.depth = depth
 
+        # Depth smoothing with exponential moving average
+        self.smoothed_depth = depth
+        self.depth_alpha = 0.05  # Lower = more smoothing (0.0-1.0, default: 0.05 for ultra-smooth)
+
         # Frame counting for consensus
         self.frames_seen = 1  # Number of consecutive frames detected
         self.frames_missing = 0  # Number of consecutive frames not detected
@@ -100,8 +104,16 @@ class TrackedObject:
         # Update properties
         self.box = box
         self.center = center
-        if depth is not None:
+
+        # Smooth depth with exponential moving average
+        if depth is not None and depth > 0:
             self.depth = depth
+            if self.smoothed_depth is None:
+                self.smoothed_depth = depth
+            else:
+                # EMA: new_value = alpha * measurement + (1 - alpha) * old_value
+                # Lower alpha = more smoothing
+                self.smoothed_depth = self.depth_alpha * depth + (1 - self.depth_alpha) * self.smoothed_depth
 
         # Update frame counts
         self.frames_seen += 1

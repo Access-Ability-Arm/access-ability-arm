@@ -17,6 +17,7 @@ import numpy as np
 from aaa_core.config.console import error, status, success, underline
 
 SOCKET_PATH = "/tmp/aaa_camera.sock"
+COMMAND_SOCKET_PATH = "/tmp/aaa_camera_cmd.sock"
 
 
 class CameraDaemonSocket:
@@ -57,10 +58,14 @@ class CameraDaemonSocket:
         # Detection mode
         self.detection_mode = "camera"  # camera, objects, face
 
-        # Socket server
+        # Socket server for frames
         self.server_socket = None
         self.client_sockets = []
         self.client_lock = threading.Lock()
+
+        # Command socket for control
+        self.command_socket = None
+        self.command_thread = None
 
         # Latest frame (cached for new clients)
         self.latest_rgb = None
@@ -98,6 +103,10 @@ class CameraDaemonSocket:
             # Start client acceptor thread
             acceptor_thread = threading.Thread(target=self._accept_clients, daemon=True)
             acceptor_thread.start()
+
+            # Start command listener thread
+            self.command_thread = threading.Thread(target=self._command_listener, daemon=True)
+            self.command_thread.start()
 
             # Start capture loop
             self._capture_loop()
@@ -182,7 +191,68 @@ class CameraDaemonSocket:
         except OSError:
             pass
 
+        # Cleanup command socket
+        if self.command_socket:
+            try:
+                self.command_socket.close()
+            except Exception as e:
+                error(f"Error closing command socket: {e}")
+
+        try:
+            os.unlink(COMMAND_SOCKET_PATH)
+        except OSError:
+            pass
+
         success("Socket cleaned up")
+
+    def _command_listener(self):
+        """Listen for commands on command socket"""
+        try:
+            # Create command socket
+            self.command_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+
+            # Remove old socket if exists
+            try:
+                os.unlink(COMMAND_SOCKET_PATH)
+            except OSError:
+                pass
+
+            # Bind socket
+            self.command_socket.bind(COMMAND_SOCKET_PATH)
+            os.chmod(COMMAND_SOCKET_PATH, 0o666)
+
+            success(f"Command socket listening at {COMMAND_SOCKET_PATH}")
+
+            # Set timeout for checking running flag
+            self.command_socket.settimeout(1.0)
+
+            while self.running:
+                try:
+                    data, addr = self.command_socket.recvfrom(1024)
+                    command = json.loads(data.decode('utf-8'))
+                    self._handle_command(command)
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    if self.running:
+                        error(f"Error receiving command: {e}")
+
+        except Exception as e:
+            error(f"Command listener error: {e}")
+
+    def _handle_command(self, command):
+        """Handle a command from client"""
+        cmd_type = command.get('command')
+
+        if cmd_type == 'set_exposure':
+            exposure_value = command.get('value')
+            if exposure_value and self.rs_camera:
+                if self.rs_camera.set_exposure(exposure_value):
+                    status(f"✓ Exposure set to {exposure_value}")
+                else:
+                    error(f"✗ Failed to set exposure to {exposure_value}")
+        else:
+            error(f"Unknown command: {cmd_type}")
 
     def _accept_clients(self):
         """Accept client connections in background thread"""
