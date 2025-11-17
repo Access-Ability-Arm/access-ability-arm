@@ -24,7 +24,7 @@ class RFDETRSeg:
     (44.3 mAP on COCO, November 2025 release).
     """
 
-    def __init__(self, confidence_threshold=0.25):
+    def __init__(self, confidence_threshold=0.25, use_tta=True):
         """
         Initialize RF-DETR Seg model
 
@@ -33,8 +33,12 @@ class RFDETRSeg:
                                  Optimized for stationary home assistant objects
                                  Lower threshold catches marginal detections, reducing flicker
                                  Tracking layer filters false positives with multi-frame consensus
+            use_tta: Enable test-time augmentation for improved consistency (default True)
+                    Runs inference on original + flipped image, keeps consistent detections
+                    Reduces false positives at cost of ~2x inference time
         """
         self.confidence_threshold = confidence_threshold
+        self.use_tta = use_tta
 
         print("[RF-DETR] Loading model...")
 
@@ -94,12 +98,79 @@ class RFDETRSeg:
                 - contours: List of segmentation contours
                 - centers: List of (cx, cy) center points
         """
+        if not self.use_tta:
+            # Standard inference (fast)
+            return self._detect_single(frame)
+
+        # Test-time augmentation: detect on original + flipped, merge results
+        img_height, img_width = frame.shape[:2]
+
+        # Detect on original image
+        boxes_orig, classes_orig, contours_orig, centers_orig = self._detect_single(frame)
+
+        # Detect on horizontally flipped image
+        frame_flipped = cv2.flip(frame, 1)  # 1 = horizontal flip
+        boxes_flip, classes_flip, contours_flip, centers_flip = self._detect_single(frame_flipped)
+
+        # Unflip the detections from flipped image
+        boxes_flip_unflipped = []
+        contours_flip_unflipped = []
+        centers_flip_unflipped = []
+
+        for box, contour, center in zip(boxes_flip, contours_flip, centers_flip):
+            x, y, w, h = box
+            # Flip bbox: new_x = img_width - (x + w)
+            x_unflip = img_width - (x + w)
+            boxes_flip_unflipped.append([x_unflip, y, w, h])
+
+            # Flip contour points
+            contour_unflip = contour.copy()
+            contour_unflip[:, :, 0] = img_width - contour_unflip[:, :, 0]
+            contours_flip_unflipped.append(contour_unflip)
+
+            # Flip center
+            cx, cy = center
+            cx_unflip = img_width - cx
+            centers_flip_unflipped.append((cx_unflip, cy))
+
+        # Merge: keep only detections that appear in BOTH views
+        merged_boxes = []
+        merged_classes = []
+        merged_contours = []
+        merged_centers = []
+
+        for i, (box_orig, class_orig, contour_orig, center_orig) in enumerate(
+            zip(boxes_orig, classes_orig, contours_orig, centers_orig)
+        ):
+            # Find matching detection in flipped results
+            best_iou = 0
+            best_match_idx = None
+
+            for j, (box_flip, class_flip) in enumerate(zip(boxes_flip_unflipped, classes_flip)):
+                if class_flip != class_orig:
+                    continue
+
+                iou = self._calculate_iou_xywh(box_orig, box_flip)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_match_idx = j
+
+            # If IoU > 0.5, object detected in both views (high confidence it's real)
+            if best_iou > 0.5:
+                merged_boxes.append(box_orig)
+                merged_classes.append(class_orig)
+                merged_contours.append(contour_orig)
+                merged_centers.append(center_orig)
+
+        return merged_boxes, merged_classes, merged_contours, merged_centers
+
+    def _detect_single(self, frame):
+        """Run detection on a single image (helper for TTA)"""
         # Convert BGR to RGB and to PIL Image
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(rgb_frame)
 
         # Run inference
-        # Note: Pass single image, not list - returns single Detections object
         detections = self.model.predict(
             pil_image,
             threshold=self.confidence_threshold
@@ -112,7 +183,6 @@ class RFDETRSeg:
 
         # Process results
         if detections is not None:
-            # Supervision Detections object has: xyxy, class_id, confidence, mask
             if hasattr(detections, 'xyxy') and detections.xyxy is not None:
                 num_detections = len(detections.xyxy)
 
@@ -169,6 +239,33 @@ class RFDETRSeg:
                     centers.append((cx, cy))
 
         return boxes, classes, contours, centers
+
+    def _calculate_iou_xywh(self, box1, box2):
+        """Calculate IoU for boxes in [x, y, w, h] format"""
+        x1, y1, w1, h1 = box1
+        x2, y2, w2, h2 = box2
+
+        # Convert to xyxy
+        x1_max, y1_max = x1 + w1, y1 + h1
+        x2_max, y2_max = x2 + w2, y2 + h2
+
+        # Intersection
+        xi1 = max(x1, x2)
+        yi1 = max(y1, y2)
+        xi2 = min(x1_max, x2_max)
+        yi2 = min(y1_max, y2_max)
+
+        if xi2 < xi1 or yi2 < yi1:
+            return 0.0
+
+        intersection = (xi2 - xi1) * (yi2 - yi1)
+
+        # Union
+        area1 = w1 * h1
+        area2 = w2 * h2
+        union = area1 + area2 - intersection
+
+        return intersection / union if union > 0 else 0.0
 
     def draw_object_mask(self, frame, boxes=None, classes=None, contours=None):
         """
