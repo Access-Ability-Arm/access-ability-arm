@@ -148,6 +148,15 @@ class CameraManager:
         # Cache properties during detection to avoid reopening cameras
         self._camera_properties_cache = {}
 
+        # Pre-fetch camera names for infrared detection
+        platform_name = platform.system()
+        if platform_name == "Darwin":
+            camera_names_for_detection = self._get_macos_camera_names()
+        elif platform_name == "Windows":
+            camera_names_for_detection = self._get_windows_camera_names()
+        else:
+            camera_names_for_detection = []
+
         # If no specific indices provided, check all up to max
         if indices_to_check is None:
             indices_to_check = list(range(self.max_cameras_to_check))
@@ -166,26 +175,41 @@ class CameraManager:
                     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
                     resolution = f"{width}x{height}"
 
-                    # Check if infrared by testing channel independence
-                    # True infrared cameras have perfectly identical channels at hardware level
-                    # RGB cameras may show grayscale content, but channels are independent
+                    # Determine color type based on camera name and channel analysis
                     color_type = "Unknown"
-                    if frame is not None and len(frame.shape) == 3:
-                        b, g, r = cv2.split(frame)
+                    camera_name = camera_names_for_detection[index] if index < len(camera_names_for_detection) else ""
 
-                        # Check if channels are EXACTLY identical (same memory/hardware source)
-                        # Use variance to detect if channels are truly independent
-                        # For infrared: b-g and g-r differences are always zero
-                        # For RGB: even in dark scenes, there's some sensor noise difference
+                    # Known infrared cameras by name
+                    is_infrared_by_name = (
+                        "depth" in camera_name.lower() or
+                        "infrared" in camera_name.lower() or
+                        "ir" in camera_name.lower()
+                    )
+
+                    # Known RGB cameras by name
+                    is_rgb_by_name = (
+                        "rgb" in camera_name.lower() or
+                        "macbook" in camera_name.lower() or
+                        "facetime" in camera_name.lower() or
+                        "isight" in camera_name.lower()
+                    )
+
+                    if is_rgb_by_name:
+                        # Trust camera name for known RGB cameras
+                        color_type = "RGB"
+                    elif is_infrared_by_name:
+                        # Trust camera name for known infrared cameras
+                        color_type = "Infrared"
+                    elif frame is not None and len(frame.shape) == 3:
+                        # Fallback: analyze frame channels (but this can be unreliable)
+                        b, g, r = cv2.split(frame)
                         diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
                         diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
-
-                        # If max difference is 0, channels are identical (infrared)
-                        # RGB cameras always have some sensor noise even in dark scenes
                         max_diff = max(diff_bg.max(), diff_gr.max())
-                        is_infrared = (max_diff == 0)
 
-                        color_type = "Infrared" if is_infrared else "RGB"
+                        # Only mark as infrared if channels are EXACTLY identical
+                        # and name doesn't indicate RGB
+                        color_type = "Infrared" if max_diff == 0 else "RGB"
 
                     self._camera_properties_cache[index] = (resolution, color_type)
 
