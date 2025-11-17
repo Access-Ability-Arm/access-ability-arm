@@ -242,17 +242,17 @@ class FletMainWindow:
         daemon_running = self._check_daemon_running()
         print(f"[DEBUG] Building UI - daemon_running={daemon_running}")
 
-        # Camera selection
+        # Camera selection - use dropdown for multiple cameras, text label for single camera
         if daemon_running:
-            # Daemon mode: show RealSense as only option, disabled
-            camera_options = [
-                ft.dropdown.Option(
-                    key="daemon",
-                    text="Intel RealSense D435 (via daemon - depth enabled)",
-                )
-            ]
-            dropdown_disabled = True
-            dropdown_value = "daemon"
+            # Daemon mode: show RealSense as text (no selection needed)
+            camera_display_text = "Camera: Intel RealSense D435 (via daemon - depth enabled)"
+            self.camera_dropdown = ft.Text(
+                camera_display_text,
+                size=14,
+                weight=ft.FontWeight.W_500,
+                color="#1976D2",  # Blue 700
+            )
+            self.camera_dropdown.value = "daemon"  # Add value attribute for compatibility
         else:
             # Normal mode: show all available cameras
             cameras = self.camera_manager.get_camera_info()
@@ -271,23 +271,29 @@ class FletMainWindow:
                         text=display_text,
                     )
                 )
-            dropdown_disabled = False
 
-            # Auto-select if only one camera available, otherwise use default
+            # If only one camera, show as text instead of dropdown
             if len(camera_options) == 1:
-                dropdown_value = camera_options[0].key
-                print(f"[DEBUG] Auto-selected single camera: {camera_options[0].text}")
+                camera_display_text = f"Camera: {camera_options[0].text}"
+                self.camera_dropdown = ft.Text(
+                    camera_display_text,
+                    size=14,
+                    weight=ft.FontWeight.W_500,
+                    color="#1976D2",  # Blue 700
+                )
+                self.camera_dropdown.value = camera_options[0].key  # Add value attribute for compatibility
+                print(f"[DEBUG] Single camera detected: {camera_options[0].text}")
             else:
+                # Multiple cameras: show dropdown
                 dropdown_value = str(app_config.default_camera) if camera_options else None
-
-        self.camera_dropdown = ft.Dropdown(
-            label="Select Camera",
-            options=camera_options,
-            value=dropdown_value,
-            on_change=self._on_camera_changed,
-            width=600,  # Increased width to accommodate more info
-            disabled=dropdown_disabled,
-        )
+                self.camera_dropdown = ft.Dropdown(
+                    label="Select Camera",
+                    options=camera_options,
+                    value=dropdown_value,
+                    on_change=self._on_camera_changed,
+                    width=600,  # Increased width to accommodate more info
+                    disabled=False,
+                )
 
         # Status display
         self.status_text = ft.Text(
