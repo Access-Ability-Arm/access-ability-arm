@@ -18,44 +18,53 @@ class RealsenseCamera:
         # Start streaming
         profile = self.pipeline.start(config)
 
-        # Get device and sensors for configuration
-        device = profile.get_device()
+        # Store profile for later use
+        self.profile = profile
 
-        # Configure RGB sensor to reduce noise
-        rgb_sensor = None
-        for sensor in device.query_sensors():
-            if sensor.is_color_sensor():
-                rgb_sensor = sensor
-                break
+        # Wait a moment for camera to stabilize after start
+        import time
+        time.sleep(0.5)
 
-        if rgb_sensor:
-            # Disable autoexposure for consistent quality (prevents flickering)
-            # Fixed exposure reduces noise from fluorescent lighting
-            try:
-                rgb_sensor.set_option(rs.option.enable_auto_exposure, 0)
-                # Set fixed exposure (adjust based on lighting - range typically 1-10000)
-                # Lower = darker but less noise, Higher = brighter but more noise
-                rgb_sensor.set_option(rs.option.exposure, 166)  # Default: 166 (moderate)
-                status("✓ RealSense: Fixed exposure enabled (reduces fluorescent light noise)")
-            except Exception as e:
-                status(f"✓ RealSense: Could not set fixed exposure: {e}")
+        # Configure RGB sensor to reduce noise (optional - camera works without this)
+        try:
+            device = profile.get_device()
 
-            # Disable auto white balance for color consistency
-            try:
-                rgb_sensor.set_option(rs.option.enable_auto_white_balance, 0)
-                # Set fixed white balance (range: 2800-6500, default: 4600)
-                rgb_sensor.set_option(rs.option.white_balance, 4600)
-                status("✓ RealSense: Fixed white balance enabled")
-            except Exception as e:
-                status(f"✓ RealSense: Could not set white balance: {e}")
+            rgb_sensor = None
+            for sensor in device.query_sensors():
+                if sensor.is_color_sensor():
+                    rgb_sensor = sensor
+                    break
 
-            # Set power line frequency to reduce fluorescent light flicker
-            # 1 = 50Hz (Europe), 2 = 60Hz (North America)
-            try:
-                rgb_sensor.set_option(rs.option.power_line_frequency, 2)  # 60Hz
-                status("✓ RealSense: Power line frequency set to 60Hz")
-            except Exception as e:
-                status(f"✓ RealSense: Could not set power line frequency: {e}")
+            if rgb_sensor:
+                # Disable autoexposure for consistent quality (prevents flickering)
+                # Fixed exposure reduces noise from fluorescent lighting
+                try:
+                    rgb_sensor.set_option(rs.option.enable_auto_exposure, 0)
+                    # Set fixed exposure (adjust based on lighting - range typically 1-10000)
+                    # Lower = darker but less noise, Higher = brighter but more noise
+                    rgb_sensor.set_option(rs.option.exposure, 166)  # Default: 166 (moderate)
+                    status("✓ RealSense: Fixed exposure enabled (reduces fluorescent light noise)")
+                except Exception as e:
+                    status(f"  RealSense: Using auto exposure ({e})")
+
+                # Disable auto white balance for color consistency
+                try:
+                    rgb_sensor.set_option(rs.option.enable_auto_white_balance, 0)
+                    # Set fixed white balance (range: 2800-6500, default: 4600)
+                    rgb_sensor.set_option(rs.option.white_balance, 4600)
+                    status("✓ RealSense: Fixed white balance enabled")
+                except Exception as e:
+                    status(f"  RealSense: Using auto white balance ({e})")
+
+                # Set power line frequency to reduce fluorescent light flicker
+                # 1 = 50Hz (Europe), 2 = 60Hz (North America)
+                try:
+                    rgb_sensor.set_option(rs.option.power_line_frequency, 2)  # 60Hz
+                    status("✓ RealSense: Power line frequency set to 60Hz")
+                except Exception as e:
+                    status(f"  RealSense: Could not set power line frequency ({e})")
+        except Exception as e:
+            status(f"  RealSense: Sensor configuration skipped ({e})")
 
         align_to = rs.stream.color
         self.align = rs.align(align_to)
