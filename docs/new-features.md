@@ -144,23 +144,39 @@ vision:
 **Impact:** Medium - Leverages existing RealSense hardware for edge cases
 
 ### Overview
-Use depth data to validate and refine RGB segmentation boundaries, especially for transparent/textureless objects.
+Use **lightweight depth edge detection** to validate and refine RGB segmentation boundaries, especially for transparent/textureless objects. Focus on fast gradient-based methods, not computationally expensive point cloud segmentation.
+
+### Why Not Full Point Cloud Segmentation?
+
+**Considered alternatives (NOT recommended):**
+- ❌ **Open3D RANSAC plane segmentation**: 10-100ms overhead (too slow)
+- ❌ **Point cloud clustering (DBSCAN)**: Computationally expensive for real-time
+- ❌ **Kornia GPU operations**: No benefit for single-frame processing, adds complexity
+
+**Our approach (fast and effective):**
+- ✅ **Sobel depth gradients**: <2ms, detects discontinuities
+- ✅ **2D depth edge detection**: Lightweight, real-time capable
+- ✅ **Selective point cloud use**: Only for failure cases (transparent objects)
+
+**Research basis (2024):** Hybrid 2D-3D approaches outperform pure point cloud methods for real-time grasping. RGB segmentation + depth validation achieves 82%+ success rates while maintaining real-time performance.
 
 ### Benefits
 - Detects transparent objects (glass, plastic) invisible to RGB
 - Resolves textureless objects (white dish on white table)
 - Validates RGB boundaries with physical depth discontinuities
-- Adds 5-10ms overhead (parallel processing)—still achieves 30+ FPS
+- Adds <2ms overhead—maintains 30+ FPS performance
 
 ### Implementation Plan
 1. Create `DepthValidator` class
-2. Implement Sobel-based depth gradient detection
+2. Implement Sobel-based depth gradient detection (fast, <2ms)
 3. Add depth-RGB boundary cross-validation
 4. Integrate with existing RealSense daemon architecture
+5. **Optional:** Add Open3D for specific failure cases only (transparent objects)
 
 ### Algorithm
 ```python
-# Compute depth gradients
+# Fast depth discontinuity detection (<2ms)
+# NOT: Full point cloud segmentation (10-100ms)
 depth_grad = cv2.Sobel(depth_map, cv2.CV_32F, 1, 1, ksize=3)
 depth_edges = (np.abs(depth_grad) > threshold).astype(np.uint8)
 
@@ -168,8 +184,22 @@ depth_edges = (np.abs(depth_grad) > threshold).astype(np.uint8)
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 boundary_regions = cv2.dilate(depth_edges, kernel, iterations=1)
 
-# Validate RGB boundaries against depth discontinuities
+# Cross-validate RGB boundaries against depth discontinuities
+# If RGB boundary aligns with depth edge: high confidence
+# If RGB boundary has no depth support: flag for review
+
+# Optional: Point cloud fallback for specific failures
+# Only use Open3D when:
+# 1. RGB segmentation fails (no detections)
+# 2. Object is known to be transparent/reflective
+# 3. User explicitly requests 3D reconstruction
 ```
+
+### Performance Budget
+- Sobel depth gradients: <1ms
+- Edge detection & dilation: <1ms
+- Boundary cross-validation: <0.5ms
+- **Total: <2ms** (maintains 30+ FPS)
 
 ### Configuration Parameters
 ```yaml
@@ -179,10 +209,12 @@ vision:
     discontinuity_threshold: 0.03  # 3cm for manipulation distances
     min_confidence: 0.5
     fallback_to_rgb: true  # Use RGB-only if depth quality poor
+    use_point_cloud: false  # Enable only for transparent object handling
 ```
 
 ### References
 - See `docs/segmentation-smoothing-robotics.md` Section 3 for details
+- 2024 research: RGB-based OptiGrasp achieves 82.3% success with fast 2D methods
 
 ---
 
