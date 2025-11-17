@@ -244,7 +244,9 @@ class ImageProcessor(threading.Thread):
         self.thread_active = True
 
         # Initialize camera in the thread to avoid blocking UI
-        self._initialize_camera()
+        # Only initialize if camera hasn't been set yet (e.g., via camera_changed)
+        if not self.camera and not self.rs_camera:
+            self._initialize_camera()
 
         while self.thread_active:
             ret, frame, depth_frame = self._capture_frame()
