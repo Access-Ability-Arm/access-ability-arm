@@ -272,7 +272,13 @@ class FletMainWindow:
                     )
                 )
             dropdown_disabled = False
-            dropdown_value = str(app_config.default_camera) if camera_options else None
+
+            # Auto-select if only one camera available, otherwise use default
+            if len(camera_options) == 1:
+                dropdown_value = camera_options[0].key
+                print(f"[DEBUG] Auto-selected single camera: {camera_options[0].text}")
+            else:
+                dropdown_value = str(app_config.default_camera) if camera_options else None
 
         self.camera_dropdown = ft.Dropdown(
             label="Select Camera",
@@ -645,16 +651,25 @@ class FletMainWindow:
             )
         print("[DEBUG MainWindow] ImageProcessor created")
 
-        # Set initial camera name for flip detection
+        # Set initial camera name for flip detection and trigger camera initialization
         print("[DEBUG MainWindow] Setting initial camera name for flip detection...")
         if self.camera_manager.cameras:
-            default_cam_index = app_config.default_camera
-            print(f"[DEBUG MainWindow] Default camera index: {default_cam_index}")
+            # Use the dropdown value if set (handles auto-selection and default)
+            selected_cam_index = None
+            if self.camera_dropdown.value and self.camera_dropdown.value != "daemon":
+                selected_cam_index = int(self.camera_dropdown.value)
+            else:
+                selected_cam_index = app_config.default_camera
+
+            print(f"[DEBUG MainWindow] Selected camera index: {selected_cam_index}")
             for cam in self.camera_manager.cameras:
-                if cam['camera_index'] == default_cam_index:
+                if cam['camera_index'] == selected_cam_index:
                     print(f"[DEBUG MainWindow] Found camera: {cam['camera_name']}")
                     self.image_processor.current_camera_name = cam['camera_name']
                     self.image_processor._update_flip_for_camera(cam['camera_name'])
+                    # Trigger camera change to actually start the camera
+                    self.image_processor.camera_changed(selected_cam_index, cam['camera_name'])
+                    print(f"[DEBUG MainWindow] Triggered camera change for index {selected_cam_index}")
                     break
 
         # Update flip button appearance based on initial state
