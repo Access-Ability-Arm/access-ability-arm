@@ -44,9 +44,11 @@ class CameraDaemonSocket:
         """Initialize daemon (does not start capture)"""
         self.running = False
 
-        # Frame dimensions (1280x720 for RealSense D435)
-        self.rgb_shape = (720, 1280, 3)
-        self.depth_shape = (720, 1280)
+        # Frame dimensions (updated configuration)
+        # RGB: 1920x1080 @ 30 FPS (higher res for better segmentation)
+        # Depth: 848x480 @ 30 FPS (Intel's optimal depth resolution)
+        self.rgb_shape = (1080, 1920, 3)
+        self.depth_shape = (480, 848)
 
         # Camera
         self.rs_camera = None

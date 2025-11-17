@@ -33,7 +33,43 @@ function check_sudo() {
     fi
 }
 
+function check_realsense_processes() {
+    echo ""
+    echo "Checking for processes using RealSense camera..."
+
+    # Look for processes with RealSense-related patterns
+    RS_PROCS=$(lsof /dev/video* 2>/dev/null | grep -v "COMMAND" | awk '{print $1, $2, $9}' | sort -u)
+
+    if [ -n "$RS_PROCS" ]; then
+        print_warning "Found processes accessing camera devices:"
+        echo "$RS_PROCS" | while read line; do
+            echo "  • $line"
+        done
+        echo ""
+
+        # Ask if user wants to kill them
+        if [ -t 0 ]; then  # Check if running interactively
+            read -p "Kill these processes? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "$RS_PROCS" | awk '{print $2}' | xargs -I {} kill {} 2>/dev/null
+                print_status "Processes terminated"
+                sleep 1
+            fi
+        else
+            print_warning "Non-interactive mode - not killing processes"
+            print_warning "Run 'make daemon-start' manually to be prompted"
+        fi
+    else
+        print_status "No conflicting camera processes found"
+    fi
+    echo ""
+}
+
 function start_daemon() {
+    # Check for processes using RealSense camera
+    check_realsense_processes
+
     # Check if already running
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
@@ -61,7 +97,7 @@ function start_daemon() {
         return 1
     fi
 
-    nohup "$VENV_PYTHON" "$DAEMON_SCRIPT" > "$LOG_FILE" 2>&1 &
+    nohup "$VENV_PYTHON" -u "$DAEMON_SCRIPT" > "$LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo $DAEMON_PID > "$PID_FILE"
 

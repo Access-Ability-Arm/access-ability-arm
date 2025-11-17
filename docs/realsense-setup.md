@@ -281,7 +281,101 @@ Segmentation fault
 
 ### Integration with Access Ability Arm
 
-To use RealSense in your project:
+The project uses optimized RealSense configuration for RF-DETR object segmentation:
+
+**Current Configuration (realsense_camera.py):**
+- **RGB**: 1920×1080 @ 30 FPS (high resolution for better segmentation detail)
+- **Depth**: 848×480 @ 30 FPS (Intel's optimal depth resolution)
+- **Alignment**: Disabled (depth and RGB at native resolutions)
+
+**Resolution & Alignment Considerations:**
+
+The RealSense D435 supports different resolutions for RGB and depth streams. You have two options:
+
+1. **Unaligned (Current Setup - RECOMMENDED)**
+   ```python
+   # RGB: 1920×1080, Depth: 848×480 (native resolutions)
+   config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
+   config.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)
+   
+   # No alignment - frames are at native resolutions
+   frames = pipeline.wait_for_frames()
+   depth_frame = frames.get_depth_frame()  # 848×480
+   color_frame = frames.get_color_frame()  # 1920×1080
+   ```
+   
+   **Advantages:**
+   - ✅ Better performance (no upscaling overhead)
+   - ✅ Lower bandwidth (smaller depth frames)
+   - ✅ Native depth accuracy (no interpolation)
+   - ✅ Recommended by Intel for depth quality
+   
+   **Disadvantages:**
+   - ⚠️ Depth and RGB pixels not 1:1 aligned
+   - ⚠️ Requires coordinate transformation for pixel correspondence
+   
+   **Best for:** Object segmentation, depth sensing, general computer vision
+
+2. **Aligned (Alternative Setup)**
+   ```python
+   # Same configuration, but with alignment enabled
+   config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
+   config.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)
+   
+   # Enable alignment - upscales depth to match RGB resolution
+   align_to = rs.stream.color
+   align = rs.align(align_to)
+   
+   frames = pipeline.wait_for_frames()
+   aligned_frames = align.process(frames)
+   depth_frame = aligned_frames.get_depth_frame()  # 1920×1080 (upscaled!)
+   color_frame = aligned_frames.get_color_frame()  # 1920×1080
+   ```
+   
+   **Advantages:**
+   - ✅ Pixel-perfect RGB-depth correspondence
+   - ✅ Easier to overlay depth on RGB (same dimensions)
+   
+   **Disadvantages:**
+   - ⚠️ Higher bandwidth (depth frame 4.8x larger: 814 KB → 3.9 MB)
+   - ⚠️ Processing overhead for upscaling
+   - ⚠️ Interpolated depth values (less accurate than native)
+   
+   **Best for:** Augmented reality, depth overlays, pixel-level RGB-depth fusion
+
+**Framerate Considerations:**
+
+- **30 FPS** (Current): Safe, stable, works on all systems
+- **60 FPS**: Possible with 848×480 depth, may require USB power tuning
+- **90 FPS**: Causes `failed to set power state` error on D435 (insufficient USB power/bandwidth)
+
+**To Change Configuration:**
+
+Edit `packages/core/src/aaa_core/hardware/realsense_camera.py`:
+
+```python
+# Adjust resolutions (lines 17-26)
+rgb_width, rgb_height, rgb_fps = 1920, 1080, 30
+depth_width, depth_height, depth_fps = 848, 480, 30
+
+# Enable/disable alignment (lines 104-110)
+self.align = None  # Disabled (native resolutions)
+# OR
+align_to = rs.stream.color
+self.align = rs.align(align_to)  # Enabled (depth upscaled to RGB size)
+```
+
+If you change alignment or resolutions, **you must update** `camera_daemon_socket.py` and `camera_client_socket.py` to match:
+
+```python
+# Both files must have matching dimensions
+self.rgb_shape = (1080, 1920, 3)     # (height, width, channels)
+self.depth_shape = (480, 848)        # (height, width) - if unaligned
+# OR
+self.depth_shape = (1080, 1920)      # (height, width) - if aligned
+```
+
+**Example: Basic RealSense Usage**
 
 ```python
 import pyrealsense2 as rs
@@ -291,9 +385,9 @@ import numpy as np
 pipeline = rs.pipeline()
 config = rs.config()
 
-# Configure streams
-config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+# Configure streams (native resolutions)
+config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
+config.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)
 
 # Start streaming
 pipeline.start(config)
@@ -302,12 +396,17 @@ try:
     while True:
         # Wait for frames
         frames = pipeline.wait_for_frames()
-        depth_frame = frames.get_depth_frame()
-        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()  # 848×480
+        color_frame = frames.get_color_frame()  # 1920×1080
 
         # Convert to numpy arrays
-        depth_image = np.asanyarray(depth_frame.get_data())
-        color_image = np.asanyarray(color_frame.get_data())
+        depth_image = np.asanyarray(depth_frame.get_data())  # shape: (480, 848)
+        color_image = np.asanyarray(color_frame.get_data())  # shape: (1080, 1920, 3)
+
+        # Get distance at specific pixel (depth frame coordinates)
+        x, y = 400, 240  # Center of 848×480 depth frame
+        distance = depth_frame.get_distance(x, y)
+        print(f"Distance at ({x},{y}): {distance:.3f} meters")
 
         # Your processing code here
 

@@ -66,6 +66,11 @@ class DaemonImageProcessor(threading.Thread):
         # Store last RGB frame for re-detection
         self._last_rgb_frame = None
 
+        # Track recent frame brightness for auto-exposure (rolling buffer of ~2 seconds @ 30fps)
+        from collections import deque
+        self._brightness_history = deque(maxlen=60)  # 60 frames = 2 seconds at 30fps
+        self._brightness_lock = threading.Lock()
+
     def run(self):
         """Main processing loop - read frames from daemon"""
         status("Daemon image processor running")
@@ -88,6 +93,11 @@ class DaemonImageProcessor(threading.Thread):
 
                     # Store for re-detection
                     self._last_rgb_frame = image_rgb.copy()
+
+                    # Track brightness for auto-exposure (calculate from RGB)
+                    avg_brightness = np.mean(image_rgb)
+                    with self._brightness_lock:
+                        self._brightness_history.append(avg_brightness)
 
                     # Process with detection manager
                     processed_frame = self.detection_manager.process_frame(
@@ -186,3 +196,21 @@ class DaemonImageProcessor(threading.Thread):
         except Exception as e:
             error(f"Failed to send exposure command: {e}")
             return False
+
+    def get_recent_brightness(self) -> float:
+        """
+        Get average brightness from recent frames (~2 seconds)
+
+        Returns:
+            float: Average brightness (0-255), or 128 if no data available
+        """
+        with self._brightness_lock:
+            if len(self._brightness_history) == 0:
+                return 128.0  # Default middle brightness
+            return float(np.mean(self._brightness_history))
+
+    def clear_brightness_history(self):
+        """Clear brightness history buffer (useful after exposure changes)"""
+        with self._brightness_lock:
+            self._brightness_history.clear()
+        print("✓ Brightness history cleared (waiting for new frames with updated exposure)")

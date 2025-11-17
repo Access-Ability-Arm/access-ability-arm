@@ -346,19 +346,34 @@ class FletMainWindow:
         self.exposure_value_text = ft.Text("Exposure: 800", size=12, color="#666")
         self.exposure_slider = ft.Slider(
             min=100,
-            max=1000,
+            max=4000,
             value=800,
-            divisions=18,
+            divisions=78,
             label="Exposure: {value}",
             on_change=self._on_exposure_change,
             visible=False,  # Hidden until RealSense detected
             width=300,
+        )
+
+        # Auto-exposure state
+        self.auto_exposure_enabled = False
+        self.auto_exposure_thread = None
+
+        # Auto-exposure button
+        self.auto_exposure_btn = ft.IconButton(
+            icon=ft.Icons.AUTO_MODE,
+            tooltip="Auto-adjust exposure based on image brightness",
+            on_click=lambda _: self._auto_adjust_exposure(),
+            bgcolor="#E0E0E0",
+            icon_color="#424242",
+            visible=False,
         )
         self.exposure_controls = ft.Row(
             [
                 ft.Icon(ft.Icons.BRIGHTNESS_6, size=16, color="#666"),
                 self.exposure_slider,
                 self.exposure_value_text,
+                self.auto_exposure_btn,
             ],
             visible=False,  # Hidden until RealSense detected
             spacing=10,
@@ -388,11 +403,11 @@ class FletMainWindow:
                                                         self.camera_dropdown,
                                                         self.toggle_mode_btn,
                                                         self.flip_camera_btn,
+                                                        # RealSense exposure controls (shown only for RealSense, inline with buttons)
+                                                        self.exposure_controls,
                                                     ],
                                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                                 ),
-                                                # RealSense exposure controls (shown only for RealSense)
-                                                self.exposure_controls,
                                                 # Status row
                                                 ft.Row(
                                                     [
@@ -677,10 +692,14 @@ class FletMainWindow:
                 display_height=app_config.display_height,
                 callback=self._update_video_feed,
             )
-            # Show RealSense exposure controls
+            # RealSense detected - using auto-exposure (manual controls hidden)
             self.using_realsense = True
-            self.exposure_controls.visible = True
-            self.exposure_slider.visible = True
+            # Exposure controls hidden - relying on RealSense auto-exposure
+
+            # Uncomment below to enable manual exposure controls:
+            # self.exposure_controls.visible = True
+            # self.exposure_slider.visible = True
+            # self.auto_exposure_btn.visible = True
         else:
             print("[INFO] No daemon - using direct camera access (RGB only)")
             self.image_processor = ImageProcessor(
@@ -1251,6 +1270,105 @@ class FletMainWindow:
             print(f"✓ RealSense exposure set to {exposure_value}")
 
         self.page.update()
+
+    def _auto_adjust_exposure(self):
+        """Run auto-exposure adjustment once"""
+        if not self.using_realsense or not self.image_processor:
+            return
+
+        # Run once
+        self._run_auto_exposure_once()
+
+    def _run_auto_exposure_once(self):
+        """Run auto-exposure adjustment once without enabling continuous mode"""
+        if not self.using_realsense or not self.image_processor:
+            return
+
+        try:
+            # Get current frame brightness
+            if hasattr(self.image_processor, 'get_recent_brightness'):
+                avg_brightness = self.image_processor.get_recent_brightness()
+            else:
+                return
+
+            # Calculate optimal exposure
+            current_exposure = int(self.exposure_slider.value)
+            # Target: 90 (lower than 128) for better noise/clarity tradeoff
+            # Segmentation models prioritize clean edges over brightness
+            target_brightness = 90
+            brightness_ratio = target_brightness / max(avg_brightness, 1)
+            new_exposure = int(current_exposure * brightness_ratio)
+
+            # Clamp with max 2500 to avoid excessive noise (high exposure = worse segmentation)
+            new_exposure = max(100, min(2500, new_exposure))
+
+            print(f"Startup auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}")
+
+            # Update slider and camera
+            self.exposure_slider.value = new_exposure
+            self.exposure_value_text.value = f"Exposure: {new_exposure}"
+
+            if self.image_processor.set_realsense_exposure(new_exposure):
+                print(f"✓ Exposure set to {new_exposure}")
+                print(f"   (Wait ~2 seconds for camera to adjust and buffer to refill before clicking auto-exposure again)")
+
+            self.page.update()
+
+        except Exception as e:
+            print(f"Startup auto-exposure failed: {e}")
+
+    def _continuous_auto_exposure(self):
+        """Continuously adjust exposure until disabled"""
+        while self.auto_exposure_enabled:
+            try:
+                # Get current frame brightness
+                if hasattr(self.image_processor, 'get_recent_brightness'):
+                    avg_brightness = self.image_processor.get_recent_brightness()
+                else:
+                    # Fallback: analyze current displayed frame
+                    if self.video_feed.src_base64:
+                        import base64
+                        from io import BytesIO
+
+                        import numpy as np
+                        from PIL import Image
+
+                        img_data = base64.b64decode(self.video_feed.src_base64.split(',')[1])
+                        img = Image.open(BytesIO(img_data))
+                        img_array = np.array(img.convert('RGB'))
+                        avg_brightness = np.mean(img_array)
+                    else:
+                        time.sleep(10)
+                        continue
+
+                # Calculate optimal exposure
+                current_exposure = int(self.exposure_slider.value)
+                target_brightness = 128
+                brightness_ratio = target_brightness / max(avg_brightness, 1)
+                new_exposure = int(current_exposure * brightness_ratio)
+
+                # Clamp to slider range
+                new_exposure = max(100, min(4000, new_exposure))
+
+                # Only adjust if change is significant (>5%)
+                if abs(new_exposure - current_exposure) / current_exposure > 0.05:
+                    print(f"Auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}")
+
+                    # Update slider and camera
+                    self.exposure_slider.value = new_exposure
+                    self.exposure_value_text.value = f"Exposure: {new_exposure}"
+
+                    if self.image_processor.set_realsense_exposure(new_exposure):
+                        pass  # Success
+
+                    self.page.update()
+
+                # Wait 10 seconds before next check (sporadic to improve responsiveness)
+                time.sleep(10)
+
+            except Exception as e:
+                print(f"Auto-exposure error: {e}")
+                time.sleep(10)
 
     def _on_tab_changed(self, e):
         """Handle tab change - unfreeze video when switching to Manual mode"""

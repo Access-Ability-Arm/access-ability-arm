@@ -32,8 +32,10 @@ class CameraClientSocket:
     def __init__(self):
         """Connect to daemon's socket"""
         self.socket = None
-        self.rgb_shape = (720, 1280, 3)
-        self.depth_shape = (720, 1280)
+        # Updated to match new camera configuration:
+        # RGB: 1920x1080 @ 30 FPS, Depth: 848x480 @ 30 FPS
+        self.rgb_shape = (1080, 1920, 3)
+        self.depth_shape = (480, 848)
         self.connected = False
 
         self._connect()
