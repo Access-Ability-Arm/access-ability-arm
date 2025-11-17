@@ -264,7 +264,7 @@ class DetectionManager:
             # Add smoothed depth if available
             if depths is not None and i < len(depths):
                 depth = depths[i]
-                if depth > 0:
+                if depth is not None and depth > 0:
                     label += f" {depth}mm"
 
             # Draw label background (semi-transparent black)

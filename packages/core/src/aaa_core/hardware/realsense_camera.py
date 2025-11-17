@@ -100,6 +100,35 @@ class RealsenseCamera:
 
         return True, color_image, depth_image
 
+    def set_exposure(self, exposure_value: int) -> bool:
+        """
+        Set camera exposure value
+
+        Args:
+            exposure_value: Exposure value (typically 50-300)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get the device from pipeline
+            profile = self.pipeline.get_active_profile()
+            device = profile.get_device()
+
+            # Find RGB sensor
+            for sensor in device.query_sensors():
+                if sensor.is_color_sensor():
+                    # Set exposure
+                    sensor.set_option(rs.option.exposure, exposure_value)
+                    status(f"✓ RealSense exposure set to {exposure_value}")
+                    return True
+
+            error("RGB sensor not found")
+            return False
+        except Exception as e:
+            error(f"Failed to set exposure: {e}")
+            return False
+
     def release(self):
         self.pipeline.stop()
         # print(depth_image)

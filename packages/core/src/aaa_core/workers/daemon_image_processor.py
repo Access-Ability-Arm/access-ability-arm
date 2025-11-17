@@ -151,3 +151,21 @@ class DaemonImageProcessor(threading.Thread):
     def flip_horizontal(self):
         """Flip property for compatibility"""
         return False
+
+    def set_realsense_exposure(self, exposure_value: int) -> bool:
+        """
+        Set RealSense camera exposure
+
+        Args:
+            exposure_value: Exposure value (50-300)
+
+        Returns:
+            bool: True if successful (not implemented for daemon mode yet)
+
+        Note:
+            Daemon mode doesn't support runtime exposure control yet.
+            Exposure is set when daemon starts.
+            Future: Add command socket to daemon for runtime control.
+        """
+        status(f"Exposure control not available in daemon mode (requested: {exposure_value})")
+        return False

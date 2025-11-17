@@ -71,6 +71,11 @@ class FletMainWindow:
         # Movement speed percentage (1-100%)
         self.movement_speed_percent = 20  # Default 20%
 
+        # RealSense exposure control
+        self.exposure_slider = None
+        self.exposure_value_text = None
+        self.using_realsense = False
+
         # Video freeze state for object detection
         self.video_frozen = False
         self.frozen_frame = None
@@ -337,6 +342,28 @@ class FletMainWindow:
             icon_color="#424242",  # Grey 800
         )
 
+        # RealSense exposure slider (hidden by default, shown when RealSense detected)
+        self.exposure_value_text = ft.Text("Exposure: 166", size=12, color="#666")
+        self.exposure_slider = ft.Slider(
+            min=50,
+            max=300,
+            value=166,
+            divisions=25,
+            label="Exposure: {value}",
+            on_change=self._on_exposure_change,
+            visible=False,  # Hidden until RealSense detected
+            width=300,
+        )
+        self.exposure_controls = ft.Row(
+            [
+                ft.Icon(ft.Icons.BRIGHTNESS_6, size=16, color="#666"),
+                self.exposure_slider,
+                self.exposure_value_text,
+            ],
+            visible=False,  # Hidden until RealSense detected
+            spacing=10,
+        )
+
         # Control panel with robotic arm buttons
         control_panel = self._build_control_panel()
 
@@ -364,6 +391,8 @@ class FletMainWindow:
                                                     ],
                                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                                 ),
+                                                # RealSense exposure controls (shown only for RealSense)
+                                                self.exposure_controls,
                                                 # Status row
                                                 ft.Row(
                                                     [
@@ -648,6 +677,10 @@ class FletMainWindow:
                 display_height=app_config.display_height,
                 callback=self._update_video_feed,
             )
+            # Show RealSense exposure controls
+            self.using_realsense = True
+            self.exposure_controls.visible = True
+            self.exposure_slider.visible = True
         else:
             print("[INFO] No daemon - using direct camera access (RGB only)")
             self.image_processor = ImageProcessor(
@@ -1204,6 +1237,20 @@ class FletMainWindow:
                 self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
                 self.flip_camera_btn.icon_color = "#424242"  # Grey 800
             self.page.update()
+
+    def _on_exposure_change(self, e):
+        """Handle RealSense exposure slider change"""
+        if not self.using_realsense or not self.image_processor:
+            return
+
+        exposure_value = int(e.control.value)
+        self.exposure_value_text.value = f"Exposure: {exposure_value}"
+
+        # Update RealSense camera exposure
+        if self.image_processor.set_realsense_exposure(exposure_value):
+            print(f"✓ RealSense exposure set to {exposure_value}")
+
+        self.page.update()
 
     def _on_tab_changed(self, e):
         """Handle tab change - unfreeze video when switching to Manual mode"""
