@@ -170,7 +170,15 @@ class DetectionManager:
         # Extract depth values at object centers
         depths = None
         if depth_frame is not None and len(centers) > 0:
-            depths = self._extract_depths(centers, depth_frame)
+            depths = self._extract_depths(centers, depth_frame, rgb_shape=image.shape)
+            # Debug: print depth extraction results
+            import sys
+            if hasattr(sys, '_depth_debug_counter'):
+                sys._depth_debug_counter += 1
+            else:
+                sys._depth_debug_counter = 1
+            if sys._depth_debug_counter % 30 == 1:  # Print every 30 frames
+                print(f"[DEBUG] Depth extraction: {len(centers)} objects, depths={depths}")
 
         # Update tracker with new detections
         # Use ByteTrack temporal tracker if enabled, otherwise fallback to legacy tracker
@@ -227,13 +235,14 @@ class DetectionManager:
 
 
 
-    def _extract_depths(self, centers, depth_frame):
+    def _extract_depths(self, centers, depth_frame, rgb_shape=None):
         """
         Extract depth values at object centers
 
         Args:
-            centers: List of (cx, cy) center points
+            centers: List of (cx, cy) center points in RGB frame coordinates
             depth_frame: Depth frame (H x W)
+            rgb_shape: Optional RGB frame shape (H, W, C) for coordinate scaling
 
         Returns:
             List of depth values in millimeters
@@ -241,12 +250,37 @@ class DetectionManager:
         depths = []
         h_depth, w_depth = depth_frame.shape[:2]
 
-        for cx, cy in centers:
-            if 0 <= cy < h_depth and 0 <= cx < w_depth:
-                depth = depth_frame[cy, cx]
+        # Calculate scaling factors if RGB and depth have different resolutions
+        scale_x = 1.0
+        scale_y = 1.0
+        if rgb_shape is not None:
+            h_rgb, w_rgb = rgb_shape[:2]
+            scale_x = w_depth / w_rgb
+            scale_y = h_depth / h_rgb
+
+        for i, (cx, cy) in enumerate(centers):
+            # Scale coordinates from RGB to depth frame
+            cx_depth = int(cx * scale_x)
+            cy_depth = int(cy * scale_y)
+
+            if 0 <= cy_depth < h_depth and 0 <= cx_depth < w_depth:
+                depth = depth_frame[cy_depth, cx_depth]
                 depths.append(int(depth))
+                # Debug first object only
+                if i == 0:
+                    import sys
+                    if hasattr(sys, '_depth_extract_counter'):
+                        sys._depth_extract_counter += 1
+                    else:
+                        sys._depth_extract_counter = 1
+                    if sys._depth_extract_counter % 30 == 1:
+                        print(f"[DEBUG] Object 0: RGB center=({cx},{cy}) -> depth center=({cx_depth},{cy_depth}), "
+                              f"scale=({scale_x:.3f},{scale_y:.3f}), depth={depth}mm")
             else:
                 depths.append(0)  # Invalid depth
+                if i == 0:
+                    print(f"[DEBUG] Object 0: RGB center=({cx},{cy}) -> depth center=({cx_depth},{cy_depth}) "
+                          f"OUT OF BOUNDS (depth shape={depth_frame.shape})")
 
         return depths
 
@@ -266,7 +300,17 @@ class DetectionManager:
         Returns:
             frame: Frame with labels drawn
         """
+        import sys
+
         import cv2
+
+        # Debug: log what we received
+        if hasattr(sys, '_draw_debug_counter'):
+            sys._draw_debug_counter += 1
+        else:
+            sys._draw_debug_counter = 1
+        if sys._draw_debug_counter % 30 == 1:  # Print every 30 frames
+            print(f"[DEBUG] _draw_object_info: {len(boxes)} objects, depths={depths}")
 
         for i, (box, class_name, center) in enumerate(
             zip(boxes, classes, centers)
@@ -294,6 +338,13 @@ class DetectionManager:
                 if depth is not None and depth > 0:
                     depth_cm = int(depth / 10.0)
                     label += f" {depth_cm}cm"
+                    # Debug first object
+                    if i == 0 and sys._draw_debug_counter % 30 == 1:
+                        print(f"[DEBUG] Object 0 label: '{label}' (depth={depth}mm, depth_cm={depth_cm}cm)")
+                elif i == 0 and sys._draw_debug_counter % 30 == 1:
+                    print(f"[DEBUG] Object 0: depth is None or <=0 (depth={depth})")
+            elif i == 0 and sys._draw_debug_counter % 30 == 1:
+                print(f"[DEBUG] Object 0: depths is None or i >= len(depths) (depths={depths}, i={i})")
 
             # Draw label background (semi-transparent black)
             (label_w, label_h), baseline = cv2.getTextSize(
@@ -343,7 +394,7 @@ class DetectionManager:
         # Extract depth values at object centers
         depths = None
         if depth_frame is not None and len(centers) > 0:
-            depths = self._extract_depths(centers, depth_frame)
+            depths = self._extract_depths(centers, depth_frame, rgb_shape=image.shape)
 
         # Update tracker with new detections
         # Use ByteTrack temporal tracker if enabled, otherwise fallback to legacy tracker
