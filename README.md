@@ -6,9 +6,10 @@ AI-powered GUI for the Drane Engineering assistive robotic arm, featuring real-t
 
 - **UFactory Lite6 Integration**: Direct control of UFactory Lite6 collaborative robotic arm
 - **RF-DETR Seg Object Detection**: State-of-the-art real-time segmentation (44.3 mAP, Nov 2025)
+- **Advanced Vision Pipeline**: Spatial smoothing, temporal tracking (ByteTrack), and depth validation for stable, accurate detection
 - **GPU Acceleration**: Automatic support for Apple Metal, NVIDIA CUDA, or CPU
 - **Face Tracking**: Multi-region facial landmark detection with MediaPipe
-- **Depth Sensing**: Intel RealSense support for distance measurement (optional)
+- **Depth Sensing**: Intel RealSense support for distance measurement and boundary validation (optional)
 - **Flexible Camera Support**: Auto-detects RealSense, webcams, or Continuity Camera
 - **Manual Controls**: Direct robotic arm control (x, y, z, grip)
 - **Toggle Modes**: Press 'T' to cycle between face tracking, object detection, and combined modes
