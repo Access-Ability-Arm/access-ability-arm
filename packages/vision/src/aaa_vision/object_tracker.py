@@ -33,28 +33,46 @@ class TrackedObject:
         self.frames_seen = 1  # Number of consecutive frames detected
         self.frames_missing = 0  # Number of consecutive frames not detected
 
-        # Kalman filter for position tracking (tracks center x, y)
-        self.kalman = cv2.KalmanFilter(4, 2)  # 4 state vars, 2 measurement vars
+        # Kalman filter for position tracking (optimized for stationary objects)
+        self.kalman = cv2.KalmanFilter(4, 2)  # 4 state vars (x, y, vx, vy), 2 measurements (x, y)
+
+        # Measurement matrix: we measure x and y directly
         self.kalman.measurementMatrix = np.array([
             [1, 0, 0, 0],
             [0, 1, 0, 0]
         ], np.float32)
 
+        # Transition matrix: position + velocity model
         self.kalman.transitionMatrix = np.array([
             [1, 0, 1, 0],  # x = x + vx
             [0, 1, 0, 1],  # y = y + vy
-            [0, 0, 1, 0],  # vx = vx
+            [0, 0, 1, 0],  # vx = vx (no external acceleration)
             [0, 0, 0, 1]   # vy = vy
         ], np.float32)
 
-        self.kalman.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
+        # Process noise covariance - OPTIMIZED FOR STATIONARY OBJECTS
+        # Objects barely move, so very low process noise
+        # Higher noise on velocity to make it decay quickly to zero
+        self.kalman.processNoiseCov = np.array([
+            [0.001, 0,     0,    0   ],  # x: very small (objects don't move much)
+            [0,     0.001, 0,    0   ],  # y: very small
+            [0,     0,     0.01, 0   ],  # vx: higher (velocity decays to zero)
+            [0,     0,     0,    0.01]   # vy: higher (velocity decays to zero)
+        ], np.float32)
 
-        # Initialize state with current position
+        # Measurement noise covariance - TRUST DETECTOR (we have TTA now)
+        # Lower values = trust measurements more
+        self.kalman.measurementNoiseCov = np.array([
+            [0.5, 0  ],  # x measurement noise (detector + TTA is reliable)
+            [0,   0.5]   # y measurement noise
+        ], np.float32)
+
+        # Initialize state with current position and zero velocity
         self.kalman.statePre = np.array([
             [center[0]],
             [center[1]],
-            [0],  # vx
-            [0]   # vy
+            [0],  # vx = 0 (stationary)
+            [0]   # vy = 0 (stationary)
         ], np.float32)
 
         self.kalman.statePost = self.kalman.statePre.copy()
