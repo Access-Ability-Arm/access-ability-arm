@@ -884,6 +884,18 @@ class FletMainWindow:
         bg_x2 = bg_x1 + total_width
         bg_y2 = bg_y1 + total_height
 
+        # Draw borders if specified (layered approach)
+        if border_color:
+            # Draw white outer outline on EXPANDED rectangle (sits outside colored border)
+            white_rim = 3  # Width of visible white rim
+            draw.rounded_rectangle(
+                [bg_x1 - white_rim, bg_y1 - white_rim,
+                 bg_x2 + white_rim, bg_y2 + white_rim],
+                radius=corner_radius + white_rim,
+                outline=(255, 255, 255),  # White outer outline
+                width=white_rim
+            )
+
         # Draw rounded rectangle background
         draw.rounded_rectangle(
             [bg_x1, bg_y1, bg_x2, bg_y2],
@@ -891,7 +903,7 @@ class FletMainWindow:
             fill=bg_color
         )
 
-        # Draw border if specified
+        # Draw colored border on top
         if border_color:
             draw.rounded_rectangle(
                 [bg_x1, bg_y1, bg_x2, bg_y2],
@@ -907,6 +919,115 @@ class FletMainWindow:
 
         # Convert back to numpy array
         return np.array(pil_img)
+
+    def _calculate_label_positions(self, centers, classes, img_shape, font_size=42, padding=12):
+        """
+        Calculate non-overlapping label positions using force-directed algorithm (ggrepel-style)
+
+        Args:
+            centers: List of (x, y) tuples for object centers
+            classes: List of class names
+            img_shape: Image shape (height, width, channels)
+            font_size: Font size for labels
+            padding: Padding around labels
+
+        Returns:
+            List of (x, y) tuples for label positions
+        """
+        if not centers:
+            return []
+
+        img_height, img_width = img_shape[:2]
+
+        # Estimate label dimensions (rough approximation)
+        # PIL font rendering will vary, but this is good enough for collision detection
+        char_width = font_size * 0.6
+        char_height = font_size * 1.2
+
+        labels_info = []
+        for cx, cy, class_name in zip([c[0] for c in centers], [c[1] for c in centers], classes):
+            # Estimate label size
+            label_text = f"#{len(labels_info) + 1}: {class_name}"
+            label_w = int(len(label_text) * char_width + padding * 2)
+            label_h = int(char_height + padding * 2)
+
+            # Initial position (centered above object)
+            label_x = cx - label_w // 2
+            label_y = cy - 30
+
+            labels_info.append({
+                'cx': cx,
+                'cy': cy,
+                'x': float(label_x),
+                'y': float(label_y),
+                'w': label_w,
+                'h': label_h
+            })
+
+        # Apply force-directed layout
+        iterations = 50
+        for iteration in range(iterations):
+            forces = [{'x': 0.0, 'y': 0.0} for _ in labels_info]
+
+            # Repulsion between overlapping labels
+            for i, label1 in enumerate(labels_info):
+                for j in range(i + 1, len(labels_info)):
+                    label2 = labels_info[j]
+
+                    # Check overlap with padding
+                    pad = 10
+                    l1_x1, l1_y1 = label1['x'] - pad, label1['y'] - pad
+                    l1_x2, l1_y2 = label1['x'] + label1['w'] + pad, label1['y'] + label1['h'] + pad
+                    l2_x1, l2_y1 = label2['x'] - pad, label2['y'] - pad
+                    l2_x2, l2_y2 = label2['x'] + label2['w'] + pad, label2['y'] + label2['h'] + pad
+
+                    overlap = not (l1_x2 < l2_x1 or l2_x2 < l1_x1 or l1_y2 < l2_y1 or l2_y2 < l1_y1)
+
+                    if overlap:
+                        # Calculate centers
+                        l1_cx = label1['x'] + label1['w'] / 2
+                        l1_cy = label1['y'] + label1['h'] / 2
+                        l2_cx = label2['x'] + label2['w'] / 2
+                        l2_cy = label2['y'] + label2['h'] / 2
+
+                        dx = l2_cx - l1_cx
+                        dy = l2_cy - l1_cy
+                        dist = np.sqrt(dx**2 + dy**2)
+
+                        if dist < 1:
+                            dx, dy = 20, 10
+                            dist = np.sqrt(dx**2 + dy**2)
+
+                        # Strong repulsion
+                        repulsion = 15.0
+                        fx = (dx / dist) * repulsion
+                        fy = (dy / dist) * repulsion
+
+                        forces[i]['x'] -= fx
+                        forces[i]['y'] -= fy
+                        forces[j]['x'] += fx
+                        forces[j]['y'] += fy
+
+            # Spring force toward anchor
+            spring = 0.15
+            for i, label in enumerate(labels_info):
+                desired_x = label['cx'] - label['w'] // 2
+                desired_y = label['cy'] - 30
+                forces[i]['x'] += (desired_x - label['x']) * spring
+                forces[i]['y'] += (desired_y - label['y']) * spring
+
+            # Apply forces with damping
+            damping = 0.8
+            for i, label in enumerate(labels_info):
+                label['x'] += forces[i]['x'] * damping
+                label['y'] += forces[i]['y'] * damping
+
+                # Keep in bounds
+                label['x'] = max(10, min(label['x'], img_width - label['w'] - 10))
+                label['y'] = max(10, min(label['y'], img_height - label['h'] - 10))
+
+        # Return positions as (x, y) tuples (center of label area)
+        return [(int(l['x'] + l['w'] // 2), int(l['y'] + l['h'] // 2)) for l in labels_info]
 
     def _enhance_frozen_labels(self, img_array):
         """
@@ -944,26 +1065,38 @@ class FletMainWindow:
             'contours': contours
         }
 
-        # Draw only the masks, not the labels
-        img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours
+        # Draw masks and get the colors used for each object
+        img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
+            clean_img, boxes, classes, contours, return_colors=True
         )
 
+        # Calculate label positions with overlap avoidance (ggrepel-style)
+        label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
+
         # Now draw our enhanced numbered labels with PIL for professional font rendering
-        for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
+        for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
             x, y = center
+            label_x, label_y = label_pos
             label = f"#{i}: {class_name}"
+
+            # Convert BGR to RGB for consistency
+            border_color_rgb = (mask_color[2], mask_color[1], mask_color[0])
+
+            # Draw connector line if label moved significantly (using mask color)
+            distance = np.sqrt((label_x - x)**2 + (label_y - y)**2)
+            if distance > 30:
+                cv2.line(img_with_masks, (x, y), (label_x, label_y), mask_color, 2, cv2.LINE_AA)
 
             # Draw using PIL for much better font rendering
             img_with_masks = self._draw_text_pil(
                 img_with_masks,
                 label,
-                (x, y),
+                (label_x, label_y),
                 font_size=42,
                 text_color=(70, 70, 70),  # Dark gray text
                 bg_color=(255, 255, 255),  # White background
-                border_color=(70, 70, 70),  # Dark gray border
-                border_width=2,
+                border_color=border_color_rgb,  # Match segmentation contour color
+                border_width=5,  # Thick border for visibility
                 padding=12
             )
 
@@ -1037,16 +1170,28 @@ class FletMainWindow:
         contours = self.frozen_detections['contours']
         centers = self.frozen_detections['centers']
 
-        # Draw only the masks
-        img_with_masks = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours
+        # Draw masks and get colors
+        img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
+            clean_img, boxes, classes, contours, return_colors=True
         )
 
+        # Calculate label positions with overlap avoidance
+        label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
+
         # Draw numbered labels with highlighting for selected object using PIL
-        for i, (center, class_name) in enumerate(zip(centers, classes), start=1):
+        for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
             x, y = center
+            label_x, label_y = label_pos
             label = f"#{i}: {class_name}"
             is_selected = (i - 1) == self.selected_object
+
+            # Convert BGR to RGB
+            mask_color_rgb = (mask_color[2], mask_color[1], mask_color[0])
+
+            # Draw connector line if label moved significantly
+            distance = np.sqrt((label_x - x)**2 + (label_y - y)**2)
+            if distance > 30:
+                cv2.line(img_with_masks, (x, y), (label_x, label_y), mask_color, 2, cv2.LINE_AA)
 
             # Set colors based on selection
             if is_selected:
@@ -1055,19 +1200,19 @@ class FletMainWindow:
                 border_color = (25, 25, 112)  # Dark blue border (Midnight blue)
             else:
                 text_color = (70, 70, 70)  # Dark gray text
-                bg_color = (240, 240, 240)  # Very light gray background
-                border_color = (70, 70, 70)  # Dark gray border
+                bg_color = (255, 255, 255)  # White background
+                border_color = mask_color_rgb  # Match segmentation contour color
 
             # Draw using PIL for professional font rendering
             img_with_masks = self._draw_text_pil(
                 img_with_masks,
                 label,
-                (x, y),
+                (label_x, label_y),
                 font_size=42,
                 text_color=text_color,
                 bg_color=bg_color,
                 border_color=border_color,
-                border_width=3,
+                border_width=5,  # Thick border for visibility
                 padding=12
             )
 

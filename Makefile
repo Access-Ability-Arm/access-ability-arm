@@ -49,7 +49,10 @@ install:
 
 # Run desktop application
 run:
-	python main.py
+	@echo "Clearing Python cache..."
+	@find packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find packages -type f -name "*.pyc" -delete 2>/dev/null || true
+	@python main.py
 
 # Run with RealSense depth support (requires sudo for USB access)
 run-realsense:

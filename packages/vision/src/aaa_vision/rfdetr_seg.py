@@ -267,7 +267,7 @@ class RFDETRSeg:
 
         return intersection / union if union > 0 else 0.0
 
-    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None):
+    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None, return_colors=False):
         """
         Draw segmentation masks on frame
 
@@ -276,9 +276,10 @@ class RFDETRSeg:
             boxes: List of bounding boxes (optional, will auto-detect if None)
             classes: List of class names (optional)
             contours: List of segmentation contours (optional)
+            return_colors: If True, return (frame, colors) tuple instead of just frame
 
         Returns:
-            frame: Frame with masks drawn
+            frame: Frame with masks drawn (or tuple of (frame, colors) if return_colors=True)
         """
         # If no boxes provided, run detection
         if boxes is None:
@@ -315,7 +316,106 @@ class RFDETRSeg:
             if i < len(colors):
                 cv2.drawContours(frame, [contour], -1, colors[i], 2)
 
+        if return_colors:
+            return frame, colors
         return frame
+
+    def _repel_labels(self, labels_info, img_width, img_height, iterations=50):
+        """
+        Adjust label positions to avoid overlaps using force-directed algorithm
+        Similar to R's ggrepel package
+
+        Args:
+            labels_info: List of dicts with keys: 'text', 'cx', 'cy', 'x', 'y', 'w', 'h'
+            img_width: Image width for boundary constraints
+            img_height: Image height for boundary constraints
+            iterations: Number of repulsion iterations (default 50)
+
+        Returns:
+            List of adjusted label info dicts
+        """
+        print(f"[REPEL] Called with {len(labels_info)} labels")
+        if len(labels_info) <= 1:
+            print(f"[REPEL] Skipping - only {len(labels_info)} label(s)")
+            return labels_info
+
+        # Copy to avoid modifying original
+        labels = [label.copy() for label in labels_info]
+
+        # Force-directed layout algorithm
+        for iteration in range(iterations):
+            # Calculate forces for each label
+            forces = [{'x': 0, 'y': 0} for _ in labels]
+
+            # 1. Repulsion forces between overlapping labels
+            for i, label1 in enumerate(labels):
+                for j in range(i + 1, len(labels)):
+                    label2 = labels[j]
+
+                    # Calculate bounding boxes with padding
+                    padding = 8
+                    l1_x1 = label1['x'] - padding
+                    l1_y1 = label1['y'] - label1['h'] - padding
+                    l1_x2 = label1['x'] + label1['w'] + padding
+                    l1_y2 = label1['y'] + padding
+
+                    l2_x1 = label2['x'] - padding
+                    l2_y1 = label2['y'] - label2['h'] - padding
+                    l2_x2 = label2['x'] + label2['w'] + padding
+                    l2_y2 = label2['y'] + padding
+
+                    # Check rectangle overlap
+                    overlap = not (l1_x2 < l2_x1 or l2_x2 < l1_x1 or
+                                  l1_y2 < l2_y1 or l2_y2 < l1_y1)
+
+                    if overlap:
+                        # Calculate center of each label
+                        l1_cx = label1['x'] + label1['w'] / 2
+                        l1_cy = label1['y'] - label1['h'] / 2
+                        l2_cx = label2['x'] + label2['w'] / 2
+                        l2_cy = label2['y'] - label2['h'] / 2
+
+                        # Repulsion vector
+                        dx = l2_cx - l1_cx
+                        dy = l2_cy - l1_cy
+                        dist = np.sqrt(dx**2 + dy**2)
+
+                        if dist < 1:
+                            # Same position - push apart arbitrarily
+                            dx, dy = 20, 10
+                            dist = np.sqrt(dx**2 + dy**2)
+
+                        # Stronger repulsion for overlapping labels
+                        repulsion_strength = 15.0
+                        force_x = (dx / dist) * repulsion_strength
+                        force_y = (dy / dist) * repulsion_strength
+
+                        # Apply equal and opposite forces
+                        forces[i]['x'] -= force_x
+                        forces[i]['y'] -= force_y
+                        forces[j]['x'] += force_x
+                        forces[j]['y'] += force_y
+
+            # 2. Spring forces toward anchor points (object centers)
+            spring_strength = 0.15  # Gentle pull toward original position
+            for i, label in enumerate(labels):
+                desired_x = label['cx'] - label['w'] // 2
+                desired_y = label['cy'] - 15
+
+                forces[i]['x'] += (desired_x - label['x']) * spring_strength
+                forces[i]['y'] += (desired_y - label['y']) * spring_strength
+
+            # 3. Apply forces with damping
+            damping = 0.8  # Prevents oscillation
+            for i, label in enumerate(labels):
+                label['x'] += forces[i]['x'] * damping
+                label['y'] += forces[i]['y'] * damping
+
+                # Keep labels within image bounds
+                label['x'] = max(10, min(label['x'], img_width - label['w'] - 10))
+                label['y'] = max(label['h'] + 10, min(label['y'], img_height - 10))
+
+        return labels
 
     def draw_object_info(
         self,
@@ -327,6 +427,7 @@ class RFDETRSeg:
     ):
         """
         Draw labels and depth information (no bounding boxes)
+        Labels are automatically repositioned to avoid overlaps (similar to ggrepel)
 
         Args:
             frame: Input BGR image
@@ -342,6 +443,56 @@ class RFDETRSeg:
         if boxes is None:
             boxes, classes, _, centers = self.detect_objects_mask(frame)
 
+        if not boxes:
+            return frame
+
+        img_height, img_width = frame.shape[:2]
+
+        # First pass: calculate label sizes and initial positions
+        labels_info = []
+        for i, (box, class_name, center) in enumerate(
+            zip(boxes, classes, centers)
+        ):
+            x, y, w, h = box
+            cx, cy = center
+
+            # Prepare label text
+            label = class_name
+
+            # Add depth if available
+            if depth_frame is not None:
+                h_depth, w_depth = depth_frame.shape[:2]
+                if 0 <= cy < h_depth and 0 <= cx < w_depth:
+                    depth = depth_frame[cy, cx]
+                    if depth > 0:
+                        label += f" {depth}mm"
+
+            # Calculate label size
+            (label_w, label_h), baseline = cv2.getTextSize(
+                label,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                2
+            )
+
+            # Initial position (centered above center point)
+            label_x = cx - label_w // 2
+            label_y = cy - 15
+
+            labels_info.append({
+                'text': label,
+                'cx': cx,
+                'cy': cy,
+                'x': label_x,
+                'y': label_y,
+                'w': label_w,
+                'h': label_h
+            })
+
+        # Apply repulsion algorithm to avoid overlaps
+        labels_info = self._repel_labels(labels_info, img_width, img_height)
+
+        # Second pass: draw center points, crosshairs, and adjusted labels
         for i, (box, class_name, center) in enumerate(
             zip(boxes, classes, centers)
         ):
@@ -359,27 +510,31 @@ class RFDETRSeg:
                 2
             )
 
-            # Prepare label
-            label = class_name
+            # Get adjusted label position
+            label_info = labels_info[i]
+            label_x = int(label_info['x'])
+            label_y = int(label_info['y'])
+            label_w = label_info['w']
+            label_h = label_info['h']
+            label = label_info['text']
 
-            # Add depth if available
-            if depth_frame is not None:
-                h_depth, w_depth = depth_frame.shape[:2]
-                if 0 <= cy < h_depth and 0 <= cx < w_depth:
-                    depth = depth_frame[cy, cx]
-                    if depth > 0:
-                        label += f" {depth}mm"
+            # Draw line from center to label (if label was moved significantly)
+            label_center_x = label_x + label_w // 2
+            label_center_y = label_y - label_h // 2
+            distance_from_anchor = np.sqrt((label_center_x - cx)**2 + (label_center_y - cy)**2)
+
+            if distance_from_anchor > 25:
+                # Draw connector line
+                cv2.line(
+                    frame,
+                    (cx, cy),
+                    (label_center_x, label_center_y),
+                    (255, 255, 0),  # Cyan line
+                    1,
+                    cv2.LINE_AA
+                )
 
             # Draw label background (semi-transparent black)
-            (label_w, label_h), baseline = cv2.getTextSize(
-                label,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                2
-            )
-            # Position label near center point
-            label_x = cx - label_w // 2
-            label_y = cy - 15
             cv2.rectangle(
                 frame,
                 (label_x - 5, label_y - label_h - 5),
