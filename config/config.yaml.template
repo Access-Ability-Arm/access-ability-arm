@@ -76,6 +76,27 @@ detection:
     # High value (0.95-0.98) for stationary scenes, lower (0.8-0.9) for moving objects
     smoothing_alpha: 0.97
 
+  # Depth validation settings (RealSense depth-based boundary validation)
+  # Uses lightweight Sobel gradient detection (<2ms overhead)
+  depth_validation:
+    # Enable/disable depth validation (default: true)
+    enabled: true
+
+    # Depth discontinuity threshold in meters (default: 0.03 = 3cm)
+    # Smaller = more sensitive to edges, Larger = only major discontinuities
+    discontinuity_threshold: 0.03
+
+    # Minimum confidence for validated boundaries (0.0-1.0, default: 0.5)
+    min_confidence: 0.5
+
+    # Edge dilation iterations (default: 1)
+    # Larger = thicker edge regions for matching with RGB boundaries
+    edge_dilation: 1
+
+    # Use bilateral filter on depth before edge detection (default: true)
+    # Reduces noise while preserving edges
+    use_bilateral_filter: true
+
 # Control Settings
 controls:
   # Button hold threshold in seconds

@@ -54,6 +54,13 @@ class AppConfig:
     temporal_tracking_match: float = 0.7
     temporal_smoothing_alpha: float = 0.97
 
+    # Depth validation settings (RealSense)
+    depth_validation_enabled: bool = True
+    depth_discontinuity_threshold: float = 0.03
+    depth_min_confidence: float = 0.5
+    depth_edge_dilation: int = 1
+    depth_use_bilateral_filter: bool = True
+
     # Button behavior
     button_hold_threshold: float = 0.5  # seconds
 
@@ -223,6 +230,20 @@ def apply_user_config(config: AppConfig, user_config: dict):
                 config.temporal_tracking_match = tracking['match_thresh']
             if 'smoothing_alpha' in tracking:
                 config.temporal_smoothing_alpha = tracking['smoothing_alpha']
+
+        # Depth validation settings
+        if 'depth_validation' in detection:
+            depth_val = detection['depth_validation']
+            if 'enabled' in depth_val:
+                config.depth_validation_enabled = depth_val['enabled']
+            if 'discontinuity_threshold' in depth_val:
+                config.depth_discontinuity_threshold = depth_val['discontinuity_threshold']
+            if 'min_confidence' in depth_val:
+                config.depth_min_confidence = depth_val['min_confidence']
+            if 'edge_dilation' in depth_val:
+                config.depth_edge_dilation = depth_val['edge_dilation']
+            if 'use_bilateral_filter' in depth_val:
+                config.depth_use_bilateral_filter = depth_val['use_bilateral_filter']
 
     # Control settings
     if 'controls' in user_config:

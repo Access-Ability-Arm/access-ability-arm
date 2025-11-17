@@ -12,6 +12,7 @@ import numpy as np
 from aaa_core.config.console import status
 from aaa_core.config.settings import app_config
 
+from aaa_vision.depth_validator import DepthValidator
 from aaa_vision.detection_logger import DetectionLogger
 from aaa_vision.face_detector import FaceDetector
 from aaa_vision.object_tracker import ObjectTracker
@@ -91,6 +92,17 @@ class DetectionManager:
             max_frames_missing=15,
             smoothing_alpha=0.9
         )
+
+        # Initialize depth validator for boundary validation
+        self.depth_validator = DepthValidator(
+            enabled=app_config.depth_validation_enabled if hasattr(app_config, 'depth_validation_enabled') else True,
+            discontinuity_threshold=app_config.depth_discontinuity_threshold if hasattr(app_config, 'depth_discontinuity_threshold') else 0.03,
+            min_confidence=app_config.depth_min_confidence if hasattr(app_config, 'depth_min_confidence') else 0.5,
+            edge_dilation=app_config.depth_edge_dilation if hasattr(app_config, 'depth_edge_dilation') else 1
+        )
+
+        if self.depth_validator.enabled:
+            print(f"✓ Depth validation enabled (threshold: {self.depth_validator.discontinuity_threshold}m)")
 
         # Initialize detection logger (disabled by default, enable with toggle_logging())
         self.logger = DetectionLogger(enabled=False)
@@ -186,6 +198,14 @@ class DetectionManager:
 
             # Contours are already stored in tracked objects from TemporalTracker
             tracked_contours = [obj.contour for obj in tracked_objects]
+
+            # Validate boundaries with depth if available
+            if depth_frame is not None and self.depth_validator.enabled:
+                depth_confidences, _ = self.depth_validator.validate_boundaries(
+                    depth_frame, tracked_boxes, tracked_contours
+                )
+                # Note: depth_confidences could be used to filter low-confidence detections
+                # or displayed to user for debugging. For now, just compute them.
         else:
             tracked_boxes = []
             tracked_classes = []
@@ -351,6 +371,12 @@ class DetectionManager:
 
             # Contours are already stored in tracked objects from TemporalTracker
             tracked_contours = [obj.contour for obj in tracked_objects]
+
+            # Validate boundaries with depth if available
+            if depth_frame is not None and self.depth_validator.enabled:
+                depth_confidences, _ = self.depth_validator.validate_boundaries(
+                    depth_frame, tracked_boxes, tracked_contours
+                )
         else:
             tracked_boxes = []
             tracked_classes = []
