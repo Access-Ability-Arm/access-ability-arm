@@ -195,21 +195,13 @@ class ObjectTracker:
             if obj.should_keep(self.max_frames_missing)
         ]
 
-        # Build output lists (only confirmed objects)
-        output_boxes = []
-        output_classes = []
-        output_centers = []
-        output_depths = [] if depths is not None else None
+        # Build output list (only confirmed objects)
+        confirmed_objects = [
+            obj for obj in self.tracked_objects
+            if obj.is_confirmed(self.min_frames_to_show)
+        ]
 
-        for obj in self.tracked_objects:
-            if obj.is_confirmed(self.min_frames_to_show):
-                output_boxes.append(obj.box)
-                output_classes.append(obj.class_name)
-                output_centers.append(obj.center)
-                if output_depths is not None:
-                    output_depths.append(obj.depth if obj.depth is not None else 0)
-
-        return output_boxes, output_classes, output_centers, output_depths
+        return confirmed_objects
 
     def _calculate_iou(self, box1, box2):
         """
