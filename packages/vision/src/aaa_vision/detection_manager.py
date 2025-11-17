@@ -70,10 +70,11 @@ class DetectionManager:
         status(f"Detection mode: {self.detection_mode}")
 
         # Initialize advanced object tracker with Kalman filter and multi-frame consensus
+        # Optimized for stationary home assistant objects (cups, books, etc. on table)
         self.object_tracker = ObjectTracker(
             iou_threshold=0.35,        # Minimum IoU for matching objects across frames
-            min_frames_to_show=2,      # Objects must appear in N consecutive frames before displaying
-            max_frames_missing=3,      # Keep showing objects for N frames after they disappear
+            min_frames_to_show=3,      # Objects must appear in N consecutive frames (lower for stationary objects)
+            max_frames_missing=15,     # Keep showing for N frames after disappear (high for detector inconsistency)
             smoothing_alpha=0.9        # Reserved for future depth smoothing if needed
         )
 

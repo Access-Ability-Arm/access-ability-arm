@@ -24,15 +24,15 @@ class RFDETRSeg:
     (44.3 mAP on COCO, November 2025 release).
     """
 
-    def __init__(self, confidence_threshold=0.35):
+    def __init__(self, confidence_threshold=0.25):
         """
         Initialize RF-DETR Seg model
 
         Args:
-            confidence_threshold: Minimum confidence for detections (default 0.35)
-                                 Balanced for stability with good detection coverage
-                                 Higher values (0.5+) may cause objects to flicker in/out
-                                 Lower values (0.2-0.3) detect more but less stable
+            confidence_threshold: Minimum confidence for detections (default 0.25)
+                                 Optimized for stationary home assistant objects
+                                 Lower threshold catches marginal detections, reducing flicker
+                                 Tracking layer filters false positives with multi-frame consensus
         """
         self.confidence_threshold = confidence_threshold
 
