@@ -69,7 +69,8 @@ class DetectionManager:
 
         # Temporal smoothing for object detection
         self.smoothing_enabled = True
-        self.smoothing_alpha = 0.85  # Higher = more smoothing (0.0-1.0)
+        self.smoothing_alpha = 0.9  # Higher = more smoothing (0.0-1.0)
+        self.iou_threshold = 0.4  # Higher = stricter matching (0.3-0.6)
         self.prev_boxes = None
         self.prev_classes = None
         self.prev_centers = None
@@ -255,7 +256,7 @@ class DetectionManager:
         if self.prev_boxes is None or len(self.prev_boxes) == 0:
             return None
 
-        best_iou = 0.3  # Minimum IoU threshold for matching
+        best_iou = self.iou_threshold  # Minimum IoU threshold for matching
         best_idx = None
 
         for i, (prev_box, prev_class) in enumerate(zip(self.prev_boxes, self.prev_classes)):
