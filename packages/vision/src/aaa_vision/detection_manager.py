@@ -13,6 +13,7 @@ from aaa_core.config.console import status
 from aaa_core.config.settings import app_config
 
 from aaa_vision.face_detector import FaceDetector
+from aaa_vision.object_tracker import ObjectTracker
 
 
 @contextmanager
@@ -67,16 +68,13 @@ class DetectionManager:
         self.detection_mode = "objects" if self.segmentation_model else "face"
         status(f"Detection mode: {self.detection_mode}")
 
-        # Temporal smoothing for object detection
-        self.smoothing_enabled = True
-        self.smoothing_alpha = 0.9  # Higher = more smoothing (0.0-1.0)
-        self.iou_threshold = 0.35  # Minimum IoU for matching (lower = more lenient)
-
-        # Track object history
-        self.prev_boxes = None
-        self.prev_classes = None
-        self.prev_centers = None
-        self.prev_depths = None
+        # Initialize advanced object tracker with Kalman filter and multi-frame consensus
+        self.object_tracker = ObjectTracker(
+            iou_threshold=0.35,        # Minimum IoU for matching objects across frames
+            min_frames_to_show=2,      # Objects must appear in N consecutive frames before displaying
+            max_frames_missing=3,      # Keep showing objects for N frames after they disappear
+            smoothing_alpha=0.9        # Reserved for future depth smoothing if needed
+        )
 
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""
@@ -136,174 +134,59 @@ class DetectionManager:
             image
         )
 
-        # Extract depth values at object centers (before smoothing)
+        # Extract depth values at object centers
         depths = None
         if depth_frame is not None and len(centers) > 0:
             depths = self._extract_depths(centers, depth_frame)
 
-        # Apply temporal smoothing to stabilize detections
-        if self.smoothing_enabled and len(boxes) > 0:
-            boxes, centers, depths = self._smooth_detections(
-                boxes, classes, centers, depths
-            )
+        # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
+        tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
+
+        # Extract data from tracked objects for drawing
+        if len(tracked_objects) > 0:
+            # Get contours for tracked objects by matching centers
+            tracked_boxes = [obj.box for obj in tracked_objects]
+            tracked_classes = [obj.class_name for obj in tracked_objects]
+            tracked_centers = [obj.center for obj in tracked_objects]
+            tracked_depths = [obj.depth for obj in tracked_objects]
+
+            # Match contours to tracked objects
+            tracked_contours = []
+            for tracked_center in tracked_centers:
+                # Find matching contour from original detections
+                best_match_idx = None
+                best_dist = float('inf')
+                for i, center in enumerate(centers):
+                    dist = ((tracked_center[0] - center[0])**2 +
+                           (tracked_center[1] - center[1])**2)**0.5
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match_idx = i
+
+                if best_match_idx is not None and best_dist < 50:  # Within 50 pixels
+                    tracked_contours.append(contours[best_match_idx])
+                else:
+                    tracked_contours.append([])  # No matching contour
+        else:
+            tracked_boxes = []
+            tracked_classes = []
+            tracked_contours = []
+            tracked_centers = []
+            tracked_depths = []
 
         # Draw object masks
         image = self.segmentation_model.draw_object_mask(
-            image, boxes, classes, contours
+            image, tracked_boxes, tracked_classes, tracked_contours
         )
 
-        # Draw object info with smoothed depths
+        # Draw object info with tracked positions and depths
         image = self._draw_object_info_with_smoothed_depth(
-            image, boxes, classes, centers, depths
+            image, tracked_boxes, tracked_classes, tracked_centers, tracked_depths
         )
 
         return image
 
-    def _smooth_detections(self, boxes, classes, centers, depths=None):
-        """
-        Apply temporal smoothing to detection boxes, centers, and depths
-        Uses exponential moving average and multi-frame tracking to reduce jitter
 
-        Args:
-            boxes: Current frame bounding boxes
-            classes: Current frame class labels
-            centers: Current frame object centers
-            depths: Optional depth values at centers
-
-        Returns:
-            Filtered and smoothed boxes, centers, and depths
-        """
-        if self.prev_boxes is None or len(self.prev_boxes) == 0:
-            # First frame - initialize and show current detections
-            self.prev_boxes = boxes
-            self.prev_classes = classes
-            self.prev_centers = centers
-            self.prev_depths = depths
-            return boxes, centers, depths
-
-        # Match current detections with previous ones
-        smoothed_boxes = []
-        smoothed_centers = []
-        smoothed_depths = [] if depths is not None else None
-
-        for i, (box, class_name, center) in enumerate(zip(boxes, classes, centers)):
-            # Find best match in previous frame (by IoU and class)
-            best_match_idx = self._find_best_match(box, class_name, i)
-
-            if best_match_idx is not None:
-                # Smooth with previous detection
-                prev_box = self.prev_boxes[best_match_idx]
-                prev_center = self.prev_centers[best_match_idx]
-
-                # Exponential moving average: new = alpha * prev + (1-alpha) * current
-                smoothed_box = [
-                    int(self.smoothing_alpha * prev_box[0] + (1 - self.smoothing_alpha) * box[0]),
-                    int(self.smoothing_alpha * prev_box[1] + (1 - self.smoothing_alpha) * box[1]),
-                    int(self.smoothing_alpha * prev_box[2] + (1 - self.smoothing_alpha) * box[2]),
-                    int(self.smoothing_alpha * prev_box[3] + (1 - self.smoothing_alpha) * box[3])
-                ]
-
-                smoothed_center = (
-                    int(self.smoothing_alpha * prev_center[0] + (1 - self.smoothing_alpha) * center[0]),
-                    int(self.smoothing_alpha * prev_center[1] + (1 - self.smoothing_alpha) * center[1])
-                )
-
-                # Smooth depth if available
-                if depths is not None and self.prev_depths is not None:
-                    current_depth = depths[i]
-                    prev_depth = self.prev_depths[best_match_idx]
-
-                    # Only smooth if both depths are valid (> 0)
-                    if current_depth > 0 and prev_depth > 0:
-                        smoothed_depth = int(
-                            self.smoothing_alpha * prev_depth +
-                            (1 - self.smoothing_alpha) * current_depth
-                        )
-                    else:
-                        # Use current depth if previous was invalid
-                        smoothed_depth = current_depth
-                else:
-                    smoothed_depth = depths[i] if depths is not None else None
-            else:
-                # New detection - use current values
-                smoothed_box = box
-                smoothed_center = center
-                smoothed_depth = depths[i] if depths is not None else None
-
-            smoothed_boxes.append(smoothed_box)
-            smoothed_centers.append(smoothed_center)
-            if smoothed_depths is not None:
-                smoothed_depths.append(smoothed_depth)
-
-        # Update previous detections
-        self.prev_boxes = smoothed_boxes
-        self.prev_classes = classes
-        self.prev_centers = smoothed_centers
-        self.prev_depths = smoothed_depths
-
-        return smoothed_boxes, smoothed_centers, smoothed_depths
-
-    def _find_best_match(self, box, class_name, current_idx):
-        """
-        Find best matching detection from previous frame
-
-        Args:
-            box: Current bounding box [x1, y1, x2, y2]
-            class_name: Current object class
-            current_idx: Index in current detections
-
-        Returns:
-            Index of best match in previous frame, or None
-        """
-        if self.prev_boxes is None or len(self.prev_boxes) == 0:
-            return None
-
-        best_iou = self.iou_threshold  # Minimum IoU threshold for matching
-        best_idx = None
-
-        for i, (prev_box, prev_class) in enumerate(zip(self.prev_boxes, self.prev_classes)):
-            # Only match same class
-            if prev_class != class_name:
-                continue
-
-            # Calculate IoU (Intersection over Union)
-            iou = self._calculate_iou(box, prev_box)
-
-            if iou > best_iou:
-                best_iou = iou
-                best_idx = i
-
-        return best_idx
-
-    def _calculate_iou(self, box1, box2):
-        """
-        Calculate Intersection over Union between two boxes
-
-        Args:
-            box1, box2: Bounding boxes as [x1, y1, x2, y2]
-
-        Returns:
-            IoU score (0.0 to 1.0)
-        """
-        # Intersection rectangle
-        x1 = max(box1[0], box2[0])
-        y1 = max(box1[1], box2[1])
-        x2 = min(box1[2], box2[2])
-        y2 = min(box1[3], box2[3])
-
-        # No intersection
-        if x2 < x1 or y2 < y1:
-            return 0.0
-
-        # Intersection area
-        intersection = (x2 - x1) * (y2 - y1)
-
-        # Union area
-        box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
-        box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
-        union = box1_area + box2_area - intersection
-
-        return intersection / union if union > 0 else 0.0
 
     def _extract_depths(self, centers, depth_frame):
         """
@@ -417,25 +300,52 @@ class DetectionManager:
             image
         )
 
-        # Extract depth values at object centers (before smoothing)
+        # Extract depth values at object centers
         depths = None
         if depth_frame is not None and len(centers) > 0:
             depths = self._extract_depths(centers, depth_frame)
 
-        # Apply temporal smoothing to stabilize detections
-        if self.smoothing_enabled and len(boxes) > 0:
-            boxes, centers, depths = self._smooth_detections(
-                boxes, classes, centers, depths
-            )
+        # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
+        tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
+
+        # Extract data from tracked objects for drawing
+        if len(tracked_objects) > 0:
+            tracked_boxes = [obj.box for obj in tracked_objects]
+            tracked_classes = [obj.class_name for obj in tracked_objects]
+            tracked_centers = [obj.center for obj in tracked_objects]
+            tracked_depths = [obj.depth for obj in tracked_objects]
+
+            # Match contours to tracked objects
+            tracked_contours = []
+            for tracked_center in tracked_centers:
+                best_match_idx = None
+                best_dist = float('inf')
+                for i, center in enumerate(centers):
+                    dist = ((tracked_center[0] - center[0])**2 +
+                           (tracked_center[1] - center[1])**2)**0.5
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match_idx = i
+
+                if best_match_idx is not None and best_dist < 50:
+                    tracked_contours.append(contours[best_match_idx])
+                else:
+                    tracked_contours.append([])
+        else:
+            tracked_boxes = []
+            tracked_classes = []
+            tracked_contours = []
+            tracked_centers = []
+            tracked_depths = []
 
         # Draw object masks
         image = self.segmentation_model.draw_object_mask(
-            image, boxes, classes, contours
+            image, tracked_boxes, tracked_classes, tracked_contours
         )
 
-        # Draw object info with smoothed depths
+        # Draw object info with tracked positions and depths
         image = self._draw_object_info_with_smoothed_depth(
-            image, boxes, classes, centers, depths
+            image, tracked_boxes, tracked_classes, tracked_centers, tracked_depths
         )
 
         # Then overlay face landmarks on top
