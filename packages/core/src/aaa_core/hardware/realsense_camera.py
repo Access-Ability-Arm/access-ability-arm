@@ -42,7 +42,7 @@ class RealsenseCamera:
                     rgb_sensor.set_option(rs.option.enable_auto_exposure, 0)
                     # Set fixed exposure (adjust based on lighting - range typically 1-10000)
                     # Lower = darker but less noise, Higher = brighter but more noise
-                    rgb_sensor.set_option(rs.option.exposure, 250)  # Default: 250 (brighter)
+                    rgb_sensor.set_option(rs.option.exposure, 500)  # Default: 500 (bright)
                     status("✓ RealSense: Fixed exposure enabled (reduces fluorescent light noise)")
                 except Exception as e:
                     status(f"  RealSense: Using auto exposure ({e})")
