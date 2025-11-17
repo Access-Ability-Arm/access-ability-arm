@@ -85,7 +85,11 @@ class CameraManager:
         if platform_name == "Darwin":
             # Pre-fetch camera names on macOS to enable early filtering
             camera_names = self._get_macos_camera_names()
+        elif platform_name == "Windows":
+            # Pre-fetch camera names on Windows to enable early filtering
+            camera_names = self._get_windows_camera_names()
         else:
+            # Linux - no name pre-fetching available
             camera_names = []
 
         # Determine which cameras to skip BEFORE opening them
@@ -93,7 +97,7 @@ class CameraManager:
         indices_to_check = []
 
         for index in range(self.max_cameras_to_check):
-            # Get camera name if available (macOS only at this stage)
+            # Get camera name if available (macOS/Windows only at this stage)
             camera_name = camera_names[index] if index < len(camera_names) else f"Camera {index}"
 
             # Check if camera name matches any skip pattern
@@ -373,6 +377,31 @@ class CameraManager:
 
         # Return empty list if detection fails
         self._macos_camera_names = []
+        return []
+
+    def _get_windows_camera_names(self) -> List[str]:
+        """
+        Get camera names on Windows using winsdk enumeration
+
+        Returns:
+            List of camera names
+        """
+        if platform.system() != "Windows":
+            return []
+
+        try:
+            # Get camera information using Windows SDK
+            cameras_info = asyncio.run(self._get_camera_information_for_windows())
+
+            camera_names = []
+            for i in range(len(cameras_info)):
+                camera_name = cameras_info.get_at(i).name.replace("\n", "")
+                camera_names.append(camera_name)
+
+            return camera_names
+        except Exception:
+            pass
+
         return []
 
     async def _get_camera_information_for_windows(self):
