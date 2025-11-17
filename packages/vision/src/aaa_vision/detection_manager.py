@@ -87,8 +87,10 @@ class DetectionManager:
             if app_config.segmentation_model == "rfdetr":
                 from aaa_vision.rfdetr_seg import RFDETRSeg
 
-                model = RFDETRSeg()
+                model = RFDETRSeg(enable_smoothing=app_config.spatial_smoothing_enabled)
                 print(f"✓ {app_config.segmentation_model.upper()} initialized")
+                if app_config.spatial_smoothing_enabled:
+                    print(f"✓ Spatial smoothing enabled (kernel: {app_config.spatial_smoothing_kernel_shape}, iterations: {app_config.spatial_smoothing_iterations})")
                 return model
             elif app_config.segmentation_model == "yolov11":
                 from aaa_vision.yolov11_seg import YOLOv11Seg

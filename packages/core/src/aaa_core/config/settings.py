@@ -39,6 +39,14 @@ class AppConfig:
     # Balance between detecting small objects and avoiding false positives
     detection_threshold: float = 0.5
 
+    # Spatial smoothing settings (morphological operations)
+    spatial_smoothing_enabled: bool = True
+    spatial_smoothing_kernel_shape: str = "ellipse"
+    spatial_smoothing_small_kernel: int = 3
+    spatial_smoothing_medium_kernel: int = 5
+    spatial_smoothing_large_kernel: int = 7
+    spatial_smoothing_iterations: int = 2
+
     # Button behavior
     button_hold_threshold: float = 0.5  # seconds
 
@@ -178,6 +186,22 @@ def apply_user_config(config: AppConfig, user_config: dict):
             config.detection_threshold = detection['threshold']
         if 'yolo_model_size' in detection:
             config.yolo_model_size = detection['yolo_model_size']
+
+        # Spatial smoothing settings
+        if 'spatial_smoothing' in detection:
+            smoothing = detection['spatial_smoothing']
+            if 'enabled' in smoothing:
+                config.spatial_smoothing_enabled = smoothing['enabled']
+            if 'kernel_shape' in smoothing:
+                config.spatial_smoothing_kernel_shape = smoothing['kernel_shape']
+            if 'small_object_kernel' in smoothing:
+                config.spatial_smoothing_small_kernel = smoothing['small_object_kernel']
+            if 'medium_object_kernel' in smoothing:
+                config.spatial_smoothing_medium_kernel = smoothing['medium_object_kernel']
+            if 'large_object_kernel' in smoothing:
+                config.spatial_smoothing_large_kernel = smoothing['large_object_kernel']
+            if 'iterations' in smoothing:
+                config.spatial_smoothing_iterations = smoothing['iterations']
 
     # Control settings
     if 'controls' in user_config:

@@ -37,6 +37,24 @@ detection:
   # Larger models are more accurate but slower
   yolo_model_size: "x"
 
+  # Spatial smoothing settings (morphological operations)
+  # Smooths segmentation mask boundaries for stable grasp planning
+  spatial_smoothing:
+    # Enable/disable spatial smoothing (default: true)
+    enabled: true
+
+    # Kernel shape: ellipse (best for rounded objects), rectangle, or cross
+    kernel_shape: "ellipse"
+
+    # Kernel sizes for different object sizes (pixels)
+    small_object_kernel: 3   # Objects < 1% of frame
+    medium_object_kernel: 5  # Objects 1-10% of frame
+    large_object_kernel: 7   # Objects > 10% of frame
+
+    # Number of smoothing iterations (1-3 recommended)
+    # More iterations = smoother boundaries but more processing time
+    iterations: 2
+
 # Control Settings
 controls:
   # Button hold threshold in seconds
