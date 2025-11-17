@@ -342,6 +342,10 @@ class ImageProcessor(threading.Thread):
         """Toggle between face tracking and object detection"""
         self.detection_manager.toggle_mode()
 
+    def toggle_detection_logging(self):
+        """Toggle detection logging for stability analysis"""
+        self.detection_manager.toggle_logging()
+
     def set_detection_mode(self, mode: str):
         """
         Set detection mode directly

@@ -12,6 +12,7 @@ import numpy as np
 from aaa_core.config.console import status
 from aaa_core.config.settings import app_config
 
+from aaa_vision.detection_logger import DetectionLogger
 from aaa_vision.face_detector import FaceDetector
 from aaa_vision.object_tracker import ObjectTracker
 
@@ -75,6 +76,9 @@ class DetectionManager:
             max_frames_missing=3,      # Keep showing objects for N frames after they disappear
             smoothing_alpha=0.9        # Reserved for future depth smoothing if needed
         )
+
+        # Initialize detection logger (disabled by default, enable with toggle_logging())
+        self.logger = DetectionLogger(enabled=False)
 
     def _initialize_segmentation_model(self):
         """Initialize the appropriate segmentation model"""
@@ -141,6 +145,13 @@ class DetectionManager:
 
         # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
         tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
+
+        # Log detections for analysis (if logging enabled)
+        if self.logger.enabled:
+            raw_detections = [(cls, tuple(center)) for cls, center in zip(classes, centers)]
+            tracked_detections = [(obj.class_name, tuple(obj.center)) for obj in tracked_objects]
+            self.logger.log_frame(raw_detections, tracked_detections, boxes,
+                                [obj.box for obj in tracked_objects])
 
         # Extract data from tracked objects for drawing
         if len(tracked_objects) > 0:
@@ -308,6 +319,13 @@ class DetectionManager:
         # Update tracker with new detections (applies Kalman filter + multi-frame consensus)
         tracked_objects = self.object_tracker.update(boxes, classes, centers, depths)
 
+        # Log detections for analysis (if logging enabled)
+        if self.logger.enabled:
+            raw_detections = [(cls, tuple(center)) for cls, center in zip(classes, centers)]
+            tracked_detections = [(obj.class_name, tuple(obj.center)) for obj in tracked_objects]
+            self.logger.log_frame(raw_detections, tracked_detections, boxes,
+                                [obj.box for obj in tracked_objects])
+
         # Extract data from tracked objects for drawing
         if len(tracked_objects) > 0:
             tracked_boxes = [obj.box for obj in tracked_objects]
@@ -376,6 +394,15 @@ class DetectionManager:
             else:  # camera
                 self.detection_mode = "face"
                 print("✓ Switched to face tracking mode")
+
+    def toggle_logging(self):
+        """Toggle detection logging for stability analysis"""
+        if self.logger.enabled:
+            self.logger.disable()
+            print("✓ Detection logging disabled")
+        else:
+            self.logger.enable()
+            print("✓ Detection logging enabled")
 
     @property
     def has_object_detection(self) -> bool:

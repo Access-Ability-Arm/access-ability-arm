@@ -1187,6 +1187,11 @@ class FletMainWindow:
             self.image_processor.toggle_detection_mode()
             self._update_status()
 
+    def _toggle_detection_logging(self):
+        """Toggle detection logging for stability analysis (Press 'L')"""
+        if self.image_processor:
+            self.image_processor.toggle_detection_logging()
+
     def _on_flip_camera(self):
         """Toggle horizontal flip for camera"""
         if self.image_processor:
@@ -1214,6 +1219,9 @@ class FletMainWindow:
         if (e.key == "T" and e.shift is False and
                 e.ctrl is False and e.alt is False):
             self._toggle_detection_mode()
+        elif (e.key == "L" and e.shift is False and
+                e.ctrl is False and e.alt is False):
+            self._toggle_detection_logging()
 
     def _on_window_event(self, e):
         """Handle window events (resized, moved, etc.)"""
