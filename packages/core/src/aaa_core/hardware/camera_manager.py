@@ -80,7 +80,35 @@ class CameraManager:
 
         self.cameras = []
 
-        camera_indexes = self._get_camera_indexes()
+        # Get camera names first (without opening devices)
+        platform_name = platform.system()
+        if platform_name == "Darwin":
+            # Pre-fetch camera names on macOS to enable early filtering
+            camera_names = self._get_macos_camera_names()
+        else:
+            camera_names = []
+
+        # Determine which cameras to skip BEFORE opening them
+        skip_patterns = app_config.skip_cameras
+        indices_to_check = []
+
+        for index in range(self.max_cameras_to_check):
+            # Get camera name if available (macOS only at this stage)
+            camera_name = camera_names[index] if index < len(camera_names) else f"Camera {index}"
+
+            # Check if camera name matches any skip pattern
+            should_skip = False
+            for pattern in skip_patterns:
+                if pattern.lower() in camera_name.lower():
+                    print(f"    ⊘ Skipping camera [{index}] {camera_name} (matches '{pattern}')")
+                    should_skip = True
+                    break
+
+            if not should_skip:
+                indices_to_check.append(index)
+
+        # Now only open cameras that we didn't skip
+        camera_indexes = self._get_camera_indexes(indices_to_check)
 
         if len(camera_indexes) == 0:
             warn_msg("No cameras detected")
@@ -88,19 +116,8 @@ class CameraManager:
 
         all_cameras = self._add_camera_information(camera_indexes)
 
-        # Filter out skipped cameras
-        skip_patterns = app_config.skip_cameras
-        for cam in all_cameras:
-            # Check if camera name matches any skip pattern
-            should_skip = False
-            for pattern in skip_patterns:
-                if pattern.lower() in cam['camera_name'].lower():
-                    print(f"    ⊘ Skipping camera [{cam['camera_index']}] {cam['camera_name']} (matches '{pattern}')")
-                    should_skip = True
-                    break
-
-            if not should_skip:
-                self.cameras.append(cam)
+        # All cameras should already be filtered, just add them
+        self.cameras = all_cameras
 
         # Print detected cameras with details
         if len(self.cameras) > 0:
@@ -111,24 +128,30 @@ class CameraManager:
 
         return self.cameras
 
-    def _get_camera_indexes(self) -> List[int]:
+    def _get_camera_indexes(self, indices_to_check: List[int] = None) -> List[int]:
         """
         Find all available camera indices with their properties
+
+        Args:
+            indices_to_check: List of specific indices to check (optional)
+                             If None, checks all indices up to max_cameras_to_check
 
         Returns:
             List of camera indices that are accessible
         """
-        index = 0
         camera_indexes = []
-        remaining_checks = self.max_cameras_to_check
 
         # Cache properties during detection to avoid reopening cameras
         self._camera_properties_cache = {}
 
+        # If no specific indices provided, check all up to max
+        if indices_to_check is None:
+            indices_to_check = list(range(self.max_cameras_to_check))
+
         # Use low-level file descriptor suppression to hide all warnings
         # including macOS AVCaptureDevice system warnings
         with suppress_output():
-            while remaining_checks > 0:
+            for index in indices_to_check:
                 capture = cv2.VideoCapture(index)
                 ret, frame = capture.read()
                 if ret:
@@ -163,8 +186,6 @@ class CameraManager:
                     self._camera_properties_cache[index] = (resolution, color_type)
 
                 capture.release()
-                index += 1
-                remaining_checks -= 1
 
         return camera_indexes
 
