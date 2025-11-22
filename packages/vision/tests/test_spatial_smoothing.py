@@ -4,10 +4,11 @@ Verifies that morphological operations work correctly and measure performance
 """
 
 import time
+import sys
 
 import cv2
 import numpy as np
-from packages.vision.src.aaa_vision.spatial_smoother import SpatialSmoother
+from aaa_vision.spatial_smoother import SpatialSmoother
 
 
 def create_noisy_mask(height=480, width=640):

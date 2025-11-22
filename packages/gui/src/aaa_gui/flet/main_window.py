@@ -1066,15 +1066,22 @@ class FletMainWindow:
         }
 
         # Draw masks and get the colors used for each object
+        # Only draw mask for selected object if one is selected
+        selected_indices = [self.selected_object] if self.selected_object is not None else None
         img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours, return_colors=True
+            clean_img, boxes, classes, contours, return_colors=True, selected_indices=selected_indices
         )
 
         # Calculate label positions with overlap avoidance (ggrepel-style)
         label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
 
         # Now draw our enhanced numbered labels with PIL for professional font rendering
+        # Only draw labels for selected object if one is selected
         for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
+            # Skip this label if an object is selected and this isn't it
+            if self.selected_object is not None and (i - 1) != self.selected_object:
+                continue
+
             x, y = center
             label_x, label_y = label_pos
             label = f"#{i}: {class_name}"
@@ -1171,15 +1178,22 @@ class FletMainWindow:
         centers = self.frozen_detections['centers']
 
         # Draw masks and get colors
+        # Only draw mask for selected object if one is selected
+        selected_indices = [self.selected_object] if self.selected_object is not None else None
         img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours, return_colors=True
+            clean_img, boxes, classes, contours, return_colors=True, selected_indices=selected_indices
         )
 
         # Calculate label positions with overlap avoidance
         label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
 
         # Draw numbered labels with highlighting for selected object using PIL
+        # Only draw labels for selected object if one is selected
         for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
+            # Skip this label if an object is selected and this isn't it
+            if self.selected_object is not None and (i - 1) != self.selected_object:
+                continue
+
             x, y = center
             label_x, label_y = label_pos
             label = f"#{i}: {class_name}"

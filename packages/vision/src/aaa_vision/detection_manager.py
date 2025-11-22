@@ -333,16 +333,17 @@ class DetectionManager:
             label = class_name
 
             # Add smoothed depth if available (convert mm to cm, no decimals)
+            # Filter out invalid depth values (0 = no depth, 65535 = max value indicating no reading)
             if depths is not None and i < len(depths):
                 depth = depths[i]
-                if depth is not None and depth > 0:
+                if depth is not None and depth > 0 and depth < 65535:
                     depth_cm = int(depth / 10.0)
                     label += f" {depth_cm}cm"
                     # Debug first object
                     if i == 0 and sys._draw_debug_counter % 30 == 1:
                         print(f"[DEBUG] Object 0 label: '{label}' (depth={depth}mm, depth_cm={depth_cm}cm)")
                 elif i == 0 and sys._draw_debug_counter % 30 == 1:
-                    print(f"[DEBUG] Object 0: depth is None or <=0 (depth={depth})")
+                    print(f"[DEBUG] Object 0: depth is invalid (depth={depth}, skipping)")
             elif i == 0 and sys._draw_debug_counter % 30 == 1:
                 print(f"[DEBUG] Object 0: depths is None or i >= len(depths) (depths={depths}, i={i})")
 

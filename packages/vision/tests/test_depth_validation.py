@@ -4,10 +4,11 @@ Verifies performance and accuracy of depth discontinuity detection
 """
 
 import time
+import sys
 
 import cv2
 import numpy as np
-from packages.vision.src.aaa_vision.depth_validator import DepthValidator
+from aaa_vision.depth_validator import DepthValidator
 
 
 def create_synthetic_depth_scene():

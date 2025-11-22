@@ -295,7 +295,7 @@ class RFDETRSeg:
 
         return intersection / union if union > 0 else 0.0
 
-    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None, return_colors=False):
+    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None, return_colors=False, selected_indices=None):
         """
         Draw segmentation masks on frame
 
@@ -305,6 +305,7 @@ class RFDETRSeg:
             classes: List of class names (optional)
             contours: List of segmentation contours (optional)
             return_colors: If True, return (frame, colors) tuple instead of just frame
+            selected_indices: List of indices to draw (optional, None = draw all)
 
         Returns:
             frame: Frame with masks drawn (or tuple of (frame, colors) if return_colors=True)
@@ -330,8 +331,10 @@ class RFDETRSeg:
             )
             colors.append(color)
 
-        # Draw masks
+        # Draw masks (only for selected indices if specified)
         for i, contour in enumerate(contours):
+            if selected_indices is not None and i not in selected_indices:
+                continue
             if i < len(colors):
                 cv2.fillPoly(overlay, [contour], colors[i])
 
@@ -339,8 +342,10 @@ class RFDETRSeg:
         alpha = 0.4
         frame = cv2.addWeighted(frame, 1 - alpha, overlay, alpha, 0)
 
-        # Draw contours
+        # Draw contours (only for selected indices if specified)
         for i, contour in enumerate(contours):
+            if selected_indices is not None and i not in selected_indices:
+                continue
             if i < len(colors):
                 cv2.drawContours(frame, [contour], -1, colors[i], 2)
 

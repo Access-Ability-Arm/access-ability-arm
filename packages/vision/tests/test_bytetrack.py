@@ -4,9 +4,10 @@ Verifies tracking performance and position smoothing
 """
 
 import time
+import sys
 
 import numpy as np
-from packages.vision.src.aaa_vision.temporal_tracker import TemporalTracker
+from aaa_vision.temporal_tracker import TemporalTracker
 
 
 def create_test_detections(num_objects=3, frame_number=0):
