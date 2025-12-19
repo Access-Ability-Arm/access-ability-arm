@@ -61,6 +61,7 @@ class FletMainWindow:
         # Initialize components
         self.button_controller = None
         self.arm_controller = None
+        self.arm_connect_btn = None
         self.camera_manager = None
         self.image_processor = None
         self.video_feed = None
@@ -151,23 +152,22 @@ class FletMainWindow:
                 on_error=self._on_arm_error
             )
             print("[DEBUG] Arm controller created")
-            # TEMPORARILY DISABLED: Connect asynchronously in background thread if auto-connect enabled
-            # TODO: Fix deadlock issue with threading during init
-            # if app_config.lite6_auto_connect:
-            #     print("[DEBUG] Starting async arm connection...")
-            #     try:
-            #         def connect_async():
-            #             print(f"[Arm] Connecting to arm at {app_config.lite6_ip}...")
-            #             self.arm_controller.connect_arm()
+            # Auto-connect to arm in a background thread if enabled in config.
+            if app_config.lite6_auto_connect:
+                print("[DEBUG] Auto-connect enabled - starting background connection thread for arm...")
+                try:
+                    def connect_async():
+                        try:
+                            print(f"[Arm] Connecting to arm at {app_config.lite6_ip}:{app_config.lite6_port}...")
+                            self.arm_controller.connect_arm()
+                        except Exception as e:
+                            print(f"[Arm] Async connect failed: {e}")
 
-            #         t = threading.Thread(target=connect_async, daemon=True)
-            #         print("[DEBUG] Thread created, calling start()...")
-            #         t.start()
-            #         print("[DEBUG] Async arm connection thread started")
-            #     except Exception as e:
-            #         print(f"[DEBUG] Exception starting thread: {e}")
-            #         import traceback
-            #         traceback.print_exc()
+                    t = threading.Thread(target=connect_async, daemon=True)
+                    t.start()
+                    print("[DEBUG] Background arm connection thread started")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to start arm connection thread: {e}")
 
         print("[DEBUG] After arm controller section")
 
@@ -326,6 +326,16 @@ class FletMainWindow:
             color=arm_status_color,
         )
 
+        # Connect/Disconnect button (created here so it can be placed inline)
+        def _connect_click(e):
+            self._on_connect_arm(e)
+
+        self.arm_connect_btn = ft.ElevatedButton(
+            text="Connect Arm" if not arm_connected else "Disconnect Arm",
+            on_click=_connect_click,
+            width=140,
+        )
+
         # Detection mode toggle button
         self.toggle_mode_btn = ft.ElevatedButton(
             text="Toggle Detection Mode (T)",
@@ -403,6 +413,7 @@ class FletMainWindow:
                                                         self.camera_dropdown,
                                                         self.toggle_mode_btn,
                                                         self.flip_camera_btn,
+                                                        self.arm_connect_btn,
                                                         # RealSense exposure controls (shown only for RealSense, inline with buttons)
                                                         self.exposure_controls,
                                                     ],
@@ -1382,6 +1393,11 @@ class FletMainWindow:
             else:
                 self.arm_status_text.value = f"Arm: ✗ {message}"
                 self.arm_status_text.color = "#C62828"  # Red 800
+            # Update connect button state as well
+            try:
+                self._set_connect_button_state(connected, connecting=False)
+            except Exception:
+                pass
             self.page.update()
 
     def _on_arm_error(self, error_message: str):
@@ -1391,6 +1407,72 @@ class FletMainWindow:
             self.arm_status_text.value = f"Arm Error: {error_message}"
             self.arm_status_text.color = "#C62828"  # Red 800
             self.page.update()
+
+    def _set_connect_button_state(self, connected: bool, connecting: bool = False):
+        """Update the connect button text and enabled state."""
+        if not hasattr(self, 'arm_connect_btn') or self.arm_connect_btn is None:
+            return
+
+        if connecting:
+            self.arm_connect_btn.text = "Connecting..."
+            self.arm_connect_btn.disabled = True
+        else:
+            if connected:
+                self.arm_connect_btn.text = "Disconnect Arm"
+                self.arm_connect_btn.disabled = False
+            else:
+                self.arm_connect_btn.text = "Connect Arm"
+                self.arm_connect_btn.disabled = False
+
+        if self._ui_built:
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
+    def _on_connect_arm(self, e):
+        """Handle Connect/Disconnect button click (runs connect/disconnect in background)."""
+        if not self.arm_controller:
+            print("Arm controller not available")
+            return
+
+        # If currently connected, disconnect
+        try:
+            if self.arm_controller.is_connected():
+                print("Disconnecting arm...")
+
+                def disconnect_thread():
+                    try:
+                        self.arm_controller.disconnect_arm()
+                        print("Disconnected from arm")
+                        self._set_connect_button_state(False)
+                    except Exception as ex:
+                        print(f"Error during disconnect: {ex}")
+
+                threading.Thread(target=disconnect_thread, daemon=True).start()
+                self._set_connect_button_state(False, connecting=False)
+                return
+        except Exception:
+            pass
+
+        # Otherwise, attempt to connect in background
+        print("Connecting to arm (background)...")
+        self._set_connect_button_state(False, connecting=True)
+
+        def connect_thread():
+            try:
+                result = self.arm_controller.connect_arm()
+                if result:
+                    print("Background connect succeeded")
+                    self._set_connect_button_state(True, connecting=False)
+                else:
+                    print("Background connect failed")
+                    self._set_connect_button_state(False, connecting=False)
+            except Exception as ex:
+                print(f"Background connect exception: {ex}")
+                self._set_connect_button_state(False, connecting=False)
+
+        threading.Thread(target=connect_thread, daemon=True).start()
 
     def _toggle_detection_mode(self):
         """Toggle between face tracking and object detection"""

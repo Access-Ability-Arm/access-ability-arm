@@ -63,32 +63,32 @@ class Colors:
 
 def success(message):
     """Print success message in green with checkmark"""
-    print(f"{Colors.BRIGHT_GREEN}✓{Colors.RESET} {Colors.GREEN}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BRIGHT_GREEN}✓{Colors.RESET} {Colors.GREEN}{message}{Colors.RESET}")
 
 
 def error(message):
     """Print error message in red with X"""
-    print(f"{Colors.BRIGHT_RED}✗{Colors.RESET} {Colors.RED}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BRIGHT_RED}✗{Colors.RESET} {Colors.RED}{message}{Colors.RESET}")
 
 
 def warning(message):
     """Print warning message in yellow with warning symbol"""
-    print(f"{Colors.BRIGHT_YELLOW}⚠{Colors.RESET} {Colors.YELLOW}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BRIGHT_YELLOW}⚠{Colors.RESET} {Colors.YELLOW}{message}{Colors.RESET}")
 
 
 def info(message):
     """Print info message in cyan"""
-    print(f"{Colors.BRIGHT_CYAN}ℹ{Colors.RESET} {Colors.CYAN}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BRIGHT_CYAN}ℹ{Colors.RESET} {Colors.CYAN}{message}{Colors.RESET}")
 
 
 def header(message):
     """Print header message in bold bright white"""
-    print(f"{Colors.BOLD}{Colors.BRIGHT_WHITE}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BOLD}{Colors.BRIGHT_WHITE}{message}{Colors.RESET}")
 
 
 def status(message):
     """Print status message in blue"""
-    print(f"{Colors.BLUE}{message}{Colors.RESET}")
+    _safe_print(f"{Colors.BLUE}{message}{Colors.RESET}")
 
 
 def underline(text):
@@ -102,3 +102,22 @@ import sys  # noqa: E402
 
 if not sys.stdout.isatty():
     Colors.disable()
+
+
+def _safe_print(text: str) -> None:
+    """Attempt to print; on OSError fallback to stderr.write and otherwise noop.
+
+    This prevents uncaught OSError [WinError 1] when stdout is not writable
+    (for example when running inside certain GUI or redirected environments).
+    """
+    try:
+        print(text)
+    except OSError:
+        try:
+            sys.stderr.write(text + "\n")
+        except Exception:
+            # Last-resort: swallow exception to avoid crashing the app
+            try:
+                pass
+            except Exception:
+                pass
