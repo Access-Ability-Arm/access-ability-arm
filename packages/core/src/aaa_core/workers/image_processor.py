@@ -8,10 +8,9 @@ from typing import Callable, Optional
 
 import cv2
 import numpy as np
-from aaa_vision.detection_manager import DetectionManager
-
 from aaa_core.config.console import error, status, success, underline
 from aaa_core.config.settings import app_config
+from aaa_vision.detection_manager import DetectionManager
 
 
 class ImageProcessor(threading.Thread):
@@ -24,7 +23,7 @@ class ImageProcessor(threading.Thread):
         self,
         display_width: int = 800,
         display_height: int = 650,
-        callback: Optional[Callable] = None
+        callback: Optional[Callable] = None,
     ):
         """
         Initialize image processor
@@ -93,7 +92,7 @@ class ImageProcessor(threading.Thread):
                     diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
                     diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
                     max_diff = max(diff_bg.max(), diff_gr.max())
-                    is_infrared = (max_diff == 0)
+                    is_infrared = max_diff == 0
                     return is_infrared
         except Exception:
             pass
@@ -105,26 +104,30 @@ class ImageProcessor(threading.Thread):
 
         # Check if RealSense is explicitly enabled via command-line
         import sys
-        enable_realsense = getattr(sys, '_enable_realsense_override', False)
+
+        enable_realsense = getattr(sys, "_enable_realsense_override", False)
 
         if enable_realsense:
             status("RealSense enabled via --enable-realsense flag")
 
         # Try to initialize RealSense first with timeout (only if enabled)
         if enable_realsense and app_config.realsense_available:
-            realsense_result = {'camera': None, 'error': None, 'timed_out': False}
+            realsense_result = {"camera": None, "error": None, "timed_out": False}
 
             def init_realsense():
                 """Initialize RealSense in a separate thread"""
                 try:
-                    print("[DEBUG ImageProcessor] Attempting RealSense initialization...")
+                    print(
+                        "[DEBUG ImageProcessor] Attempting RealSense initialization..."
+                    )
                     from aaa_core.hardware.realsense_camera import RealsenseCamera
+
                     print("[DEBUG ImageProcessor] Creating RealSense camera object...")
-                    realsense_result['camera'] = RealsenseCamera()
+                    realsense_result["camera"] = RealsenseCamera()
                     print("[DEBUG ImageProcessor] RealSense initialized successfully")
                 except Exception as e:
                     print(f"[DEBUG ImageProcessor] RealSense failed: {e}")
-                    realsense_result['error'] = e
+                    realsense_result["error"] = e
 
             # Start RealSense initialization in separate thread with timeout
             rs_thread = threading.Thread(target=init_realsense, daemon=True)
@@ -133,16 +136,18 @@ class ImageProcessor(threading.Thread):
 
             if rs_thread.is_alive():
                 # Thread is still running after timeout
-                print("[DEBUG ImageProcessor] RealSense initialization timed out after 5 seconds")
+                print(
+                    "[DEBUG ImageProcessor] RealSense initialization timed out after 5 seconds"
+                )
                 error("RealSense initialization timed out")
                 status("Falling back to standard webcam")
-                realsense_result['timed_out'] = True
-            elif realsense_result['camera']:
+                realsense_result["timed_out"] = True
+            elif realsense_result["camera"]:
                 # Success
-                self.rs_camera = realsense_result['camera']
+                self.rs_camera = realsense_result["camera"]
                 self.use_realsense = True
                 success(f"Using {underline('RealSense camera')}")
-            elif realsense_result['error']:
+            elif realsense_result["error"]:
                 # Failed with exception
                 error(f"RealSense initialization failed: {realsense_result['error']}")
                 status("Falling back to standard webcam")
@@ -160,11 +165,17 @@ class ImageProcessor(threading.Thread):
 
             # On macOS, RealSense RGB module is not accessible as UVC device
             # Only infrared/depth stream appears. Warn user if on camera 0.
-            if not enable_realsense and app_config.realsense_available and camera_index == 0:
+            if (
+                not enable_realsense
+                and app_config.realsense_available
+                and camera_index == 0
+            ):
                 status("Note: RealSense camera 0 is infrared (grayscale) on macOS")
                 status("For RGB color from RealSense, use --enable-realsense flag")
 
-            print(f"[DEBUG ImageProcessor] Opening camera index {camera_index} with OpenCV")
+            print(
+                f"[DEBUG ImageProcessor] Opening camera index {camera_index} with OpenCV"
+            )
             self.camera = cv2.VideoCapture(camera_index)
 
             success(f"Using {underline('standard webcam')} (camera {camera_index})")
@@ -178,8 +189,21 @@ class ImageProcessor(threading.Thread):
             camera_index: Index of the camera to switch to
             camera_name: Name of the camera (optional, used to auto-enable flip)
         """
-        print(f"[DEBUG ImageProcessor] camera_changed called: index={camera_index}, name={camera_name}")
-        print(f"[DEBUG ImageProcessor] use_realsense={self.use_realsense}, camera={self.camera}")
+        print(
+            f"[DEBUG ImageProcessor] camera_changed called: index={camera_index}, name={camera_name}"
+        )
+        print(
+            f"[DEBUG ImageProcessor] use_realsense={self.use_realsense}, camera={self.camera}"
+        )
+
+        # Block switching to RealSense cameras via OpenCV - causes segfault on macOS
+        # RealSense should only be accessed via daemon or --enable-realsense flag
+        if camera_name and "RealSense" in camera_name:
+            error("Cannot switch to RealSense camera via dropdown")
+            status("RealSense requires: 1) Use 'make daemon-start' then 'make run', or")
+            status("                    2) Run with --enable-realsense flag")
+            status("Keeping current camera")
+            return
 
         # If using RealSense, stop it and switch to webcam
         if self.use_realsense and self.rs_camera:
@@ -204,11 +228,6 @@ class ImageProcessor(threading.Thread):
         self.camera = cv2.VideoCapture(camera_index)
         self.use_realsense = False
         self.current_camera_name = camera_name
-
-        # Warn if this is RealSense infrared stream on macOS
-        if camera_index == 0 and camera_name and "RealSense" in camera_name:
-            status(f"Note: RealSense camera 0 outputs infrared (grayscale) on macOS")
-            status(f"For RGB color from RealSense, restart with --enable-realsense flag")
 
         # Auto-enable flip for built-in MacBook cameras
         self._update_flip_for_camera(camera_name)
@@ -279,7 +298,9 @@ class ImageProcessor(threading.Thread):
 
                 # Call callback if provided
                 if self.callback:
-                    self.callback(processed_image)  # Pass numpy array directly to callback
+                    self.callback(
+                        processed_image
+                    )  # Pass numpy array directly to callback
 
     def _capture_frame(self):
         """

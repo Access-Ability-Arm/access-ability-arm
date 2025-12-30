@@ -1,54 +1,8 @@
 {
-  // Zed Editor Configuration for DE-GUI Project
-  // Documentation: https://zed.dev/docs/configuring-zed
-
-  // Language Server Protocol (LSP) Settings
-  // IMPORTANT: Use nested JSON objects, NOT VS Code-style dot notation
-  // ❌ Wrong: "python.pythonPath": "venv/bin/python"
-  // ✅ Correct: "python": { "pythonPath": "venv/bin/python" }
-  "lsp": {
-    "pyright": {
-      "settings": {
-        "python": {
-          "pythonPath": "venv/bin/python",
-          "venvPath": "."
-        }
-      }
-    }
-  },
-
-  // Language-Specific Settings
-  "languages": {
-    "Python": {
-      // Auto-format Python files on save using Black
-      "format_on_save": "on",
-      "formatter": {
-        "external": {
-          "command": "venv/bin/python",
-          "arguments": ["-m", "black", "-"]
-        }
-      }
-    }
-  },
-
-  // Terminal Configuration
   "terminal": {
-    // Environment variables for Python virtual environment
-    "env": {
-      "VIRTUAL_ENV": "$ZED_WORKTREE_ROOT/venv",
-      "PATH": "$ZED_WORKTREE_ROOT/venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    },
-
-    // Shell configuration with arguments
-    // IMPORTANT: Use "with_arguments" wrapper when specifying args
-    // ❌ Wrong: "shell": { "program": "/bin/zsh", "args": ["-l"] }
-    // ✅ Correct: "shell": { "with_arguments": { "program": "/bin/zsh", "args": ["-l"] } }
-    // Alternative: "shell": "system" (for default shell without args)
     "shell": {
-      "with_arguments": {
-        "program": "/bin/zsh",
-        "args": ["-l"]
-      }
-    }
-  }
+      "program": "bash",
+      "args": ["--rcfile", ".zed/bashrc"],
+    },
+  },
 }

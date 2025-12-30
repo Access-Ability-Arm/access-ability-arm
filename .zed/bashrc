@@ -1,0 +1,8 @@
+# Load standard bashrc first
+[ -f ~/.bashrc ] && source ~/.bashrc
+
+# Activate venv for this project (if it exists)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$SCRIPT_DIR/venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/venv/bin/activate"
+fi

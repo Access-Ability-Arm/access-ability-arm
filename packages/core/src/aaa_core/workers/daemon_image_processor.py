@@ -9,10 +9,9 @@ import time
 from typing import Callable, Optional
 
 import numpy as np
-from aaa_vision.detection_manager import DetectionManager
-
 from aaa_core.config.console import error, status, success
 from aaa_core.daemon.camera_client_socket import CameraClientSocket
+from aaa_vision.detection_manager import DetectionManager
 
 
 class DaemonImageProcessor(threading.Thread):
@@ -30,7 +29,7 @@ class DaemonImageProcessor(threading.Thread):
         self,
         display_width: int = 800,
         display_height: int = 650,
-        callback: Optional[Callable] = None
+        callback: Optional[Callable] = None,
     ):
         """
         Initialize daemon image processor
@@ -61,13 +60,16 @@ class DaemonImageProcessor(threading.Thread):
 
         # Camera info
         self.use_realsense = True  # Daemon always provides RealSense
-        self.has_object_detection = self.detection_manager.segmentation_model is not None
+        self.has_object_detection = (
+            self.detection_manager.segmentation_model is not None
+        )
 
         # Store last RGB frame for re-detection
         self._last_rgb_frame = None
 
         # Track recent frame brightness for auto-exposure (rolling buffer of ~2 seconds @ 30fps)
         from collections import deque
+
         self._brightness_history = deque(maxlen=60)  # 60 frames = 2 seconds at 30fps
         self._brightness_lock = threading.Lock()
 
@@ -101,8 +103,7 @@ class DaemonImageProcessor(threading.Thread):
 
                     # Process with detection manager
                     processed_frame = self.detection_manager.process_frame(
-                        image_rgb,
-                        depth_frame=depth_frame
+                        image_rgb, depth_frame=depth_frame
                     )
 
                     # Call callback with processed frame
@@ -117,7 +118,7 @@ class DaemonImageProcessor(threading.Thread):
                     time.sleep(0.1)  # Wait longer if no frame
 
                 # Sleep to target ~30 fps
-                time.sleep(1/30)
+                time.sleep(1 / 30)
 
             except Exception as e:
                 error(f"Error in daemon image processor: {e}")
@@ -153,8 +154,8 @@ class DaemonImageProcessor(threading.Thread):
 
     def set_detection_mode(self, mode: str):
         """Set detection mode"""
-        self.detection_manager.set_mode(mode)
-        self.detection_mode = self.detection_manager.detection_mode
+        self.detection_manager.detection_mode = mode
+        self.detection_mode = mode
         status(f"Detection mode set to: {mode}")
 
     @property
@@ -180,14 +181,10 @@ class DaemonImageProcessor(threading.Thread):
             cmd_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
 
             # Send command to daemon
-            command = {
-                'command': 'set_exposure',
-                'value': int(exposure_value)
-            }
+            command = {"command": "set_exposure", "value": int(exposure_value)}
 
             cmd_socket.sendto(
-                json.dumps(command).encode('utf-8'),
-                '/tmp/aaa_camera_cmd.sock'
+                json.dumps(command).encode("utf-8"), "/tmp/aaa_camera_cmd.sock"
             )
 
             cmd_socket.close()
@@ -213,4 +210,6 @@ class DaemonImageProcessor(threading.Thread):
         """Clear brightness history buffer (useful after exposure changes)"""
         with self._brightness_lock:
             self._brightness_history.clear()
-        print("✓ Brightness history cleared (waiting for new frames with updated exposure)")
+        print(
+            "✓ Brightness history cleared (waiting for new frames with updated exposure)"
+        )

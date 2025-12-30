@@ -14,7 +14,7 @@ authors = [
 dependencies = [
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
-    "mediapipe>=0.10.0",
+    "mediapipe>=0.10.0,<0.10.20",  # Pin to legacy solutions API (0.10.20+ removed mp.solutions)
     "ultralytics>=8.0.0",
     "torch>=2.0.0",
     "rfdetr @ git+https://github.com/roboflow/rf-detr.git@0c1e8330e41db310e4d86ddf7a5c1b26e7f67489",

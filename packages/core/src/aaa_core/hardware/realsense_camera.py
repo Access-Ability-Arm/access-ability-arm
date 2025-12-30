@@ -1,26 +1,36 @@
 # https://pysource.com
 import numpy as np
 import pyrealsense2 as rs
-
-from aaa_core.config.console import error, status
+from aaa_core.config.console import error, status, success, warning
 
 
 class RealsenseCamera:
     def __init__(self):
         # Configure depth and color streams
         status("Loading Intel Realsense Camera")
+
+        # Report USB connection type and device info
+        self._report_device_info()
+
         self.pipeline = rs.pipeline()
 
         config = rs.config()
         # RGB: 1080p for better segmentation detail
         rgb_width, rgb_height, rgb_fps = 1920, 1080, 30
-        config.enable_stream(rs.stream.color, rgb_width, rgb_height, rs.format.bgr8, rgb_fps)
+        config.enable_stream(
+            rs.stream.color, rgb_width, rgb_height, rs.format.bgr8, rgb_fps
+        )
+        config.enable_stream(
+            rs.stream.color, rgb_width, rgb_height, rs.format.bgr8, rgb_fps
+        )
         status(f"  RGB configured: {rgb_width}×{rgb_height} @ {rgb_fps} FPS")
 
         # Depth: 848x480 @ 30 FPS (Intel's optimal depth resolution, safe framerate)
         # Note: 90 FPS causes "failed to set power state" error
         depth_width, depth_height, depth_fps = 848, 480, 30
-        config.enable_stream(rs.stream.depth, depth_width, depth_height, rs.format.z16, depth_fps)
+        config.enable_stream(
+            rs.stream.depth, depth_width, depth_height, rs.format.z16, depth_fps
+        )
         status(f"  Depth configured: {depth_width}×{depth_height} @ {depth_fps} FPS")
 
         # Start streaming
@@ -49,6 +59,7 @@ class RealsenseCamera:
 
         # Wait a moment for camera to stabilize after start
         import time
+
         time.sleep(0.5)
 
         # Configure RGB sensor to reduce noise (optional - camera works without this)
@@ -187,7 +198,7 @@ class RealsenseCamera:
 
                     # Give camera time to adjust (prevent frame timeout)
                     import time
-                    time.sleep(0.3)
+
                     return True
 
             error("RGB sensor not found")
@@ -195,6 +206,42 @@ class RealsenseCamera:
         except Exception as e:
             error(f"Failed to set exposure: {e}")
             return False
+
+    def _report_device_info(self):
+        """Report RealSense device info including USB connection type"""
+        try:
+            ctx = rs.context()
+            devices = ctx.query_devices()
+
+            if len(devices) == 0:
+                warning("No RealSense devices found")
+                return
+
+            for dev in devices:
+                name = dev.get_info(rs.camera_info.name)
+                serial = dev.get_info(rs.camera_info.serial_number)
+                firmware = dev.get_info(rs.camera_info.firmware_version)
+
+                # Get USB type - critical for performance
+                try:
+                    usb_type = dev.get_info(rs.camera_info.usb_type_descriptor)
+                except Exception:
+                    usb_type = "unknown"
+
+                status(f"  Device: {name}")
+                status(f"  Serial: {serial}")
+                status(f"  Firmware: {firmware}")
+
+                # Report USB type with warning if USB 2.x
+                if usb_type.startswith("2"):
+                    warning(f"  USB Type: {usb_type} (USB 2.0 - LIMITED PERFORMANCE!)")
+                    warning("  Tip: Unplug and replug cable with quick, firm insertion")
+                    warning("  See docs/realsense-setup.md for cable troubleshooting")
+                else:
+                    success(f"  USB Type: {usb_type} (USB 3.0 - Good)")
+
+        except Exception as e:
+            status(f"  Could not query device info: {e}")
 
     def release(self):
         self.pipeline.stop()

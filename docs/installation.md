@@ -162,6 +162,7 @@ For setup with a real UFactory Lite6 arm, see [UFactory Studio Setup Guide](ufac
 
 **Requirements:**
 - Docker Desktop ([docker.com](https://www.docker.com/products/docker-desktop/))
+- **Alternative for macOS:** [UTM](https://mac.getutm.app/) can run Linux VMs with Docker if you prefer a VM-based approach
 
 **Setup:**
 ```bash

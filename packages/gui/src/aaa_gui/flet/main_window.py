@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 try:
     from aaa_core.daemon.camera_client import CameraClient
     from aaa_core.workers.daemon_image_processor import DaemonImageProcessor
+
     DAEMON_AVAILABLE = True
 except ImportError:
     DAEMON_AVAILABLE = False
@@ -149,16 +150,21 @@ class FletMainWindow:
                 arm_ip=app_config.lite6_ip,
                 port=app_config.lite6_port,
                 on_connection_status=self._on_arm_connection_status,
-                on_error=self._on_arm_error
+                on_error=self._on_arm_error,
             )
             print("[DEBUG] Arm controller created")
             # Auto-connect to arm in a background thread if enabled in config.
             if app_config.lite6_auto_connect:
-                print("[DEBUG] Auto-connect enabled - starting background connection thread for arm...")
+                print(
+                    "[DEBUG] Auto-connect enabled - starting background connection thread for arm..."
+                )
                 try:
+
                     def connect_async():
                         try:
-                            print(f"[Arm] Connecting to arm at {app_config.lite6_ip}:{app_config.lite6_port}...")
+                            print(
+                                f"[Arm] Connecting to arm at {app_config.lite6_ip}:{app_config.lite6_port}..."
+                            )
                             self.arm_controller.connect_arm()
                         except Exception as e:
                             print(f"[Arm] Async connect failed: {e}")
@@ -176,7 +182,57 @@ class FletMainWindow:
         self.camera_manager = CameraManager(
             max_cameras_to_check=app_config.max_cameras_to_check
         )
-        print("[DEBUG] Camera manager created, _setup_components complete")
+        print("[DEBUG] Camera manager created")
+
+        # Check for RealSense without daemon on macOS
+        self._check_realsense_daemon_warning()
+        print("[DEBUG] _setup_components complete")
+
+    def _check_realsense_daemon_warning(self):
+        """Check if RealSense is detected but daemon isn't running on macOS"""
+        import os
+        import platform
+
+        # Only check on macOS
+        if platform.system() != "Darwin":
+            return
+
+        # Check if any RealSense cameras are detected
+        has_realsense = any(
+            "RealSense" in cam.get("camera_name", "")
+            for cam in self.camera_manager.cameras
+        )
+
+        if not has_realsense:
+            return
+
+        # Check if daemon is running
+        daemon_running = os.path.exists("/tmp/aaa_camera.sock")
+
+        if not daemon_running:
+            # Show warning to user
+            from aaa_core.config.console import info, warning
+
+            print("")
+            warning("=" * 60)
+            warning("RealSense camera detected but daemon is not running!")
+            warning("=" * 60)
+            info("On macOS, RealSense requires the camera daemon for proper access.")
+            info("Without the daemon, the camera will crash or show only infrared.")
+            print("")
+            info("To use RealSense with depth sensing:")
+            info("  1. Stop this app (Ctrl+C)")
+            info("  2. Run: make daemon-start")
+            info("  3. Then run: make run")
+            print("")
+            info("Or use the combined command: make run-with-daemon")
+            warning("=" * 60)
+            print("")
+
+            # Store flag so we can show in-app warning too
+            self._realsense_daemon_warning = True
+        else:
+            self._realsense_daemon_warning = False
 
     def _build_ui(self):
         """Build the Flet UI layout"""
@@ -250,21 +306,33 @@ class FletMainWindow:
         # Camera selection - use dropdown for multiple cameras, text label for single camera
         if daemon_running:
             # Daemon mode: show RealSense as text (no selection needed)
-            camera_display_text = "Camera: Intel RealSense D435 (via daemon - depth enabled)"
+            camera_display_text = (
+                "Camera: Intel RealSense D435 (via daemon - depth enabled)"
+            )
             self.camera_dropdown = ft.Text(
                 camera_display_text,
                 size=14,
                 weight=ft.FontWeight.W_500,
                 color="#1976D2",  # Blue 700
             )
-            self.camera_dropdown.value = "daemon"  # Add value attribute for compatibility
+            self.camera_dropdown.value = (
+                "daemon"  # Add value attribute for compatibility
+            )
         else:
-            # Normal mode: show all available cameras
+            # Normal mode: show all available cameras (except RealSense which crashes on macOS)
             cameras = self.camera_manager.get_camera_info()
             camera_options = []
             for cam in cameras:
+                # Skip RealSense cameras - they crash when accessed via OpenCV on macOS
+                # RealSense must be accessed via daemon or --enable-realsense flag
+                if "RealSense" in cam["camera_name"]:
+                    print(
+                        f"[DEBUG] Hiding RealSense camera from dropdown: {cam['camera_name']}"
+                    )
+                    continue
+
                 # Shorten long camera names for better display
-                name = cam['camera_name']
+                name = cam["camera_name"]
                 if len(name) > 40:
                     # Truncate but keep important parts
                     name = name[:37] + "..."
@@ -286,11 +354,15 @@ class FletMainWindow:
                     weight=ft.FontWeight.W_500,
                     color="#1976D2",  # Blue 700
                 )
-                self.camera_dropdown.value = camera_options[0].key  # Add value attribute for compatibility
+                self.camera_dropdown.value = camera_options[
+                    0
+                ].key  # Add value attribute for compatibility
                 print(f"[DEBUG] Single camera detected: {camera_options[0].text}")
             else:
                 # Multiple cameras: show dropdown
-                dropdown_value = str(app_config.default_camera) if camera_options else None
+                dropdown_value = (
+                    str(app_config.default_camera) if camera_options else None
+                )
                 self.camera_dropdown = ft.Dropdown(
                     label="Select Camera",
                     options=camera_options,
@@ -352,6 +424,16 @@ class FletMainWindow:
             icon_color="#424242",  # Grey 800
         )
 
+        # Refresh camera view button (only shown on Auto tab when frozen)
+        self.refresh_camera_btn = ft.IconButton(
+            icon=ft.Icons.REFRESH,
+            tooltip="Refresh camera view",
+            on_click=lambda _: self._on_refresh_camera(),
+            bgcolor="#E0E0E0",  # Grey 300
+            icon_color="#424242",  # Grey 800
+            visible=False,  # Hidden by default (Manual tab is default)
+        )
+
         # RealSense exposure slider (hidden by default, shown when RealSense detected)
         self.exposure_value_text = ft.Text("Exposure: 800", size=12, color="#666")
         self.exposure_slider = ft.Slider(
@@ -392,10 +474,32 @@ class FletMainWindow:
         # Control panel with robotic arm buttons
         control_panel = self._build_control_panel()
 
+        # RealSense daemon warning banner (shown if RealSense detected but daemon not running)
+        realsense_warning_banner = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(ft.Icons.WARNING, color="#FFFFFF", size=20),
+                    ft.Text(
+                        "RealSense detected but daemon not running. Run 'make daemon-start' then 'make run' for depth sensing.",
+                        color="#FFFFFF",
+                        size=13,
+                        weight=ft.FontWeight.W_500,
+                    ),
+                ],
+                spacing=10,
+            ),
+            bgcolor="#E65100",  # Orange 900
+            padding=10,
+            border_radius=5,
+            visible=getattr(self, "_realsense_daemon_warning", False),
+        )
+
         # Main layout
         self.page.add(
             ft.Column(
                 [
+                    # RealSense warning banner (if applicable)
+                    realsense_warning_banner,
                     # Main content area
                     ft.Row(
                         [
@@ -413,6 +517,7 @@ class FletMainWindow:
                                                         self.camera_dropdown,
                                                         self.toggle_mode_btn,
                                                         self.flip_camera_btn,
+                                                        self.refresh_camera_btn,
                                                         self.arm_connect_btn,
                                                         # RealSense exposure controls (shown only for RealSense, inline with buttons)
                                                         self.exposure_controls,
@@ -674,11 +779,14 @@ class FletMainWindow:
             return False
 
         import os
+
         SOCKET_PATH = "/tmp/aaa_camera.sock"
 
         try:
             # Check if socket file exists
-            print(f"[DEBUG] _check_daemon_running: Checking for socket at {SOCKET_PATH}...")
+            print(
+                f"[DEBUG] _check_daemon_running: Checking for socket at {SOCKET_PATH}..."
+            )
             if os.path.exists(SOCKET_PATH):
                 print("[DEBUG] _check_daemon_running: Socket found - daemon is running")
                 return True
@@ -732,17 +840,23 @@ class FletMainWindow:
 
             print(f"[DEBUG MainWindow] Selected camera index: {selected_cam_index}")
             for cam in self.camera_manager.cameras:
-                if cam['camera_index'] == selected_cam_index:
+                if cam["camera_index"] == selected_cam_index:
                     print(f"[DEBUG MainWindow] Found camera: {cam['camera_name']}")
-                    self.image_processor.current_camera_name = cam['camera_name']
-                    self.image_processor._update_flip_for_camera(cam['camera_name'])
+                    self.image_processor.current_camera_name = cam["camera_name"]
+                    self.image_processor._update_flip_for_camera(cam["camera_name"])
                     # Trigger camera change to actually start the camera
-                    self.image_processor.camera_changed(selected_cam_index, cam['camera_name'])
-                    print(f"[DEBUG MainWindow] Triggered camera change for index {selected_cam_index}")
+                    self.image_processor.camera_changed(
+                        selected_cam_index, cam["camera_name"]
+                    )
+                    print(
+                        f"[DEBUG MainWindow] Triggered camera change for index {selected_cam_index}"
+                    )
                     break
 
         # Update flip button appearance based on initial state
-        print(f"[DEBUG MainWindow] Flip horizontal: {self.image_processor.flip_horizontal}")
+        print(
+            f"[DEBUG MainWindow] Flip horizontal: {self.image_processor.flip_horizontal}"
+        )
         if self.image_processor.flip_horizontal:
             self.flip_camera_btn.bgcolor = "#4CAF50"  # Green 500 when enabled
             self.flip_camera_btn.icon_color = "#FFFFFF"  # White icon
@@ -754,6 +868,11 @@ class FletMainWindow:
         print("[DEBUG MainWindow] Starting ImageProcessor thread...")
         self.image_processor.start()
         print("[DEBUG MainWindow] ImageProcessor thread started")
+
+        # Set initial detection mode to "camera" (Manual tab is default)
+        # This saves CPU/GPU by not running detection until Auto tab is selected
+        self.image_processor.set_detection_mode("camera")
+        print("[DEBUG MainWindow] Set initial detection mode to 'camera' (Manual tab)")
 
         # Update status
         print("[DEBUG MainWindow] Updating status...")
@@ -784,7 +903,7 @@ class FletMainWindow:
             "face": "Face Tracking",
             "objects": "Object Detection",
             "combined": "Combined (Face + Objects)",
-            "camera": "Camera Only"
+            "camera": "Camera Only",
         }.get(mode, mode.upper())
 
         status_msg = (
@@ -809,10 +928,14 @@ class FletMainWindow:
                 if self.frozen_frame is None:
                     # First frame after freezing - store raw frame and enhance labels
                     # Store the raw frame at freeze time for later re-highlighting
-                    if hasattr(self.image_processor, '_last_rgb_frame'):
-                        self.frozen_raw_frame = self.image_processor._last_rgb_frame.copy()
+                    if hasattr(self.image_processor, "_last_rgb_frame"):
+                        self.frozen_raw_frame = (
+                            self.image_processor._last_rgb_frame.copy()
+                        )
 
-                    self.frozen_frame, self.frozen_detections = self._enhance_frozen_labels(img_array.copy())
+                    self.frozen_frame, self.frozen_detections = (
+                        self._enhance_frozen_labels(img_array.copy())
+                    )
                     self._create_object_buttons()
                     print("Find Objects: Frame captured and frozen")
                 # Display the frozen frame
@@ -840,9 +963,19 @@ class FletMainWindow:
         except Exception as e:
             print(f"Error updating video feed: {e}")
 
-    def _draw_text_pil(self, img, text, position, font_size=48,
-                       text_color=(0, 255, 0), bg_color=(0, 0, 0),
-                       border_color=None, border_width=2, padding=12, corner_radius=8):
+    def _draw_text_pil(
+        self,
+        img,
+        text,
+        position,
+        font_size=48,
+        text_color=(0, 255, 0),
+        bg_color=(0, 0, 0),
+        border_color=None,
+        border_width=2,
+        padding=12,
+        corner_radius=8,
+    ):
         """
         Draw text using PIL for better font rendering with rounded corners
 
@@ -868,10 +1001,14 @@ class FletMainWindow:
         # Try to use a system font, fallback to default
         try:
             # Try common modern fonts
-            font = ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", font_size)  # macOS San Francisco
+            font = ImageFont.truetype(
+                "/System/Library/Fonts/SFNS.ttf", font_size
+            )  # macOS San Francisco
         except:
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)  # macOS Helvetica
+                font = ImageFont.truetype(
+                    "/System/Library/Fonts/Helvetica.ttc", font_size
+                )  # macOS Helvetica
             except:
                 try:
                     font = ImageFont.truetype("arial.ttf", font_size)  # Windows
@@ -900,18 +1037,20 @@ class FletMainWindow:
             # Draw white outer outline on EXPANDED rectangle (sits outside colored border)
             white_rim = 3  # Width of visible white rim
             draw.rounded_rectangle(
-                [bg_x1 - white_rim, bg_y1 - white_rim,
-                 bg_x2 + white_rim, bg_y2 + white_rim],
+                [
+                    bg_x1 - white_rim,
+                    bg_y1 - white_rim,
+                    bg_x2 + white_rim,
+                    bg_y2 + white_rim,
+                ],
                 radius=corner_radius + white_rim,
                 outline=(255, 255, 255),  # White outer outline
-                width=white_rim
+                width=white_rim,
             )
 
         # Draw rounded rectangle background
         draw.rounded_rectangle(
-            [bg_x1, bg_y1, bg_x2, bg_y2],
-            radius=corner_radius,
-            fill=bg_color
+            [bg_x1, bg_y1, bg_x2, bg_y2], radius=corner_radius, fill=bg_color
         )
 
         # Draw colored border on top
@@ -920,7 +1059,7 @@ class FletMainWindow:
                 [bg_x1, bg_y1, bg_x2, bg_y2],
                 radius=corner_radius,
                 outline=border_color,
-                width=border_width
+                width=border_width,
             )
 
         # Draw text centered vertically in the box, accounting for bbox offset
@@ -931,7 +1070,9 @@ class FletMainWindow:
         # Convert back to numpy array
         return np.array(pil_img)
 
-    def _calculate_label_positions(self, centers, classes, img_shape, font_size=42, padding=12):
+    def _calculate_label_positions(
+        self, centers, classes, img_shape, font_size=42, padding=12
+    ):
         """
         Calculate non-overlapping label positions using force-directed algorithm (ggrepel-style)
 
@@ -956,7 +1097,9 @@ class FletMainWindow:
         char_height = font_size * 1.2
 
         labels_info = []
-        for cx, cy, class_name in zip([c[0] for c in centers], [c[1] for c in centers], classes):
+        for cx, cy, class_name in zip(
+            [c[0] for c in centers], [c[1] for c in centers], classes
+        ):
             # Estimate label size
             label_text = f"#{len(labels_info) + 1}: {class_name}"
             label_w = int(len(label_text) * char_width + padding * 2)
@@ -966,19 +1109,21 @@ class FletMainWindow:
             label_x = cx - label_w // 2
             label_y = cy - 30
 
-            labels_info.append({
-                'cx': cx,
-                'cy': cy,
-                'x': float(label_x),
-                'y': float(label_y),
-                'w': label_w,
-                'h': label_h
-            })
+            labels_info.append(
+                {
+                    "cx": cx,
+                    "cy": cy,
+                    "x": float(label_x),
+                    "y": float(label_y),
+                    "w": label_w,
+                    "h": label_h,
+                }
+            )
 
         # Apply force-directed layout
         iterations = 50
         for iteration in range(iterations):
-            forces = [{'x': 0.0, 'y': 0.0} for _ in labels_info]
+            forces = [{"x": 0.0, "y": 0.0} for _ in labels_info]
 
             # Repulsion between overlapping labels
             for i, label1 in enumerate(labels_info):
@@ -987,19 +1132,27 @@ class FletMainWindow:
 
                     # Check overlap with padding
                     pad = 10
-                    l1_x1, l1_y1 = label1['x'] - pad, label1['y'] - pad
-                    l1_x2, l1_y2 = label1['x'] + label1['w'] + pad, label1['y'] + label1['h'] + pad
-                    l2_x1, l2_y1 = label2['x'] - pad, label2['y'] - pad
-                    l2_x2, l2_y2 = label2['x'] + label2['w'] + pad, label2['y'] + label2['h'] + pad
+                    l1_x1, l1_y1 = label1["x"] - pad, label1["y"] - pad
+                    l1_x2, l1_y2 = (
+                        label1["x"] + label1["w"] + pad,
+                        label1["y"] + label1["h"] + pad,
+                    )
+                    l2_x1, l2_y1 = label2["x"] - pad, label2["y"] - pad
+                    l2_x2, l2_y2 = (
+                        label2["x"] + label2["w"] + pad,
+                        label2["y"] + label2["h"] + pad,
+                    )
 
-                    overlap = not (l1_x2 < l2_x1 or l2_x2 < l1_x1 or l1_y2 < l2_y1 or l2_y2 < l1_y1)
+                    overlap = not (
+                        l1_x2 < l2_x1 or l2_x2 < l1_x1 or l1_y2 < l2_y1 or l2_y2 < l1_y1
+                    )
 
                     if overlap:
                         # Calculate centers
-                        l1_cx = label1['x'] + label1['w'] / 2
-                        l1_cy = label1['y'] + label1['h'] / 2
-                        l2_cx = label2['x'] + label2['w'] / 2
-                        l2_cy = label2['y'] + label2['h'] / 2
+                        l1_cx = label1["x"] + label1["w"] / 2
+                        l1_cy = label1["y"] + label1["h"] / 2
+                        l2_cx = label2["x"] + label2["w"] / 2
+                        l2_cy = label2["y"] + label2["h"] / 2
 
                         dx = l2_cx - l1_cx
                         dy = l2_cy - l1_cy
@@ -1014,31 +1167,33 @@ class FletMainWindow:
                         fx = (dx / dist) * repulsion
                         fy = (dy / dist) * repulsion
 
-                        forces[i]['x'] -= fx
-                        forces[i]['y'] -= fy
-                        forces[j]['x'] += fx
-                        forces[j]['y'] += fy
+                        forces[i]["x"] -= fx
+                        forces[i]["y"] -= fy
+                        forces[j]["x"] += fx
+                        forces[j]["y"] += fy
 
             # Spring force toward anchor
             spring = 0.15
             for i, label in enumerate(labels_info):
-                desired_x = label['cx'] - label['w'] // 2
-                desired_y = label['cy'] - 30
-                forces[i]['x'] += (desired_x - label['x']) * spring
-                forces[i]['y'] += (desired_y - label['y']) * spring
+                desired_x = label["cx"] - label["w"] // 2
+                desired_y = label["cy"] - 30
+                forces[i]["x"] += (desired_x - label["x"]) * spring
+                forces[i]["y"] += (desired_y - label["y"]) * spring
 
             # Apply forces with damping
             damping = 0.8
             for i, label in enumerate(labels_info):
-                label['x'] += forces[i]['x'] * damping
-                label['y'] += forces[i]['y'] * damping
+                label["x"] += forces[i]["x"] * damping
+                label["y"] += forces[i]["y"] * damping
 
                 # Keep in bounds
-                label['x'] = max(10, min(label['x'], img_width - label['w'] - 10))
-                label['y'] = max(10, min(label['y'], img_height - label['h'] - 10))
+                label["x"] = max(10, min(label["x"], img_width - label["w"] - 10))
+                label["y"] = max(10, min(label["y"], img_height - label["h"] - 10))
 
         # Return positions as (x, y) tuples (center of label area)
-        return [(int(l['x'] + l['w'] // 2), int(l['y'] + l['h'] // 2)) for l in labels_info]
+        return [
+            (int(l["x"] + l["w"] // 2), int(l["y"] + l["h"] // 2)) for l in labels_info
+        ]
 
     def _enhance_frozen_labels(self, img_array):
         """
@@ -1059,36 +1214,49 @@ class FletMainWindow:
             return img_array, None
 
         # Get the clean raw frame to detect on
-        if hasattr(self.image_processor, '_last_rgb_frame'):
+        if hasattr(self.image_processor, "_last_rgb_frame"):
             clean_img = self.image_processor._last_rgb_frame.copy()
         else:
             # Fallback: use current image (will have old labels)
             clean_img = img_array.copy()
 
         # Detect on clean image - this is the ONLY detection we do
-        (boxes, classes, contours, centers) = detection_mgr.segmentation_model.detect_objects_mask(clean_img)
+        (boxes, classes, contours, centers) = (
+            detection_mgr.segmentation_model.detect_objects_mask(clean_img)
+        )
 
         # Store detection data for button creation
         detections = {
-            'classes': classes,
-            'centers': centers,
-            'boxes': boxes,
-            'contours': contours
+            "classes": classes,
+            "centers": centers,
+            "boxes": boxes,
+            "contours": contours,
         }
 
         # Draw masks and get the colors used for each object
         # Only draw mask for selected object if one is selected
-        selected_indices = [self.selected_object] if self.selected_object is not None else None
+        selected_indices = (
+            [self.selected_object] if self.selected_object is not None else None
+        )
         img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours, return_colors=True, selected_indices=selected_indices
+            clean_img,
+            boxes,
+            classes,
+            contours,
+            return_colors=True,
+            selected_indices=selected_indices,
         )
 
         # Calculate label positions with overlap avoidance (ggrepel-style)
-        label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
+        label_positions = self._calculate_label_positions(
+            centers, classes, img_with_masks.shape
+        )
 
         # Now draw our enhanced numbered labels with PIL for professional font rendering
         # Only draw labels for selected object if one is selected
-        for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
+        for i, (center, class_name, label_pos, mask_color) in enumerate(
+            zip(centers, classes, label_positions, mask_colors), start=1
+        ):
             # Skip this label if an object is selected and this isn't it
             if self.selected_object is not None and (i - 1) != self.selected_object:
                 continue
@@ -1101,9 +1269,16 @@ class FletMainWindow:
             border_color_rgb = (mask_color[2], mask_color[1], mask_color[0])
 
             # Draw connector line if label moved significantly (using mask color)
-            distance = np.sqrt((label_x - x)**2 + (label_y - y)**2)
+            distance = np.sqrt((label_x - x) ** 2 + (label_y - y) ** 2)
             if distance > 30:
-                cv2.line(img_with_masks, (x, y), (label_x, label_y), mask_color, 2, cv2.LINE_AA)
+                cv2.line(
+                    img_with_masks,
+                    (x, y),
+                    (label_x, label_y),
+                    mask_color,
+                    2,
+                    cv2.LINE_AA,
+                )
 
             # Draw using PIL for much better font rendering
             img_with_masks = self._draw_text_pil(
@@ -1115,7 +1290,7 @@ class FletMainWindow:
                 bg_color=(255, 255, 255),  # White background
                 border_color=border_color_rgb,  # Match segmentation contour color
                 border_width=5,  # Thick border for visibility
-                padding=12
+                padding=12,
             )
 
         return img_with_masks, detections
@@ -1129,11 +1304,11 @@ class FletMainWindow:
         self.object_buttons_row.controls.clear()
 
         # Create a button for each detected object
-        classes = self.frozen_detections['classes']
+        classes = self.frozen_detections["classes"]
         for i, class_name in enumerate(classes, start=1):
             btn = ft.ElevatedButton(
                 text=f"#{i}: {class_name}",
-                on_click=lambda e, idx=i-1: self._on_object_selected(idx),
+                on_click=lambda e, idx=i - 1: self._on_object_selected(idx),
                 bgcolor=ft.Colors.BLUE_GREY_800,
                 color=ft.Colors.WHITE,
             )
@@ -1145,7 +1320,7 @@ class FletMainWindow:
 
     def _on_object_selected(self, object_index: int):
         """Handle object button click - toggle selection if already selected"""
-        classes = self.frozen_detections['classes']
+        classes = self.frozen_detections["classes"]
         class_name = classes[object_index]
 
         # Toggle selection if clicking the same object
@@ -1183,24 +1358,35 @@ class FletMainWindow:
             return
 
         clean_img = self.frozen_raw_frame.copy()
-        boxes = self.frozen_detections['boxes']
-        classes = self.frozen_detections['classes']
-        contours = self.frozen_detections['contours']
-        centers = self.frozen_detections['centers']
+        boxes = self.frozen_detections["boxes"]
+        classes = self.frozen_detections["classes"]
+        contours = self.frozen_detections["contours"]
+        centers = self.frozen_detections["centers"]
 
         # Draw masks and get colors
         # Only draw mask for selected object if one is selected
-        selected_indices = [self.selected_object] if self.selected_object is not None else None
+        selected_indices = (
+            [self.selected_object] if self.selected_object is not None else None
+        )
         img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
-            clean_img, boxes, classes, contours, return_colors=True, selected_indices=selected_indices
+            clean_img,
+            boxes,
+            classes,
+            contours,
+            return_colors=True,
+            selected_indices=selected_indices,
         )
 
         # Calculate label positions with overlap avoidance
-        label_positions = self._calculate_label_positions(centers, classes, img_with_masks.shape)
+        label_positions = self._calculate_label_positions(
+            centers, classes, img_with_masks.shape
+        )
 
         # Draw numbered labels with highlighting for selected object using PIL
         # Only draw labels for selected object if one is selected
-        for i, (center, class_name, label_pos, mask_color) in enumerate(zip(centers, classes, label_positions, mask_colors), start=1):
+        for i, (center, class_name, label_pos, mask_color) in enumerate(
+            zip(centers, classes, label_positions, mask_colors), start=1
+        ):
             # Skip this label if an object is selected and this isn't it
             if self.selected_object is not None and (i - 1) != self.selected_object:
                 continue
@@ -1214,9 +1400,16 @@ class FletMainWindow:
             mask_color_rgb = (mask_color[2], mask_color[1], mask_color[0])
 
             # Draw connector line if label moved significantly
-            distance = np.sqrt((label_x - x)**2 + (label_y - y)**2)
+            distance = np.sqrt((label_x - x) ** 2 + (label_y - y) ** 2)
             if distance > 30:
-                cv2.line(img_with_masks, (x, y), (label_x, label_y), mask_color, 2, cv2.LINE_AA)
+                cv2.line(
+                    img_with_masks,
+                    (x, y),
+                    (label_x, label_y),
+                    mask_color,
+                    2,
+                    cv2.LINE_AA,
+                )
 
             # Set colors based on selection
             if is_selected:
@@ -1238,7 +1431,7 @@ class FletMainWindow:
                 bg_color=bg_color,
                 border_color=border_color,
                 border_width=5,  # Thick border for visibility
-                padding=12
+                padding=12,
             )
 
         # Update frozen frame
@@ -1261,11 +1454,30 @@ class FletMainWindow:
             # Get camera name from camera manager
             camera_name = None
             for cam in self.camera_manager.cameras:
-                if cam['camera_index'] == camera_index:
-                    camera_name = cam['camera_name']
+                if cam["camera_index"] == camera_index:
+                    camera_name = cam["camera_name"]
                     break
 
-            self.image_processor.camera_changed(camera_index, camera_name)
+            if self.image_processor:
+                self.image_processor.camera_changed(camera_index, camera_name)
+                # If video is frozen, unfreeze to show the new camera view
+                if self.video_frozen:
+                    self._unfreeze_video()
+
+    def _on_refresh_camera(self):
+        """Handle refresh camera button - capture new frame"""
+        if self.video_frozen:
+            self._unfreeze_video()
+        print("Camera view refreshed")
+
+    def _unfreeze_video(self):
+        """Unfreeze video to show live camera feed"""
+        self.video_frozen = False
+        self.frozen_frame = None
+        self.frozen_raw_frame = None
+        self.frozen_detections = None
+        self._clear_object_buttons()
+        print("Video unfrozen - showing live camera feed")
 
     def _on_button_press(self, direction: str, button_type: str):
         """Handle robotic arm button press"""
@@ -1332,8 +1544,11 @@ class FletMainWindow:
 
         # Determine step size based on button hold duration
         # Short tap: small step, long hold: large step
-        base_step = (app_config.tap_step_size if duration < app_config.button_hold_threshold
-                     else app_config.hold_step_size)
+        base_step = (
+            app_config.tap_step_size
+            if duration < app_config.button_hold_threshold
+            else app_config.hold_step_size
+        )
 
         # Apply speed percentage to step size
         step = base_step * (self.movement_speed_percent / 100.0)
@@ -1366,12 +1581,14 @@ class FletMainWindow:
             return
 
         # Send move command with speed percentage applied
-        movement_speed = app_config.movement_speed * (self.movement_speed_percent / 100.0)
-        print(f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f}) at {self.movement_speed_percent}% speed")
+        movement_speed = app_config.movement_speed * (
+            self.movement_speed_percent / 100.0
+        )
+        print(
+            f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f}) at {self.movement_speed_percent}% speed"
+        )
         self.arm_controller.move_to(
-            x, y, z, roll, pitch, yaw,
-            speed=movement_speed,
-            wait=False
+            x, y, z, roll, pitch, yaw, speed=movement_speed, wait=False
         )
 
     def _on_arm_connection_status(self, connected: bool, message: str):
@@ -1379,7 +1596,11 @@ class FletMainWindow:
         print(f"Arm connection status: {message}")
 
         # Update initial loading message if still building UI (don't call page.update during init)
-        if hasattr(self, 'loading_text') and hasattr(self, '_ui_built') and self._ui_built:
+        if (
+            hasattr(self, "loading_text")
+            and hasattr(self, "_ui_built")
+            and self._ui_built
+        ):
             if connected:
                 self.loading_text.value = "Arm connected. Building interface..."
             else:
@@ -1410,7 +1631,7 @@ class FletMainWindow:
 
     def _set_connect_button_state(self, connected: bool, connecting: bool = False):
         """Update the connect button text and enabled state."""
-        if not hasattr(self, 'arm_connect_btn') or self.arm_connect_btn is None:
+        if not hasattr(self, "arm_connect_btn") or self.arm_connect_btn is None:
             return
 
         if connecting:
@@ -1527,7 +1748,7 @@ class FletMainWindow:
 
         try:
             # Get current frame brightness
-            if hasattr(self.image_processor, 'get_recent_brightness'):
+            if hasattr(self.image_processor, "get_recent_brightness"):
                 avg_brightness = self.image_processor.get_recent_brightness()
             else:
                 return
@@ -1543,7 +1764,9 @@ class FletMainWindow:
             # Clamp with max 2500 to avoid excessive noise (high exposure = worse segmentation)
             new_exposure = max(100, min(2500, new_exposure))
 
-            print(f"Startup auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}")
+            print(
+                f"Startup auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}"
+            )
 
             # Update slider and camera
             self.exposure_slider.value = new_exposure
@@ -1551,7 +1774,9 @@ class FletMainWindow:
 
             if self.image_processor.set_realsense_exposure(new_exposure):
                 print(f"✓ Exposure set to {new_exposure}")
-                print(f"   (Wait ~2 seconds for camera to adjust and buffer to refill before clicking auto-exposure again)")
+                print(
+                    f"   (Wait ~2 seconds for camera to adjust and buffer to refill before clicking auto-exposure again)"
+                )
 
             self.page.update()
 
@@ -1563,7 +1788,7 @@ class FletMainWindow:
         while self.auto_exposure_enabled:
             try:
                 # Get current frame brightness
-                if hasattr(self.image_processor, 'get_recent_brightness'):
+                if hasattr(self.image_processor, "get_recent_brightness"):
                     avg_brightness = self.image_processor.get_recent_brightness()
                 else:
                     # Fallback: analyze current displayed frame
@@ -1574,9 +1799,11 @@ class FletMainWindow:
                         import numpy as np
                         from PIL import Image
 
-                        img_data = base64.b64decode(self.video_feed.src_base64.split(',')[1])
+                        img_data = base64.b64decode(
+                            self.video_feed.src_base64.split(",")[1]
+                        )
                         img = Image.open(BytesIO(img_data))
-                        img_array = np.array(img.convert('RGB'))
+                        img_array = np.array(img.convert("RGB"))
                         avg_brightness = np.mean(img_array)
                     else:
                         time.sleep(10)
@@ -1593,7 +1820,9 @@ class FletMainWindow:
 
                 # Only adjust if change is significant (>5%)
                 if abs(new_exposure - current_exposure) / current_exposure > 0.05:
-                    print(f"Auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}")
+                    print(
+                        f"Auto-exposure: brightness={avg_brightness:.1f}, {current_exposure} → {new_exposure}"
+                    )
 
                     # Update slider and camera
                     self.exposure_slider.value = new_exposure
@@ -1612,21 +1841,35 @@ class FletMainWindow:
                 time.sleep(10)
 
     def _on_tab_changed(self, e):
-        """Handle tab change - unfreeze video when switching to Manual mode"""
+        """Handle tab change - switch detection mode based on tab"""
         if e.control.selected_index == 0:  # Manual tab (index 0)
+            # Unfreeze video if frozen
             if self.video_frozen:
                 print("Switching to Manual mode - resuming real-time camera")
-                self.video_frozen = False
-                self.frozen_frame = None
-                self._clear_object_buttons()
+                self._unfreeze_video()
+            # Switch to camera-only mode (no detection) to save CPU/GPU
+            if self.image_processor:
+                self.image_processor.set_detection_mode("camera")
+                self._update_status()
+                print("Manual mode: Detection disabled (camera only)")
+            # Hide refresh button on Manual tab
+            self.refresh_camera_btn.visible = False
+            self.page.update()
+        elif e.control.selected_index == 1:  # Auto tab (index 1)
+            # Switch to object detection mode
+            if self.image_processor:
+                self.image_processor.set_detection_mode("objects")
+                self._update_status()
+                print("Auto mode: Object detection enabled")
+            # Show refresh button on Auto tab
+            self.refresh_camera_btn.visible = True
+            self.page.update()
 
     def _on_keyboard_event(self, e: ft.KeyboardEvent):
         """Handle keyboard shortcuts"""
-        if (e.key == "T" and e.shift is False and
-                e.ctrl is False and e.alt is False):
+        if e.key == "T" and e.shift is False and e.ctrl is False and e.alt is False:
             self._toggle_detection_mode()
-        elif (e.key == "L" and e.shift is False and
-                e.ctrl is False and e.alt is False):
+        elif e.key == "L" and e.shift is False and e.ctrl is False and e.alt is False:
             self._toggle_detection_logging()
 
     def _on_window_event(self, e):
@@ -1635,13 +1878,17 @@ class FletMainWindow:
 
         # Save geometry on resized or moved events
         if e.data in ("resized", "moved"):
-            if (self.page.window.width and self.page.window.height and
-                self.page.window.left is not None and self.page.window.top is not None):
+            if (
+                self.page.window.width
+                and self.page.window.height
+                and self.page.window.left is not None
+                and self.page.window.top is not None
+            ):
                 save_window_geometry(
                     width=int(self.page.window.width),
                     height=int(self.page.window.height),
                     left=int(self.page.window.left),
-                    top=int(self.page.window.top)
+                    top=int(self.page.window.top),
                 )
 
     def _on_find_objects(self):

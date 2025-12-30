@@ -18,13 +18,13 @@ dependencies = [
 
 [project.optional-dependencies]
 flet = [
-    "flet>=0.24.0",
+    "flet>=0.24.0,<0.70.0",  # Pin to stable API (0.70+ has breaking changes)
 ]
 pyqt = [
     "PyQt6>=6.6.0",
 ]
 all = [
-    "flet>=0.24.0",
+    "flet>=0.24.0,<0.70.0",  # Pin to stable API (0.70+ has breaking changes)
     "PyQt6>=6.6.0",
 ]
 
