@@ -185,6 +185,19 @@ function show_status() {
                 echo "  ✗ Socket not found at /tmp/aaa_camera.sock"
             fi
 
+            # Show USB connection info from log
+            if [ -f "$LOG_FILE" ]; then
+                echo ""
+                echo "RealSense Camera:"
+                grep -E "Device:|Serial:|Firmware:|USB Type:" "$LOG_FILE" | tail -4 | sed 's/^/  /'
+
+                # Show FPS if available
+                FPS_LINE=$(grep "frames captured" "$LOG_FILE" | tail -1)
+                if [ -n "$FPS_LINE" ]; then
+                    echo "  $FPS_LINE"
+                fi
+            fi
+
             # Show recent log entries
             if [ -f "$LOG_FILE" ]; then
                 echo ""

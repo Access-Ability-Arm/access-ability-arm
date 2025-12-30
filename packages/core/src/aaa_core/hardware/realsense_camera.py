@@ -228,17 +228,18 @@ class RealsenseCamera:
                 except Exception:
                     usb_type = "unknown"
 
-                status(f"  Device: {name}")
-                status(f"  Serial: {serial}")
-                status(f"  Firmware: {firmware}")
+                # Use print() directly to ensure output in daemon context
+                print(f"  Device: {name}")
+                print(f"  Serial: {serial}")
+                print(f"  Firmware: {firmware}")
 
                 # Report USB type with warning if USB 2.x
                 if usb_type.startswith("2"):
-                    warning(f"  USB Type: {usb_type} (USB 2.0 - LIMITED PERFORMANCE!)")
-                    warning("  Tip: Unplug and replug cable with quick, firm insertion")
-                    warning("  See docs/realsense-setup.md for cable troubleshooting")
+                    print(f"  ⚠ USB Type: {usb_type} (USB 2.0 - LIMITED PERFORMANCE!)")
+                    print("  ⚠ Tip: Unplug and replug cable with quick, firm insertion")
+                    print("  ⚠ See docs/realsense-setup.md for cable troubleshooting")
                 else:
-                    success(f"  USB Type: {usb_type} (USB 3.0 - Good)")
+                    print(f"  ✓ USB Type: {usb_type} (USB 3.0 - Good)")
 
         except Exception as e:
             status(f"  Could not query device info: {e}")
