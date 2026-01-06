@@ -32,6 +32,7 @@ import flet as ft
 if app_config.lite6_available:
     from aaa_core.workers.arm_controller_flet import ArmControllerFlet
 
+
 class FletMainWindow:
     """Main application window using Flet"""
 
@@ -593,6 +594,7 @@ class FletMainWindow:
 
         # Mark UI as built to allow page.update() in callbacks
         self._ui_built = True
+
     def _build_control_panel(self) -> ft.Container:
         """Build the robotic arm control panel with Manual/Auto tabs"""
 
@@ -934,9 +936,20 @@ class FletMainWindow:
 
     def _update_status(self):
         """Update status display"""
-        realsense_status = (
-            "✓ Available" if self.image_processor.use_realsense else "✗ Not available"
-        )
+        # Determine RealSense status:
+        # - "✓ With Depth" = using RealSense SDK (has depth data)
+        # - "✓ RGB Only" = using RealSense via OpenCV (no depth data)
+        # - "✗ Not detected" = no RealSense camera in use
+        if self.image_processor.use_realsense:
+            realsense_status = "✓ With Depth"
+        elif (
+            hasattr(self.image_processor, "current_camera_name")
+            and self.image_processor.current_camera_name
+            and "RealSense" in self.image_processor.current_camera_name
+        ):
+            realsense_status = "✓ RGB Only"
+        else:
+            realsense_status = "✗ Not detected"
 
         seg_model = (
             app_config.segmentation_model.upper()
@@ -1513,6 +1526,8 @@ class FletMainWindow:
 
             if self.image_processor:
                 self.image_processor.camera_changed(camera_index, camera_name)
+                # Update status bar to reflect new camera (e.g., RealSense status)
+                self._update_status()
                 # If video is frozen, unfreeze to show the new camera view
                 if self.video_frozen:
                     self._unfreeze_video()
