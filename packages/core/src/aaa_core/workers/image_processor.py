@@ -52,6 +52,9 @@ class ImageProcessor(threading.Thread):
         self.reference_point = (250, 100)  # (x, y) for fixed depth reading
         self.show_reference_point = True
 
+        # Depth visualization toggle (show colorized depth instead of RGB)
+        self.show_depth_visualization = False
+
         # Store last raw RGB frame for frozen frame re-processing
         self._last_rgb_frame = None
 
@@ -317,6 +320,45 @@ class ImageProcessor(threading.Thread):
         flip_state = "enabled" if self.flip_horizontal else "disabled"
         status(f"Camera flip {flip_state}")
 
+    def toggle_depth_visualization(self):
+        """Toggle between RGB and depth visualization"""
+        if not self.use_realsense:
+            status("Depth visualization requires RealSense camera")
+            return False
+        self.show_depth_visualization = not self.show_depth_visualization
+        view_mode = "Depth" if self.show_depth_visualization else "RGB"
+        status(f"Switched to {view_mode} view")
+        return self.show_depth_visualization
+
+    def _colorize_depth(self, depth_frame: np.ndarray, rgb_shape: tuple) -> np.ndarray:
+        """
+        Convert depth frame to colorized visualization
+
+        Args:
+            depth_frame: Raw depth frame (uint16, values in mm)
+            rgb_shape: Shape of RGB frame to match (height, width, channels)
+
+        Returns:
+            Colorized depth image as RGB numpy array
+        """
+        # Normalize depth to 0-255 range (clip at 5000mm = 5m for better contrast)
+        depth_clipped = np.clip(depth_frame, 0, 5000)
+        depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
+
+        # Apply colormap (TURBO gives good depth perception)
+        depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
+
+        # Resize to match RGB frame dimensions
+        target_height, target_width = rgb_shape[:2]
+        depth_resized = cv2.resize(
+            depth_colorized,
+            (target_width, target_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        # Convert BGR to RGB for display
+        return cv2.cvtColor(depth_resized, cv2.COLOR_BGR2RGB)
+
     def run(self):
         """Main processing loop"""
         status("Image processor is running")
@@ -355,6 +397,10 @@ class ImageProcessor(threading.Thread):
                     processed_image = self._draw_reference_point(
                         processed_image, depth_frame
                     )
+
+                # If depth visualization is enabled, show colorized depth instead
+                if self.show_depth_visualization and depth_frame is not None:
+                    processed_image = self._colorize_depth(depth_frame, image_rgb.shape)
 
                 # Call callback if provided
                 if self.callback:

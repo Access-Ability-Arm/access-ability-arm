@@ -452,6 +452,16 @@ class FletMainWindow:
             icon_color="#424242",  # Grey 800
         )
 
+        # Depth visualization toggle button (only shown when depth available)
+        self.depth_toggle_btn = ft.IconButton(
+            icon=ft.Icons.LAYERS,
+            tooltip="Toggle RGB/Depth view",
+            on_click=lambda _: self._on_toggle_depth_view(),
+            bgcolor="#E0E0E0",  # Grey 300
+            icon_color="#424242",  # Grey 800
+            visible=False,  # Hidden until depth is available
+        )
+
         # Refresh camera view button (only shown on Auto tab when frozen)
         self.refresh_camera_btn = ft.IconButton(
             icon=ft.Icons.REFRESH,
@@ -545,6 +555,7 @@ class FletMainWindow:
                                                     [
                                                         self.camera_dropdown,
                                                         self.flip_camera_btn,
+                                                        self.depth_toggle_btn,
                                                         self.refresh_camera_btn,
                                                         self.arm_connect_btn,
                                                         # RealSense exposure controls (shown only for RealSense, inline with buttons)
@@ -937,7 +948,8 @@ class FletMainWindow:
         # - "✓ With Depth" = using RealSense SDK (has depth data)
         # - "✓ RGB Only" = using RealSense via OpenCV (no depth data)
         # - "✗ Not detected" = no RealSense camera in use
-        if self.image_processor.use_realsense:
+        has_depth = self.image_processor.use_realsense
+        if has_depth:
             realsense_status = "✓ With Depth"
         elif (
             hasattr(self.image_processor, "current_camera_name")
@@ -947,6 +959,9 @@ class FletMainWindow:
             realsense_status = "✓ RGB Only"
         else:
             realsense_status = "✗ Not detected"
+
+        # Show/hide depth toggle button based on depth availability
+        self.depth_toggle_btn.visible = has_depth
 
         seg_model = (
             app_config.segmentation_model.upper()
@@ -1782,6 +1797,21 @@ class FletMainWindow:
             else:
                 self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
                 self.flip_camera_btn.icon_color = "#424242"  # Grey 800
+            self.page.update()
+
+    def _on_toggle_depth_view(self):
+        """Toggle between RGB and depth visualization"""
+        if self.image_processor:
+            is_depth = self.image_processor.toggle_depth_visualization()
+            # Update button appearance to show current view mode
+            if is_depth:
+                self.depth_toggle_btn.bgcolor = "#2196F3"  # Blue 500 when showing depth
+                self.depth_toggle_btn.icon_color = "#FFFFFF"  # White icon
+                self.depth_toggle_btn.tooltip = "Showing Depth view (click for RGB)"
+            else:
+                self.depth_toggle_btn.bgcolor = "#E0E0E0"  # Grey 300 when showing RGB
+                self.depth_toggle_btn.icon_color = "#424242"  # Grey 800
+                self.depth_toggle_btn.tooltip = "Showing RGB view (click for Depth)"
             self.page.update()
 
     def _on_exposure_change(self, e):

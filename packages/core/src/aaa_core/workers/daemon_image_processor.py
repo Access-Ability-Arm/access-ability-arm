@@ -64,6 +64,9 @@ class DaemonImageProcessor(threading.Thread):
             self.detection_manager.segmentation_model is not None
         )
 
+        # Depth visualization toggle (show colorized depth instead of RGB)
+        self.show_depth_visualization = False
+
         # Store last RGB frame for re-detection
         self._last_rgb_frame = None
 
@@ -105,6 +108,12 @@ class DaemonImageProcessor(threading.Thread):
                     processed_frame = self.detection_manager.process_frame(
                         image_rgb, depth_frame=depth_frame
                     )
+
+                    # If depth visualization is enabled, show colorized depth instead
+                    if self.show_depth_visualization and depth_frame is not None:
+                        processed_frame = self._colorize_depth(
+                            depth_frame, image_rgb.shape
+                        )
 
                     # Call callback with processed frame
                     if self.callback:
@@ -152,6 +161,44 @@ class DaemonImageProcessor(threading.Thread):
     def toggle_flip(self):
         """Flip not yet implemented in daemon mode"""
         status("Flip not yet implemented in daemon mode")
+
+    def toggle_depth_visualization(self):
+        """Toggle between RGB and depth visualization"""
+        self.show_depth_visualization = not self.show_depth_visualization
+        view_mode = "Depth" if self.show_depth_visualization else "RGB"
+        status(f"Switched to {view_mode} view")
+        return self.show_depth_visualization
+
+    def _colorize_depth(self, depth_frame: np.ndarray, rgb_shape: tuple) -> np.ndarray:
+        """
+        Convert depth frame to colorized visualization
+
+        Args:
+            depth_frame: Raw depth frame (uint16, values in mm)
+            rgb_shape: Shape of RGB frame to match (height, width, channels)
+
+        Returns:
+            Colorized depth image as RGB numpy array
+        """
+        import cv2
+
+        # Normalize depth to 0-255 range (clip at 5000mm = 5m for better contrast)
+        depth_clipped = np.clip(depth_frame, 0, 5000)
+        depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
+
+        # Apply colormap (TURBO gives good depth perception)
+        depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
+
+        # Resize to match RGB frame dimensions
+        target_height, target_width = rgb_shape[:2]
+        depth_resized = cv2.resize(
+            depth_colorized,
+            (target_width, target_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        # Convert BGR to RGB for display
+        return cv2.cvtColor(depth_resized, cv2.COLOR_BGR2RGB)
 
     def toggle_detection_mode(self):
         """Toggle detection mode"""
