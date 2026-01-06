@@ -127,15 +127,18 @@ class DaemonImageProcessor(threading.Thread):
     def stop(self):
         """Stop the processing thread"""
         status("Stopping daemon image processor...")
+
+        # Signal thread to stop
         self.thread_active = False
 
-        # Disconnect from daemon
-        if self.camera_client:
-            self.camera_client.disconnect()
-
-        # Wait for thread to finish (with timeout to avoid hanging)
+        # Wait for thread to finish FIRST (before disconnecting)
+        # Socket has 1-second timeout, so thread will exit promptly
         if self.is_alive():
             self.join(timeout=2.0)
+
+        # Now safe to disconnect from daemon
+        if self.camera_client:
+            self.camera_client.disconnect()
 
         success("Daemon image processor stopped")
 

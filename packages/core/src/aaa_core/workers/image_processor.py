@@ -390,13 +390,24 @@ class ImageProcessor(threading.Thread):
 
     def stop(self):
         """Stop the processing thread"""
+        # Signal thread to stop
         self.thread_active = False
-        # Release camera if held
+
+        # Wait for thread to finish FIRST (before releasing camera)
+        # This prevents segfault from releasing camera while thread is reading
+        if self.is_alive():
+            self.join(timeout=2.0)
+
+        # Now safe to release camera resources
         if self.camera is not None:
             try:
                 self.camera.release()
             except Exception:
                 pass
-        # Wait for thread to finish (with timeout to avoid hanging)
-        if self.is_alive():
-            self.join(timeout=2.0)
+
+        # Clean up RealSense if used
+        if self.rs_camera is not None:
+            try:
+                self.rs_camera = None
+            except Exception:
+                pass
