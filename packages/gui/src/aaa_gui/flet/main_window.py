@@ -443,13 +443,6 @@ class FletMainWindow:
             width=140,
         )
 
-        # Detection mode toggle button
-        self.toggle_mode_btn = ft.ElevatedButton(
-            text="Toggle Detection Mode (T)",
-            icon=ft.Icons.SWAP_HORIZ,
-            on_click=lambda _: self._toggle_detection_mode(),
-        )
-
         # Flip camera button
         self.flip_camera_btn = ft.IconButton(
             icon=ft.Icons.FLIP,
@@ -551,7 +544,6 @@ class FletMainWindow:
                                                 ft.Row(
                                                     [
                                                         self.camera_dropdown,
-                                                        self.toggle_mode_btn,
                                                         self.flip_camera_btn,
                                                         self.refresh_camera_btn,
                                                         self.arm_connect_btn,
