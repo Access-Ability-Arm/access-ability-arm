@@ -103,13 +103,24 @@ class ImageProcessor(threading.Thread):
         """Initialize camera (RealSense if available, otherwise webcam)"""
         print("[DEBUG ImageProcessor] _initialize_camera called")
 
-        # Check if RealSense is explicitly enabled via command-line
+        # Check if RealSense should be enabled
+        # - On Windows/Linux: auto-enable if RealSense SDK is available
+        # - On macOS: require explicit --enable-realsense flag (due to USB permission issues)
         import sys
 
-        enable_realsense = getattr(sys, "_enable_realsense_override", False)
+        explicit_enable = getattr(sys, "_enable_realsense_override", False)
 
-        if enable_realsense:
-            status("RealSense enabled via --enable-realsense flag")
+        # Auto-enable RealSense on Windows/Linux if SDK is available
+        if sys.platform == "darwin":
+            # macOS requires explicit flag due to USB permission issues
+            enable_realsense = explicit_enable
+            if enable_realsense:
+                status("RealSense enabled via --enable-realsense flag")
+        else:
+            # Windows/Linux: auto-enable if SDK available
+            enable_realsense = app_config.realsense_available or explicit_enable
+            if enable_realsense and app_config.realsense_available:
+                status("RealSense SDK detected - enabling depth support")
 
         # Try to initialize RealSense first with timeout (only if enabled)
         if enable_realsense and app_config.realsense_available:
