@@ -210,7 +210,6 @@ class ImageProcessor(threading.Thread):
 
         # On macOS, block switching to RealSense cameras via OpenCV - causes segfault
         # and requires sudo for USB access. Use daemon instead.
-        # On Windows/Linux, RealSense can be accessed directly via OpenCV.
         if sys.platform == "darwin" and camera_name and "RealSense" in camera_name:
             error("Cannot switch to RealSense camera via dropdown on macOS")
             status("RealSense requires: 1) Use 'make daemon-start' then 'make run', or")
@@ -218,26 +217,74 @@ class ImageProcessor(threading.Thread):
             status("Keeping current camera")
             return
 
-        # If using RealSense, stop it and switch to webcam
+        # Check if this is a RealSense camera on Windows/Linux - use SDK for depth
+        is_realsense = camera_name and "RealSense" in camera_name
+        use_sdk = (
+            sys.platform != "darwin" and is_realsense and app_config.realsense_available
+        )
+
+        # Release existing cameras
         if self.use_realsense and self.rs_camera:
             print("[DEBUG ImageProcessor] Stopping RealSense camera...")
             try:
-                # RealSense doesn't have a release method, just set to None
                 self.rs_camera = None
                 self.use_realsense = False
             except Exception as e:
                 print(f"[DEBUG ImageProcessor] Error stopping RealSense: {e}")
 
-        # Release existing webcam if any
         if self.camera:
             print("[DEBUG ImageProcessor] Releasing existing webcam...")
             try:
                 self.camera.release()
+                self.camera = None
             except Exception as e:
                 print(f"[DEBUG ImageProcessor] Error releasing camera: {e}")
 
-        # Open new camera
-        print(f"[DEBUG ImageProcessor] Opening camera index {camera_index}...")
+        # Open new camera - use RealSense SDK on Windows/Linux if applicable
+        if use_sdk:
+            print(
+                "[DEBUG ImageProcessor] Initializing RealSense SDK for depth support..."
+            )
+            try:
+                from aaa_core.hardware.realsense_camera import RealsenseCamera
+
+                # Initialize with timeout to prevent hanging
+                realsense_result = {"camera": None, "error": None}
+
+                def init_realsense():
+                    try:
+                        realsense_result["camera"] = RealsenseCamera()
+                    except Exception as e:
+                        realsense_result["error"] = e
+
+                rs_thread = threading.Thread(target=init_realsense, daemon=True)
+                rs_thread.start()
+                rs_thread.join(timeout=5.0)
+
+                if rs_thread.is_alive():
+                    error("RealSense initialization timed out")
+                    status("Falling back to OpenCV (RGB only)")
+                elif realsense_result["camera"]:
+                    self.rs_camera = realsense_result["camera"]
+                    self.use_realsense = True
+                    self.current_camera_name = camera_name
+                    self._update_flip_for_camera(camera_name)
+                    success("Switched to RealSense camera with depth")
+                    print(
+                        "[DEBUG ImageProcessor] RealSense SDK initialized successfully"
+                    )
+                    return
+                elif realsense_result["error"]:
+                    error(f"RealSense SDK failed: {realsense_result['error']}")
+                    status("Falling back to OpenCV (RGB only)")
+            except Exception as e:
+                error(f"RealSense SDK initialization failed: {e}")
+                status("Falling back to OpenCV (RGB only)")
+
+        # Fallback: Open camera via OpenCV (RGB only for RealSense)
+        print(
+            f"[DEBUG ImageProcessor] Opening camera index {camera_index} via OpenCV..."
+        )
         self.camera = cv2.VideoCapture(camera_index)
         self.use_realsense = False
         self.current_camera_name = camera_name
