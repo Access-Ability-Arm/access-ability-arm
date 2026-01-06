@@ -363,11 +363,16 @@ class FletMainWindow:
 
                 # Shorten long camera names for better display
                 name = cam["camera_name"]
-                if len(name) > 40:
+                if len(name) > 70:
                     # Truncate but keep important parts
-                    name = name[:37] + "..."
+                    name = name[:67] + "..."
 
-                display_text = f"[{cam['camera_index']}] {name} - {cam['resolution']} ({cam['color_type']})"
+                # For RealSense cameras, show actual SDK resolution (not OpenCV default)
+                resolution = cam["resolution"]
+                if "RealSense" in cam["camera_name"] and resolution == "640x480":
+                    resolution = "1920x1080"  # RealSense SDK uses this for RGB
+
+                display_text = f"[{cam['camera_index']}] {name} - {resolution} ({cam['color_type']})"
                 camera_options.append(
                     ft.dropdown.Option(
                         key=str(cam["camera_index"]),
