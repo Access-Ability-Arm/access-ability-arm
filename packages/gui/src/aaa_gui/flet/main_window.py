@@ -97,7 +97,7 @@ class FletMainWindow:
         print("[DEBUG] Setting up components...")
         self._setup_components()
 
-        print("[DEBUG] Building UI...")
+        print("[DEBUG] Building UI...", flush=True)
         self._build_ui()
 
         print("[DEBUG] Starting image processor...")
@@ -171,19 +171,25 @@ class FletMainWindow:
                             print(f"[Arm] Async connect failed: {e}")
 
                     t = threading.Thread(target=connect_async, daemon=True)
+                    print("[DEBUG] About to start arm thread...", flush=True)
                     t.start()
-                    print("[DEBUG] Background arm connection thread started")
+                    print(
+                        "[DEBUG] Background arm connection thread started", flush=True
+                    )
                 except Exception as e:
-                    print(f"[DEBUG] Failed to start arm connection thread: {e}")
+                    print(
+                        f"[DEBUG] Failed to start arm connection thread: {e}",
+                        flush=True,
+                    )
 
-        print("[DEBUG] After arm controller section")
+        print("[DEBUG] After arm controller section", flush=True)
 
         # Camera manager
-        print("[DEBUG] Creating camera manager...")
+        print("[DEBUG] Creating camera manager...", flush=True)
         self.camera_manager = CameraManager(
             max_cameras_to_check=app_config.max_cameras_to_check
         )
-        print("[DEBUG] Camera manager created")
+        print("[DEBUG] Camera manager created", flush=True)
 
         # Check for RealSense without daemon on macOS
         self._check_realsense_daemon_warning()
@@ -237,9 +243,12 @@ class FletMainWindow:
 
     def _build_ui(self):
         """Build the Flet UI layout"""
+        print("[DEBUG] _build_ui: entered", flush=True)
         # Update loading message
         self.loading_text.value = "Building interface..."
+        print("[DEBUG] _build_ui: calling page.update()", flush=True)
         self.page.update()
+        print("[DEBUG] _build_ui: page.update() done", flush=True)
 
         # Clear the initial loading screen
         self.page.clean()
@@ -775,6 +784,12 @@ class FletMainWindow:
         Returns:
             bool: True if daemon is running and accepting connections, False otherwise
         """
+        # Daemon is only used on macOS (RealSense requires sudo there)
+        # On Windows/Linux, RealSense can be accessed directly
+        if sys.platform != "darwin":
+            print("[DEBUG] _check_daemon_running: Not macOS, daemon not needed")
+            return False
+
         print(f"[DEBUG] _check_daemon_running: DAEMON_AVAILABLE={DAEMON_AVAILABLE}")
         if not DAEMON_AVAILABLE:
             print("[DEBUG] _check_daemon_running: Daemon components not available")
@@ -1893,8 +1908,14 @@ class FletMainWindow:
             self._toggle_detection_logging()
 
     def _on_window_event(self, e):
-        """Handle window events (resized, moved, etc.)"""
+        """Handle window events (resized, moved, close, etc.)"""
         from aaa_core.config.settings import save_window_geometry
+
+        # Handle window close - clean up resources
+        if e.data == "close":
+            print("[DEBUG] Window close event received, cleaning up...")
+            self.cleanup()
+            return
 
         # Save geometry on resized or moved events
         if e.data in ("resized", "moved"):
@@ -1988,7 +2009,14 @@ class FletMainWindow:
 
     def cleanup(self):
         """Clean up resources"""
+        print("[DEBUG] Cleaning up resources...")
         if self.image_processor:
+            print("[DEBUG] Stopping image processor...")
             self.image_processor.stop()
+        if self.button_controller:
+            print("[DEBUG] Stopping button controller...")
+            self.button_controller.stop()
         if self.arm_controller:
+            print("[DEBUG] Disconnecting arm...")
             self.arm_controller.disconnect_arm()
+        print("[DEBUG] Cleanup complete")
