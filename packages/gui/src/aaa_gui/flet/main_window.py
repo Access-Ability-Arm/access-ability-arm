@@ -57,7 +57,10 @@ class FletMainWindow:
         self.page.window.left = app_config.window_left
         self.page.window.top = app_config.window_top
 
-        # Listen for window events (resize, move, etc.)
+        # Intercept window close to cleanup properly
+        self.page.window.prevent_close = True
+
+        # Listen for window events (resize, move, close, etc.)
         self.page.window.on_event = self._on_window_event
 
         # Initialize components
@@ -107,6 +110,7 @@ class FletMainWindow:
 
     def _show_initial_loading_screen(self):
         """Show loading screen immediately on startup"""
+        print("[DEBUG] _show_initial_loading_screen: creating widgets...", flush=True)
         loading_text = ft.Text(
             "Initializing application...",
             size=18,
@@ -132,8 +136,13 @@ class FletMainWindow:
             expand=True,
         )
 
+        print("[DEBUG] _show_initial_loading_screen: adding to page...", flush=True)
         self.page.add(loading_screen)
+        print(
+            "[DEBUG] _show_initial_loading_screen: calling page.update()...", flush=True
+        )
         self.page.update()
+        print("[DEBUG] _show_initial_loading_screen: done", flush=True)
 
     def _setup_components(self):
         """Initialize hardware and processing components"""
@@ -186,10 +195,17 @@ class FletMainWindow:
 
         # Camera manager
         print("[DEBUG] Creating camera manager...", flush=True)
-        self.camera_manager = CameraManager(
-            max_cameras_to_check=app_config.max_cameras_to_check
-        )
-        print("[DEBUG] Camera manager created", flush=True)
+        try:
+            self.camera_manager = CameraManager(
+                max_cameras_to_check=app_config.max_cameras_to_check
+            )
+            print("[DEBUG] Camera manager created", flush=True)
+        except Exception as e:
+            print(f"[DEBUG] CameraManager failed: {e}", flush=True)
+            import traceback
+
+            traceback.print_exc()
+            raise
 
         # Check for RealSense without daemon on macOS
         self._check_realsense_daemon_warning()
@@ -1911,10 +1927,12 @@ class FletMainWindow:
         """Handle window events (resized, moved, close, etc.)"""
         from aaa_core.config.settings import save_window_geometry
 
-        # Handle window close - clean up resources
+        # Handle window close - clean up resources and destroy window
         if e.data == "close":
-            print("[DEBUG] Window close event received, cleaning up...")
+            print("[DEBUG] Window close event received, cleaning up...", flush=True)
             self.cleanup()
+            print("[DEBUG] Destroying window...", flush=True)
+            self.page.window.destroy()
             return
 
         # Save geometry on resized or moved events

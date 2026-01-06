@@ -14,13 +14,13 @@ from typing import Dict, List
 
 import cv2
 import numpy as np
-
 from aaa_core.config.console import success, underline
 from aaa_core.config.console import warning as warn_msg
 
 # Suppress OpenCV warnings during camera enumeration
 os.environ['OPENCV_LOG_LEVEL'] = 'FATAL'
-os.environ['OPENCV_VIDEOIO_DEBUG'] = '0'
+os.environ["OPENCV_LOG_LEVEL"] = "FATAL"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
 
 
 @contextmanager
@@ -31,9 +31,10 @@ def suppress_output():
     stderr_fd = sys.stderr.fileno()
 
     # Save copies of the original file descriptors
-    with os.fdopen(os.dup(stdout_fd), 'w') as stdout_copy, \
-         os.fdopen(os.dup(stderr_fd), 'w') as stderr_copy:
-
+    with (
+        os.fdopen(os.dup(stdout_fd), "w") as stdout_copy,
+        os.fdopen(os.dup(stderr_fd), "w") as stderr_copy,
+    ):
         # Redirect stdout and stderr to devnull
         devnull = os.open(os.devnull, os.O_WRONLY)
         try:
@@ -63,11 +64,14 @@ class CameraManager:
         Args:
             max_cameras_to_check: Maximum number of camera indices to check
         """
-        print(f"[DEBUG CameraManager] __init__ called with max_cameras={max_cameras_to_check}")
+        print(
+            f"[DEBUG CameraManager] __init__ called with max_cameras={max_cameras_to_check}",
+            flush=True,
+        )
         self.max_cameras_to_check = max_cameras_to_check
         self.cameras: List[Dict[str, any]] = []
         self._macos_camera_names = None  # Cache for macOS camera names
-        print("[DEBUG CameraManager] __init__ complete")
+        print("[DEBUG CameraManager] __init__ complete", flush=True)
 
     def get_camera_info(self) -> List[Dict[str, any]]:
         """
@@ -98,7 +102,9 @@ class CameraManager:
 
         for index in range(self.max_cameras_to_check):
             # Get camera name if available (macOS/Windows only at this stage)
-            camera_name = camera_names[index] if index < len(camera_names) else f"Camera {index}"
+            camera_name = (
+                camera_names[index] if index < len(camera_names) else f"Camera {index}"
+            )
 
             # Check if camera name matches any skip pattern
             should_skip = False
@@ -110,7 +116,9 @@ class CameraManager:
                     break
 
                 if pattern.lower() in camera_name.lower():
-                    print(f"    ⊘ Skipping camera [{index}] {camera_name} (matches '{pattern}')")
+                    print(
+                        f"    ⊘ Skipping camera [{index}] {camera_name} (matches '{pattern}')"
+                    )
                     should_skip = True
                     break
 
@@ -183,21 +191,25 @@ class CameraManager:
 
                     # Determine color type based on camera name and channel analysis
                     color_type = "Unknown"
-                    camera_name = camera_names_for_detection[index] if index < len(camera_names_for_detection) else ""
+                    camera_name = (
+                        camera_names_for_detection[index]
+                        if index < len(camera_names_for_detection)
+                        else ""
+                    )
 
                     # Known infrared cameras by name
                     is_infrared_by_name = (
-                        "depth" in camera_name.lower() or
-                        "infrared" in camera_name.lower() or
-                        "ir" in camera_name.lower()
+                        "depth" in camera_name.lower()
+                        or "infrared" in camera_name.lower()
+                        or "ir" in camera_name.lower()
                     )
 
                     # Known RGB cameras by name
                     is_rgb_by_name = (
-                        "rgb" in camera_name.lower() or
-                        "macbook" in camera_name.lower() or
-                        "facetime" in camera_name.lower() or
-                        "isight" in camera_name.lower()
+                        "rgb" in camera_name.lower()
+                        or "macbook" in camera_name.lower()
+                        or "facetime" in camera_name.lower()
+                        or "isight" in camera_name.lower()
                     )
 
                     if is_rgb_by_name:
@@ -252,12 +264,14 @@ class CameraManager:
                     # Get resolution and color type
                     resolution, color_type = self._get_camera_properties(camera_index)
 
-                    cameras.append({
-                        "camera_index": camera_index,
-                        "camera_name": camera_name,
-                        "resolution": resolution,
-                        "color_type": color_type
-                    })
+                    cameras.append(
+                        {
+                            "camera_index": camera_index,
+                            "camera_name": camera_name,
+                            "resolution": resolution,
+                            "color_type": color_type,
+                        }
+                    )
         else:
             # For macOS and Linux, try to get actual camera names
             for camera_index in camera_indexes:
@@ -266,12 +280,14 @@ class CameraManager:
                 # Get resolution and color type
                 resolution, color_type = self._get_camera_properties(camera_index)
 
-                cameras.append({
-                    "camera_index": camera_index,
-                    "camera_name": camera_name,
-                    "resolution": resolution,
-                    "color_type": color_type
-                })
+                cameras.append(
+                    {
+                        "camera_index": camera_index,
+                        "camera_name": camera_name,
+                        "resolution": resolution,
+                        "color_type": color_type,
+                    }
+                )
 
         return cameras
 
@@ -287,7 +303,10 @@ class CameraManager:
             Tuple of (resolution_string, color_type_string)
         """
         # Try to use cached properties first
-        if hasattr(self, '_camera_properties_cache') and camera_index in self._camera_properties_cache:
+        if (
+            hasattr(self, "_camera_properties_cache")
+            and camera_index in self._camera_properties_cache
+        ):
             return self._camera_properties_cache[camera_index]
 
         # Fallback: open camera if not cached
@@ -311,7 +330,7 @@ class CameraManager:
                         diff_bg = np.abs(b.astype(np.int16) - g.astype(np.int16))
                         diff_gr = np.abs(g.astype(np.int16) - r.astype(np.int16))
                         max_diff = max(diff_bg.max(), diff_gr.max())
-                        is_infrared = (max_diff == 0)
+                        is_infrared = max_diff == 0
 
                         color_type = "Infrared" if is_infrared else "RGB"
 
@@ -377,7 +396,9 @@ class CameraManager:
         # Heuristic 1: Built-in MacBook cameras are usually index 0
         if camera_index == 0:
             for name in macos_names:
-                if any(keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]):
+                if any(
+                    keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]
+                ):
                     return name
 
         # Heuristic 2: Match by characteristic resolutions
@@ -394,7 +415,9 @@ class CameraManager:
         if camera_index > 0:
             # Prefer names that don't match built-in patterns
             for name in macos_names:
-                if not any(keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]):
+                if not any(
+                    keyword in name for keyword in ["MacBook", "FaceTime", "iSight"]
+                ):
                     return name
 
         # Fallback: Use position matching (may be wrong)
@@ -416,11 +439,11 @@ class CameraManager:
         try:
             # Run system_profiler to get camera information
             result = subprocess.run(
-                ['system_profiler', 'SPCameraDataType'],
+                ["system_profiler", "SPCameraDataType"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,  # Suppress AVCaptureDeviceTypeExternal warning
                 text=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -431,16 +454,20 @@ class CameraManager:
                 #   ckphone24 Camera:
 
                 camera_names = []
-                lines = result.stdout.split('\n')
+                lines = result.stdout.split("\n")
 
                 for line in lines:
                     # Look for lines ending with colon (camera names)
                     # Skip the "Camera:" header line
-                    if ':' in line and not line.strip().startswith('Camera:'):
+                    if ":" in line and not line.strip().startswith("Camera:"):
                         # Extract camera name (everything before the colon, trimmed)
-                        camera_name = line.split(':')[0].strip()
+                        camera_name = line.split(":")[0].strip()
                         # Skip empty lines and metadata lines (Model ID, Unique ID)
-                        if camera_name and not camera_name.startswith('Model ID') and not camera_name.startswith('Unique ID'):
+                        if (
+                            camera_name
+                            and not camera_name.startswith("Model ID")
+                            and not camera_name.startswith("Unique ID")
+                        ):
                             camera_names.append(camera_name)
 
                 self._macos_camera_names = camera_names
@@ -479,6 +506,4 @@ class CameraManager:
 
     async def _get_camera_information_for_windows(self):
         """Get detailed camera information on Windows platform"""
-        return await windows_devices.DeviceInformation.find_all_async(
-            VIDEO_DEVICES
-        )
+        return await windows_devices.DeviceInformation.find_all_async(VIDEO_DEVICES)
