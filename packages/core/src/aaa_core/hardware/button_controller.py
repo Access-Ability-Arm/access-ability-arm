@@ -62,3 +62,11 @@ class ButtonController(threading.Thread):
                 self.button_pushed = False
             else:
                 print(f"{button_name} held for {self.elapsed_time:.2f} seconds")
+
+    def stop(self):
+        """Stop the button controller thread"""
+        self.current_state = None  # This will cause run() to exit
+        # Thread is daemon so it will exit when main thread exits
+        # But we can also try to join with timeout
+        if self.is_alive():
+            self.join(timeout=1.0)

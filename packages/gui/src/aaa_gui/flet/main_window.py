@@ -100,11 +100,22 @@ class FletMainWindow:
         print("[DEBUG] Setting up components...")
         self._setup_components()
 
+        import time as _time
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_time.time()}: About to build UI\n")
+            f.flush()
         print("[DEBUG] Building UI...", flush=True)
         self._build_ui()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_time.time()}: UI built, starting image processor\n")
+            f.flush()
 
         print("[DEBUG] Starting image processor...")
         self._start_image_processor()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_time.time()}: Image processor started, init complete\n")
+            f.flush()
 
         print("[DEBUG] Initialization complete!")
 
@@ -193,14 +204,56 @@ class FletMainWindow:
 
         print("[DEBUG] After arm controller section", flush=True)
 
+        # Debug: write to file since stdout/stderr might be captured
+        import sys
+        import time
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: After arm controller section\n")
+            f.flush()
+
+        print("[DEBUG] step A", file=sys.stderr, flush=True)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: step A\n")
+            f.flush()
+
+        sys.stdout.flush()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: step B\n")
+            f.flush()
+
+        sys.stderr.flush()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: step C\n")
+            f.flush()
+
         # Camera manager
-        print("[DEBUG] Creating camera manager...", flush=True)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: step D - about to sleep\n")
+            f.flush()
+
+        time.sleep(0.1)  # Small delay to let arm thread settle
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: step E - about to create CameraManager\n")
+            f.flush()
+
+        # NOTE: Skipping print() here - Flet blocks stdout after page.update()
         try:
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{time.time()}: step F - inside try block\n")
+                f.flush()
             self.camera_manager = CameraManager(
                 max_cameras_to_check=app_config.max_cameras_to_check
             )
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{time.time()}: CameraManager created successfully\n")
+                f.flush()
             print("[DEBUG] Camera manager created", flush=True)
         except Exception as e:
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{time.time()}: CameraManager FAILED: {e}\n")
+                f.flush()
             print(f"[DEBUG] CameraManager failed: {e}", flush=True)
             import traceback
 
@@ -208,7 +261,13 @@ class FletMainWindow:
             raise
 
         # Check for RealSense without daemon on macOS
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: About to check RealSense daemon warning\n")
+            f.flush()
         self._check_realsense_daemon_warning()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{time.time()}: _setup_components complete\n")
+            f.flush()
         print("[DEBUG] _setup_components complete")
 
     def _check_realsense_daemon_warning(self):
@@ -259,16 +318,30 @@ class FletMainWindow:
 
     def _build_ui(self):
         """Build the Flet UI layout"""
-        print("[DEBUG] _build_ui: entered", flush=True)
+        import time as _t
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: _build_ui entered\n")
+            f.flush()
         # Update loading message
         self.loading_text.value = "Building interface..."
-        print("[DEBUG] _build_ui: calling page.update()", flush=True)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: calling page.update()\n")
+            f.flush()
         self.page.update()
-        print("[DEBUG] _build_ui: page.update() done", flush=True)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: page.update() done\n")
+            f.flush()
 
         # Clear the initial loading screen
         self.page.clean()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: page.clean() done\n")
+            f.flush()
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: creating video_feed\n")
+            f.flush()
         # Video feed display (responsive)
         self.video_feed = ft.Image(
             src_base64="",  # Will be updated by image processor
@@ -277,6 +350,9 @@ class FletMainWindow:
             expand=True,
         )
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: creating loading_placeholder\n")
+            f.flush()
         # Loading placeholder (shown until first frame arrives)
         self.camera_loading_text = ft.Text(
             "Loading camera feed...",
@@ -300,6 +376,9 @@ class FletMainWindow:
             expand=True,
         )
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: creating video_container\n")
+            f.flush()
         # Video container with Stack to overlay loading on video
         # Set fixed height to prevent layout shift when camera loads
         self.video_container = ft.Container(
@@ -314,6 +393,9 @@ class FletMainWindow:
             expand=True,
         )
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: creating object_buttons_row\n")
+            f.flush()
         # Object selection buttons (shown when frozen)
         self.object_buttons_row = ft.Row(
             controls=[],
@@ -325,11 +407,22 @@ class FletMainWindow:
         # Track if first frame has been received
         self._first_frame_received = False
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: about to check daemon\n")
+            f.flush()
         # Check if daemon is running to determine camera options
         daemon_running = self._check_daemon_running()
-        print(f"[DEBUG] Building UI - daemon_running={daemon_running}")
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(
+                f"{_t.time()}: daemon check done, daemon_running={daemon_running}\n"
+            )
+            f.flush()
+        # Skip print - Flet blocks stdout
 
         # Camera selection - use dropdown for multiple cameras, text label for single camera
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: building camera selection UI\n")
+            f.flush()
         if daemon_running:
             # Daemon mode: show RealSense as text (no selection needed)
             camera_display_text = (
@@ -346,7 +439,15 @@ class FletMainWindow:
             )
         else:
             # Normal mode: show all available cameras (except RealSense which crashes on macOS)
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{_t.time()}: calling get_camera_info()\n")
+                f.flush()
             cameras = self.camera_manager.get_camera_info()
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(
+                    f"{_t.time()}: get_camera_info() returned {len(cameras)} cameras\n"
+                )
+                f.flush()
             camera_options = []
             for cam in cameras:
                 # On macOS, RealSense cameras crash when accessed via OpenCV and require
@@ -522,6 +623,11 @@ class FletMainWindow:
         )
 
         # Main layout
+        import time as _t
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: About to call page.add() for main layout\n")
+            f.flush()
         self.page.add(
             ft.Column(
                 [
@@ -585,11 +691,20 @@ class FletMainWindow:
             )
         )
 
+        import time as _t
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: page.add() completed\n")
+            f.flush()
+
         # Keyboard shortcuts
         self.page.on_keyboard_event = self._on_keyboard_event
 
         # Mark UI as built to allow page.update() in callbacks
         self._ui_built = True
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: _build_ui complete\n")
+            f.flush()
 
     def _build_control_panel(self) -> ft.Container:
         """Build the robotic arm control panel with Manual/Auto tabs"""
@@ -1926,6 +2041,9 @@ class FletMainWindow:
     def _on_window_event(self, e):
         """Handle window events (resized, moved, close, etc.)"""
         from aaa_core.config.settings import save_window_geometry
+
+        # Debug: log all window events
+        print(f"[DEBUG] Window event: {e.data}", flush=True)
 
         # Handle window close - clean up resources and destroy window
         if e.data == "close":

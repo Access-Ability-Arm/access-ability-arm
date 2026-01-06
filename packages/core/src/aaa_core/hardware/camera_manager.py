@@ -18,34 +18,49 @@ from aaa_core.config.console import success, underline
 from aaa_core.config.console import warning as warn_msg
 
 # Suppress OpenCV warnings during camera enumeration
-os.environ['OPENCV_LOG_LEVEL'] = 'FATAL'
+os.environ["OPENCV_LOG_LEVEL"] = "FATAL"
 os.environ["OPENCV_LOG_LEVEL"] = "FATAL"
 os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
 
 
 @contextmanager
 def suppress_output():
-    """Suppress all output including system-level warnings"""
-    # Save original file descriptors
-    stdout_fd = sys.stdout.fileno()
-    stderr_fd = sys.stderr.fileno()
+    """Suppress all output including system-level warnings.
+
+    Note: This function safely handles cases where stdout/stderr are not real
+    file descriptors (e.g., when running under Flet which captures stdout).
+    In such cases, it simply yields without suppressing output.
+    """
+    # Check if stdout/stderr are real files with file descriptors
+    # Flet and other GUI frameworks may replace them with custom streams
+    try:
+        stdout_fd = sys.stdout.fileno()
+        stderr_fd = sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError):
+        # stdout/stderr are not real files, just yield without suppressing
+        yield
+        return
 
     # Save copies of the original file descriptors
-    with (
-        os.fdopen(os.dup(stdout_fd), "w") as stdout_copy,
-        os.fdopen(os.dup(stderr_fd), "w") as stderr_copy,
-    ):
-        # Redirect stdout and stderr to devnull
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        try:
-            os.dup2(devnull, stdout_fd)
-            os.dup2(devnull, stderr_fd)
-            yield
-        finally:
-            # Restore original file descriptors
-            os.dup2(stdout_copy.fileno(), stdout_fd)
-            os.dup2(stderr_copy.fileno(), stderr_fd)
-            os.close(devnull)
+    try:
+        with (
+            os.fdopen(os.dup(stdout_fd), "w") as stdout_copy,
+            os.fdopen(os.dup(stderr_fd), "w") as stderr_copy,
+        ):
+            # Redirect stdout and stderr to devnull
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull, stdout_fd)
+                os.dup2(devnull, stderr_fd)
+                yield
+            finally:
+                # Restore original file descriptors
+                os.dup2(stdout_copy.fileno(), stdout_fd)
+                os.dup2(stderr_copy.fileno(), stderr_fd)
+                os.close(devnull)
+    except (OSError, ValueError):
+        # If file descriptor manipulation fails, just yield without suppressing
+        yield
 
 
 if platform.system() == "Windows":
@@ -69,7 +84,9 @@ class CameraManager:
             flush=True,
         )
         self.max_cameras_to_check = max_cameras_to_check
+        print("[DEBUG CameraManager] step 1 done", flush=True)
         self.cameras: List[Dict[str, any]] = []
+        print("[DEBUG CameraManager] step 2 done", flush=True)
         self._macos_camera_names = None  # Cache for macOS camera names
         print("[DEBUG CameraManager] __init__ complete", flush=True)
 
@@ -80,15 +97,32 @@ class CameraManager:
         Returns:
             List of dictionaries with camera_index and camera_name
         """
+        import time as _t
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: get_camera_info() entered\n")
+            f.flush()
+
         from aaa_core.config.settings import app_config
 
         self.cameras = []
 
         # Get camera names first (without opening devices)
         platform_name = platform.system()
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: platform={platform_name}\n")
+            f.flush()
         if platform_name == "Darwin":
             # Pre-fetch camera names on macOS to enable early filtering
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{_t.time()}: calling _get_macos_camera_names()\n")
+                f.flush()
             camera_names = self._get_macos_camera_names()
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(
+                    f"{_t.time()}: _get_macos_camera_names() returned {len(camera_names)} names\n"
+                )
+                f.flush()
         elif platform_name == "Windows":
             # Pre-fetch camera names on Windows to enable early filtering
             camera_names = self._get_windows_camera_names()
@@ -97,6 +131,9 @@ class CameraManager:
             camera_names = []
 
         # Determine which cameras to skip BEFORE opening them
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: checking skip patterns\n")
+            f.flush()
         skip_patterns = app_config.skip_cameras
         indices_to_check = []
 
@@ -116,33 +153,59 @@ class CameraManager:
                     break
 
                 if pattern.lower() in camera_name.lower():
-                    print(
-                        f"    ⊘ Skipping camera [{index}] {camera_name} (matches '{pattern}')"
-                    )
+                    # Log to file instead of print (Flet blocks stdout)
+                    with open("/tmp/aaa_debug.log", "a") as f:
+                        f.write(
+                            f"{_t.time()}: Skipping camera [{index}] {camera_name} (matches '{pattern}')\n"
+                        )
+                        f.flush()
                     should_skip = True
                     break
 
             if not should_skip:
                 indices_to_check.append(index)
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: indices_to_check={indices_to_check}\n")
+            f.flush()
         # Now only open cameras that we didn't skip
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: calling _get_camera_indexes()\n")
+            f.flush()
         camera_indexes = self._get_camera_indexes(indices_to_check)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: _get_camera_indexes() returned {camera_indexes}\n")
+            f.flush()
 
         if len(camera_indexes) == 0:
-            warn_msg("No cameras detected")
+            # Log to file instead of warn_msg (Flet blocks stdout)
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{_t.time()}: No cameras detected\n")
+                f.flush()
             return self.cameras
 
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: calling _add_camera_information()\n")
+            f.flush()
         all_cameras = self._add_camera_information(camera_indexes)
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(
+                f"{_t.time()}: _add_camera_information() returned {len(all_cameras)} cameras\n"
+            )
+            f.flush()
 
         # All cameras should already be filtered, just add them
         self.cameras = all_cameras
 
-        # Print detected cameras with details
+        # Log detected cameras (skip print - Flet blocks stdout)
         if len(self.cameras) > 0:
-            success(f"Detected {underline(str(len(self.cameras)))} camera(s):")
-            for cam in self.cameras:
-                cam_info = f"  [{cam['camera_index']}] {underline(cam['camera_name'])} - {cam['resolution']} ({cam['color_type']})"
-                print(f"    {cam_info}")
+            with open("/tmp/aaa_debug.log", "a") as f:
+                f.write(f"{_t.time()}: Detected {len(self.cameras)} camera(s)\n")
+                for cam in self.cameras:
+                    f.write(
+                        f"  [{cam['camera_index']}] {cam['camera_name']} - {cam['resolution']} ({cam['color_type']})\n"
+                    )
+                f.flush()
 
         return self.cameras
 
@@ -177,10 +240,25 @@ class CameraManager:
 
         # Use low-level file descriptor suppression to hide all warnings
         # including macOS AVCaptureDevice system warnings
+        import time as _t
+
+        with open("/tmp/aaa_debug.log", "a") as f:
+            f.write(f"{_t.time()}: entering suppress_output block\n")
+            f.flush()
         with suppress_output():
             for index in indices_to_check:
+                # Log before opening each camera (file logging works inside suppress_output)
+                with open("/tmp/aaa_debug.log", "a") as f:
+                    f.write(f"{_t.time()}: opening camera index {index}\n")
+                    f.flush()
                 capture = cv2.VideoCapture(index)
+                with open("/tmp/aaa_debug.log", "a") as f:
+                    f.write(f"{_t.time()}: reading frame from camera {index}\n")
+                    f.flush()
                 ret, frame = capture.read()
+                with open("/tmp/aaa_debug.log", "a") as f:
+                    f.write(f"{_t.time()}: camera {index} read result: ret={ret}\n")
+                    f.flush()
                 if ret:
                     camera_indexes.append(index)
 

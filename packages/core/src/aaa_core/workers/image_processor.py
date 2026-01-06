@@ -391,5 +391,12 @@ class ImageProcessor(threading.Thread):
     def stop(self):
         """Stop the processing thread"""
         self.thread_active = False
-        self.quit()
-        self.wait()
+        # Release camera if held
+        if self.camera is not None:
+            try:
+                self.camera.release()
+            except Exception:
+                pass
+        # Wait for thread to finish (with timeout to avoid hanging)
+        if self.is_alive():
+            self.join(timeout=2.0)

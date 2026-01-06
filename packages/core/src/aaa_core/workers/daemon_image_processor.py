@@ -133,6 +133,10 @@ class DaemonImageProcessor(threading.Thread):
         if self.camera_client:
             self.camera_client.disconnect()
 
+        # Wait for thread to finish (with timeout to avoid hanging)
+        if self.is_alive():
+            self.join(timeout=2.0)
+
         success("Daemon image processor stopped")
 
     def camera_changed(self, camera_index: int, camera_name: str = None):
