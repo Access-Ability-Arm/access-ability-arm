@@ -103,6 +103,12 @@ class CameraManager:
             # Check if camera name matches any skip pattern
             should_skip = False
             for pattern in skip_patterns:
+                # Always allow RealSense cameras regardless of user skip patterns
+                if 'realsense' in camera_name.lower():
+                    print(f"    ✓ Keeping RealSense camera [{index}] {camera_name} (override skip patterns)")
+                    should_skip = False
+                    break
+
                 if pattern.lower() in camera_name.lower():
                     print(f"    ⊘ Skipping camera [{index}] {camera_name} (matches '{pattern}')")
                     should_skip = True
