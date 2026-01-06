@@ -3,6 +3,7 @@ Image Processing Worker Thread
 Handles camera capture, detection processing, and image conversion
 """
 
+import sys
 import threading
 from typing import Callable, Optional
 
@@ -196,10 +197,11 @@ class ImageProcessor(threading.Thread):
             f"[DEBUG ImageProcessor] use_realsense={self.use_realsense}, camera={self.camera}"
         )
 
-        # Block switching to RealSense cameras via OpenCV - causes segfault on macOS
-        # RealSense should only be accessed via daemon or --enable-realsense flag
-        if camera_name and "RealSense" in camera_name:
-            error("Cannot switch to RealSense camera via dropdown")
+        # On macOS, block switching to RealSense cameras via OpenCV - causes segfault
+        # and requires sudo for USB access. Use daemon instead.
+        # On Windows/Linux, RealSense can be accessed directly via OpenCV.
+        if sys.platform == "darwin" and camera_name and "RealSense" in camera_name:
+            error("Cannot switch to RealSense camera via dropdown on macOS")
             status("RealSense requires: 1) Use 'make daemon-start' then 'make run', or")
             status("                    2) Run with --enable-realsense flag")
             status("Keeping current camera")

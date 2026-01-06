@@ -770,10 +770,10 @@ class FletMainWindow:
 
     def _check_daemon_running(self):
         """
-        Check if camera daemon is running
+        Check if camera daemon is running and responding
 
         Returns:
-            bool: True if daemon socket exists, False otherwise
+            bool: True if daemon is running and accepting connections, False otherwise
         """
         print(f"[DEBUG] _check_daemon_running: DAEMON_AVAILABLE={DAEMON_AVAILABLE}")
         if not DAEMON_AVAILABLE:
@@ -781,6 +781,7 @@ class FletMainWindow:
             return False
 
         import os
+        import socket
 
         SOCKET_PATH = "/tmp/aaa_camera.sock"
 
@@ -789,11 +790,21 @@ class FletMainWindow:
             print(
                 f"[DEBUG] _check_daemon_running: Checking for socket at {SOCKET_PATH}..."
             )
-            if os.path.exists(SOCKET_PATH):
-                print("[DEBUG] _check_daemon_running: Socket found - daemon is running")
+            if not os.path.exists(SOCKET_PATH):
+                print("[DEBUG] _check_daemon_running: Socket not found")
+                return False
+
+            # Socket file exists - verify daemon is actually responding
+            print("[DEBUG] _check_daemon_running: Socket found, testing connection...")
+            test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            test_socket.settimeout(1.0)
+            try:
+                test_socket.connect(SOCKET_PATH)
+                test_socket.close()
+                print("[DEBUG] _check_daemon_running: Daemon is responding")
                 return True
-            else:
-                print(f"[DEBUG] _check_daemon_running: Socket not found")
+            except (ConnectionRefusedError, OSError) as e:
+                print(f"[DEBUG] _check_daemon_running: Daemon not responding: {e}")
                 return False
         except Exception as e:
             print(f"[DEBUG] _check_daemon_running: Error checking daemon - {e}")
@@ -808,20 +819,27 @@ class FletMainWindow:
 
         if daemon_running:
             print("[INFO] Camera daemon detected - using RealSense with depth")
-            self.image_processor = DaemonImageProcessor(
-                display_width=app_config.display_width,
-                display_height=app_config.display_height,
-                callback=self._update_video_feed,
-            )
-            # RealSense detected - using auto-exposure (manual controls hidden)
-            self.using_realsense = True
-            # Exposure controls hidden - relying on RealSense auto-exposure
+            try:
+                self.image_processor = DaemonImageProcessor(
+                    display_width=app_config.display_width,
+                    display_height=app_config.display_height,
+                    callback=self._update_video_feed,
+                )
+                # RealSense detected - using auto-exposure (manual controls hidden)
+                self.using_realsense = True
+                # Exposure controls hidden - relying on RealSense auto-exposure
 
-            # Uncomment below to enable manual exposure controls:
-            # self.exposure_controls.visible = True
-            # self.exposure_slider.visible = True
-            # self.auto_exposure_btn.visible = True
-        else:
+                # Uncomment below to enable manual exposure controls:
+                # self.exposure_controls.visible = True
+                # self.exposure_slider.visible = True
+                # self.auto_exposure_btn.visible = True
+            except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
+                # Daemon socket exists but daemon isn't responding - fall back to regular camera
+                print(f"[WARN] Daemon connection failed: {e}")
+                print("[INFO] Falling back to direct camera access (RGB only)")
+                daemon_running = False
+
+        if not daemon_running:
             print("[INFO] No daemon - using direct camera access (RGB only)")
             self.image_processor = ImageProcessor(
                 display_width=app_config.display_width,
