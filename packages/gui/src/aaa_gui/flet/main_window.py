@@ -4,6 +4,7 @@ Modern cross-platform GUI using Flet framework
 """
 
 import base64
+import sys
 import threading
 import time
 from io import BytesIO
@@ -323,11 +324,12 @@ class FletMainWindow:
             cameras = self.camera_manager.get_camera_info()
             camera_options = []
             for cam in cameras:
-                # Skip RealSense cameras - they crash when accessed via OpenCV on macOS
-                # RealSense must be accessed via daemon or --enable-realsense flag
-                if "RealSense" in cam["camera_name"]:
+                # On macOS, RealSense cameras crash when accessed via OpenCV and require
+                # sudo for USB access. Hide them from dropdown - use daemon instead.
+                # On Windows/Linux, RealSense can be accessed directly via OpenCV.
+                if sys.platform == "darwin" and "RealSense" in cam["camera_name"]:
                     print(
-                        f"[DEBUG] Hiding RealSense camera from dropdown: {cam['camera_name']}"
+                        f"[DEBUG] Hiding RealSense camera from dropdown (macOS requires daemon): {cam['camera_name']}"
                     )
                     continue
 
