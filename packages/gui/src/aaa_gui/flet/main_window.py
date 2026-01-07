@@ -347,6 +347,13 @@ class FletMainWindow:
 
         # Add other available cameras
         for cam in cameras:
+            # Hide infrared cameras - they cause crashes and aren't useful for this app
+            if cam.get("color_type") == "Infrared":
+                print(
+                    f"[DEBUG] Hiding infrared camera from dropdown: [{cam['camera_index']}] {cam['camera_name']}"
+                )
+                continue
+
             # On macOS, RealSense cameras crash when accessed via OpenCV and require
             # sudo for USB access. Hide them from dropdown - use daemon instead.
             # On Windows/Linux, RealSense can be accessed directly via OpenCV.
