@@ -1596,6 +1596,9 @@ class FletMainWindow:
         self.image_processor.start()
         self.using_realsense = True
 
+        # Set detection mode to camera only (Manual tab default)
+        self.image_processor.set_detection_mode("camera")
+
         # Update status
         self._update_status()
         if self.video_frozen:
