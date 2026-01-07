@@ -891,8 +891,17 @@ class FletMainWindow:
         print("[DEBUG MainWindow] ImageProcessor created")
 
         # Set initial camera name for flip detection and trigger camera initialization
-        print("[DEBUG MainWindow] Setting initial camera name for flip detection...")
-        if self.camera_manager.cameras:
+        # (only for regular ImageProcessor, not DaemonImageProcessor)
+        is_daemon_processor = (
+            isinstance(self.image_processor, DaemonImageProcessor)
+            if DAEMON_AVAILABLE
+            else False
+        )
+
+        if not is_daemon_processor and self.camera_manager.cameras:
+            print(
+                "[DEBUG MainWindow] Setting initial camera name for flip detection..."
+            )
             # Use the dropdown value if set (handles auto-selection and default)
             selected_cam_index = None
             if self.camera_dropdown.value and self.camera_dropdown.value != "daemon":
