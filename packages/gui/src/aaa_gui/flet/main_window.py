@@ -332,80 +332,79 @@ class FletMainWindow:
         daemon_running = self._check_daemon_running()
         # Skip print - Flet blocks stdout
 
-        # Camera selection - use dropdown for multiple cameras, text label for single camera
+        # Camera selection - build list of available cameras
+        cameras = self.camera_manager.get_camera_info()
+        camera_options = []
+
+        # If daemon is running, add it as the first option
         if daemon_running:
-            # Daemon mode: show RealSense as text (no selection needed)
-            camera_display_text = (
-                "Camera: Intel RealSense D435 (via daemon - depth enabled)"
+            camera_options.append(
+                ft.dropdown.Option(
+                    key="daemon",
+                    text="RealSense D435 (via daemon - with depth)",
+                )
             )
+
+        # Add other available cameras
+        for cam in cameras:
+            # On macOS, RealSense cameras crash when accessed via OpenCV and require
+            # sudo for USB access. Hide them from dropdown - use daemon instead.
+            # On Windows/Linux, RealSense can be accessed directly via OpenCV.
+            if sys.platform == "darwin" and "RealSense" in cam["camera_name"]:
+                print(
+                    f"[DEBUG] Hiding RealSense camera from dropdown (macOS requires daemon): {cam['camera_name']}"
+                )
+                continue
+
+            # Shorten long camera names for better display
+            name = cam["camera_name"]
+            if len(name) > 70:
+                # Truncate but keep important parts
+                name = name[:67] + "..."
+
+            # For RealSense cameras, show actual SDK resolution (not OpenCV default)
+            resolution = cam["resolution"]
+            if "RealSense" in cam["camera_name"] and resolution == "640x480":
+                resolution = "1920x1080"  # RealSense SDK uses this for RGB
+
+            display_text = (
+                f"[{cam['camera_index']}] {name} - {resolution} ({cam['color_type']})"
+            )
+            camera_options.append(
+                ft.dropdown.Option(
+                    key=str(cam["camera_index"]),
+                    text=display_text,
+                )
+            )
+
+        # Create dropdown or text based on number of options
+        if len(camera_options) == 1:
+            # Single camera: show as text
+            camera_display_text = f"Camera: {camera_options[0].text}"
             self.camera_dropdown = ft.Text(
                 camera_display_text,
                 size=14,
                 weight=ft.FontWeight.W_500,
                 color="#1976D2",  # Blue 700
             )
-            self.camera_dropdown.value = (
-                "daemon"  # Add value attribute for compatibility
-            )
+            self.camera_dropdown.value = camera_options[0].key
+            print(f"[DEBUG] Single camera detected: {camera_options[0].text}")
         else:
-            # Normal mode: show all available cameras (except RealSense which crashes on macOS)
-            cameras = self.camera_manager.get_camera_info()
-            camera_options = []
-            for cam in cameras:
-                # On macOS, RealSense cameras crash when accessed via OpenCV and require
-                # sudo for USB access. Hide them from dropdown - use daemon instead.
-                # On Windows/Linux, RealSense can be accessed directly via OpenCV.
-                if sys.platform == "darwin" and "RealSense" in cam["camera_name"]:
-                    print(
-                        f"[DEBUG] Hiding RealSense camera from dropdown (macOS requires daemon): {cam['camera_name']}"
-                    )
-                    continue
-
-                # Shorten long camera names for better display
-                name = cam["camera_name"]
-                if len(name) > 70:
-                    # Truncate but keep important parts
-                    name = name[:67] + "..."
-
-                # For RealSense cameras, show actual SDK resolution (not OpenCV default)
-                resolution = cam["resolution"]
-                if "RealSense" in cam["camera_name"] and resolution == "640x480":
-                    resolution = "1920x1080"  # RealSense SDK uses this for RGB
-
-                display_text = f"[{cam['camera_index']}] {name} - {resolution} ({cam['color_type']})"
-                camera_options.append(
-                    ft.dropdown.Option(
-                        key=str(cam["camera_index"]),
-                        text=display_text,
-                    )
-                )
-
-            # If only one camera, show as text instead of dropdown
-            if len(camera_options) == 1:
-                camera_display_text = f"Camera: {camera_options[0].text}"
-                self.camera_dropdown = ft.Text(
-                    camera_display_text,
-                    size=14,
-                    weight=ft.FontWeight.W_500,
-                    color="#1976D2",  # Blue 700
-                )
-                self.camera_dropdown.value = camera_options[
-                    0
-                ].key  # Add value attribute for compatibility
-                print(f"[DEBUG] Single camera detected: {camera_options[0].text}")
-            else:
-                # Multiple cameras: show dropdown
-                dropdown_value = (
-                    str(app_config.default_camera) if camera_options else None
-                )
-                self.camera_dropdown = ft.Dropdown(
-                    label="Select Camera",
-                    options=camera_options,
-                    value=dropdown_value,
-                    on_change=self._on_camera_changed,
-                    width=600,  # Increased width to accommodate more info
-                    disabled=False,
-                )
+            # Multiple cameras: show dropdown
+            # Default to daemon if available, otherwise first camera
+            dropdown_value = (
+                "daemon"
+                if daemon_running
+                else (str(app_config.default_camera) if camera_options else None)
+            )
+            self.camera_dropdown = ft.Dropdown(
+                label="Select Camera",
+                options=camera_options,
+                value=dropdown_value,
+                on_change=self._on_camera_changed,
+                width=600,  # Increased width to accommodate more info
+                disabled=False,
+            )
 
         # Status display
         self.status_text = ft.Text(
@@ -1525,8 +1524,17 @@ class FletMainWindow:
 
     def _on_camera_changed(self, e):
         """Handle camera selection change"""
-        if e.control.value:
-            camera_index = int(e.control.value)
+        if not e.control.value:
+            return
+
+        selected_value = e.control.value
+
+        # Check if switching to daemon or regular camera
+        if selected_value == "daemon":
+            print("Switching to RealSense daemon...")
+            self._switch_to_daemon()
+        else:
+            camera_index = int(selected_value)
             print(f"Switching to camera {camera_index}")
 
             # Get camera name from camera manager
@@ -1536,13 +1544,77 @@ class FletMainWindow:
                     camera_name = cam["camera_name"]
                     break
 
-            if self.image_processor:
+            # Check if currently using daemon - need to switch processor type
+            is_using_daemon = (
+                isinstance(self.image_processor, DaemonImageProcessor)
+                if DAEMON_AVAILABLE
+                else False
+            )
+
+            if is_using_daemon:
+                # Switch from daemon to regular ImageProcessor
+                self._switch_to_regular_camera(camera_index, camera_name)
+            elif self.image_processor:
+                # Already using regular processor, just change camera
                 self.image_processor.camera_changed(camera_index, camera_name)
-                # Update status bar to reflect new camera (e.g., RealSense status)
                 self._update_status()
-                # If video is frozen, unfreeze to show the new camera view
                 if self.video_frozen:
                     self._unfreeze_video()
+
+    def _switch_to_daemon(self):
+        """Switch from regular camera to daemon (RealSense with depth)"""
+        if not DAEMON_AVAILABLE:
+            print("[ERROR] Daemon components not available")
+            return
+
+        # Stop current image processor
+        if self.image_processor:
+            self.image_processor.stop()
+
+        # Create new DaemonImageProcessor
+        self.image_processor = DaemonImageProcessor(
+            display_width=app_config.display_width,
+            display_height=app_config.display_height,
+            callback=self._update_video_feed,
+        )
+        self.image_processor.start()
+        self.using_realsense = True
+
+        # Update status
+        self._update_status()
+        if self.video_frozen:
+            self._unfreeze_video()
+        print("Switched to RealSense daemon (with depth)")
+
+    def _switch_to_regular_camera(self, camera_index: int, camera_name: str):
+        """Switch from daemon to regular camera"""
+        # Stop current image processor
+        if self.image_processor:
+            self.image_processor.stop()
+
+        # Create new ImageProcessor
+        self.image_processor = ImageProcessor(
+            display_width=app_config.display_width,
+            display_height=app_config.display_height,
+            callback=self._update_video_feed,
+        )
+
+        # Set camera before starting
+        self.image_processor.current_camera_name = camera_name
+        self.image_processor._update_flip_for_camera(camera_name)
+        self.image_processor.camera_changed(camera_index, camera_name)
+
+        # Start processor
+        self.image_processor.start()
+
+        # Set detection mode to camera only (Manual tab default)
+        self.image_processor.set_detection_mode("camera")
+
+        # Update status
+        self._update_status()
+        if self.video_frozen:
+            self._unfreeze_video()
+        print(f"Switched to regular camera: {camera_name}")
 
     def _on_refresh_camera(self):
         """Handle refresh camera button - capture new frame"""
