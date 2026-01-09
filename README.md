@@ -240,6 +240,28 @@ pip install -e packages/vision
 pip install -e "packages/gui[flet]"
 ```
 
+### Virtual environment (recommended)
+
+We provide convenience scripts to create a project-local Python virtual environment named `.venv` and install dependencies.
+
+- PowerShell (Windows): `.\scripts\\setup_venv.ps1`
+- CMD (Windows): `.\scripts\\setup_venv.bat`
+- POSIX / WSL / Git-Bash: `./scripts/setup_venv.sh`
+
+Examples (PowerShell):
+```powershell
+# Create venv and install dependencies
+.\scripts\setup_venv.ps1
+
+# Activate in current PowerShell session (dot-source)
+. .\.venv\Scripts\Activate.ps1
+
+# Run the app
+python main.py
+```
+
+Note: `.venv/` is git-ignored in this repository; the folder will not be committed.
+
 ## Troubleshooting
 
 **Camera not found:**

@@ -5,4 +5,5 @@
       "args": ["--rcfile", ".zed/bashrc"],
     },
   },
+  "python.defaultInterpreterPath": ".venv\\Scripts\\python.exe"
 }
