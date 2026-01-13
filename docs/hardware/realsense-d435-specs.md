@@ -71,6 +71,56 @@ The Intel RealSense D435 is a stereo depth camera with RGB sensor support, desig
 - **Interface:** USB 3.0 Type-C
 - **Power:** USB bus-powered
 
+## Visual Presets
+
+The D435's depth calculations use over 40 internal parameters. Intel provides presets that bundle these for common use cases.
+
+### Available Presets
+
+| Preset | Fill Factor | Accuracy | Use Case |
+|--------|-------------|----------|----------|
+| **Default** (1) | Medium | Medium | General use, clean edges, reduced point cloud spraying |
+| **Hand** (2) | Varies | Varies | Close-range hand tracking, gesture recognition |
+| **High Accuracy** (3) | Low | Highest | Collision avoidance, autonomous robots, object scanning |
+| **High Density** (4) | Highest | Lower | Photography, background segmentation, seeing more objects |
+| **Medium Density** (5) | Medium | Medium | General robotics, object manipulation, balanced scenarios |
+
+### Key Trade-off: Fill Factor vs Accuracy
+
+- **Fill factor** = percentage of pixels with valid depth values (fewer holes)
+- **Accuracy** = confidence threshold for accepting depth measurements
+
+**High Density**: Accepts more depth measurements including lower-confidence ones. Fuller depth image with fewer holes, but some values may be incorrect ("hallucinations").
+
+**High Accuracy**: Only accepts high-confidence measurements. Sparser depth image with more holes, but values are more reliable. Critical for robots where false depth could cause collisions.
+
+**Medium Density**: Balances both. Good accuracy while maintaining reasonable coverage.
+
+### Setting Presets in Python
+
+```python
+import pyrealsense2 as rs
+
+pipeline = rs.pipeline()
+config = rs.config()
+config.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)
+
+pipeline.start(config)
+device = pipeline.get_active_profile().get_device()
+depth_sensor = device.first_depth_sensor()
+
+# Preset values: 0=Custom, 1=Default, 2=Hand, 3=HighAccuracy, 4=HighDensity, 5=MediumDensity
+depth_sensor.set_option(rs.option.visual_preset, 5)  # Medium Density
+```
+
+### Recommended Preset for Grasp Planning
+
+For assistive robotics grasp planning at 0.3-0.8m range:
+- **Medium Density** (5): Good balance for detecting grasp surfaces while maintaining accuracy
+- **High Accuracy** (3): Consider if false depth readings cause grasp failures; post-processing filters can fill gaps
+
+Test both presets with your specific objects to determine which works better.
+
 ## Depth Processing Features
 
 - Spatial filtering with hole filling
