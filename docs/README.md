@@ -12,6 +12,7 @@ Essential docs for working with the project:
 | [ufactory_studio.md](ufactory_studio.md) | UFactory Lite6 arm setup |
 | [new-features.md](new-features.md) | Feature roadmap and status |
 | [grasp_planning_report.md](grasp_planning_report.md) | Open3D grasp planning implementation plan |
+| [open3d-point-cloud-task.md](open3d-point-cloud-task.md) | Current task: Point cloud processing with Open3D |
 
 ## Hardware Documentation
 
@@ -33,7 +34,6 @@ Exploration, analysis, and implementation research:
 | Document | Description |
 |----------|-------------|
 | [sensor-fusion-brainstorming.md](research/sensor-fusion-brainstorming.md) | Multi-sensor fusion strategies |
-| [pick-and-place-strategy.md](research/pick-and-place-strategy.md) | Pick and place implementation guide |
 | [segmentation-smoothing-robotics.md](research/segmentation-smoothing-robotics.md) | Real-time segmentation smoothing |
 | [spatial-smoothing-implementation.md](research/spatial-smoothing-implementation.md) | Spatial smoothing details |
 | [depth-validation-implementation.md](research/depth-validation-implementation.md) | Depth validation approach |
@@ -50,6 +50,7 @@ Past architectural decisions and comparisons:
 - [gui-framework-comparison.md](archive/decisions/gui-framework-comparison.md) - Why we chose Flet
 - [client-server-architecture-plan.md](archive/decisions/client-server-architecture-plan.md) - Daemon architecture decision
 - [daemon-architecture-implementation-plan.md](archive/decisions/daemon-architecture-implementation-plan.md) - Original daemon plan
+- [pick-and-place-strategy.md](archive/decisions/pick-and-place-strategy.md) - General pick-and-place research (superseded by grasp_planning_report.md)
 
 ### Completed Work
 
