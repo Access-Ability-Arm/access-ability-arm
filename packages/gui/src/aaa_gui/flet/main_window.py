@@ -73,6 +73,7 @@ class FletMainWindow:
         self.status_text = None
         self.camera_dropdown = None
         self.arm_status_text = None
+        self.show_points_btn = None  # Button to show sampled mask points on frozen frame
 
         # Movement speed percentage (1-100%)
         self.movement_speed_percent = 20  # Default 20%
@@ -87,6 +88,9 @@ class FletMainWindow:
         self.frozen_frame = None
         self.frozen_detections = None  # Store detection data when frozen
         self.frozen_raw_frame = None  # Store the raw frozen frame for re-highlighting
+        self.frozen_depth_frame = None  # Store depth frame at freeze time (if available)
+        self.last_exported_ply = None  # Path to the last exported PLY file
+        self._overlay_points = None  # Temporary overlay points to show on frozen frame
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
 
@@ -515,6 +519,18 @@ class FletMainWindow:
             spacing=10,
         )
 
+        # Show Points button (created here so reference can be enabled/disabled later)
+        self.show_points_btn = ft.ElevatedButton(
+            text="Show Points",
+            icon=ft.Icons.VISIBILITY,
+            on_click=lambda e: self._on_show_points(e),
+            bgcolor="#795548",  # Brown 500
+            color="#FFFFFF",
+            width=135,
+            height=38,
+            disabled=True,
+        )
+
         # Control panel with robotic arm buttons
         control_panel = self._build_control_panel()
 
@@ -741,8 +757,8 @@ class FletMainWindow:
                         on_click=lambda e: self._on_find_objects(),
                         bgcolor="#2196F3",  # Blue 500
                         color="#FFFFFF",
-                        width=180,
-                        height=50,
+                        width=135,
+                        height=38,
                     ),
                     # Object selection buttons (shown when frozen)
                     self.object_buttons_row,
@@ -753,8 +769,8 @@ class FletMainWindow:
                         on_click=lambda e: self._on_execute(),
                         bgcolor="#4CAF50",  # Green 500
                         color="#FFFFFF",
-                        width=180,
-                        height=50,
+                        width=135,
+                        height=38,
                     ),
                     # Stop button
                     ft.ElevatedButton(
@@ -763,8 +779,8 @@ class FletMainWindow:
                         on_click=lambda e: self._on_stop(),
                         bgcolor="#F44336",  # Red 500
                         color="#FFFFFF",
-                        width=180,
-                        height=50,
+                        width=135,
+                        height=38,
                     ),
                     # Home button
                     ft.ElevatedButton(
@@ -773,9 +789,58 @@ class FletMainWindow:
                         on_click=lambda e: self._on_home(),
                         bgcolor="#FF9800",  # Orange 500
                         color="#FFFFFF",
-                        width=180,
-                        height=50,
+                        width=135,
+                        height=38,
                     ),
+                    # Export point cloud for selected object
+                    ft.ElevatedButton(
+                        text="Export PointCloud",
+                        icon=ft.Icons.CLOUD_UPLOAD,
+                        on_click=lambda e: self._export_selected_object_pointcloud(e),
+                        bgcolor="#3F51B5",  # Indigo 500
+                        color="#FFFFFF",
+                        width=135,
+                        height=38,
+                    ),
+                    # Export full depth frame as NPZ (whole point cloud)
+                    ft.ElevatedButton(
+                        text="Export Full PC",
+                        icon=ft.Icons.CLOUD_DOWNLOAD,
+                        on_click=lambda e: self._export_full_pointcloud(e),
+                        bgcolor="#283593",  # Indigo 800
+                        color="#FFFFFF",
+                        width=135,
+                        height=38,
+                    ),
+                    ft.ElevatedButton(
+                        text="Export PLY",
+                        icon=ft.Icons.FILE_DOWNLOAD,
+                        on_click=lambda e: self._export_selected_object_ply(e),
+                        bgcolor="#009688",  # Teal 500
+                        color="#FFFFFF",
+                        width=135,
+                        height=38,
+                    ),
+                    ft.ElevatedButton(
+                        text="Preview PLY",
+                        icon=ft.Icons.OPEN_IN_NEW,
+                        on_click=lambda e: self._preview_selected_object_ply(e),
+                        bgcolor="#607D8B",  # Blue Grey 500
+                        color="#FFFFFF",
+                        width=135,
+                        height=38,
+                    ),
+                    # Show sampled mask points overlay for selected object
+                    (self.show_points_btn if self.show_points_btn is not None else ft.ElevatedButton(
+                        text="Show Points",
+                        icon=ft.Icons.VISIBILITY,
+                        on_click=lambda e: self._on_show_points(e),
+                        bgcolor="#795548",  # Brown 500
+                        color="#FFFFFF",
+                        width=135,
+                        height=38,
+                        disabled=True,
+                    )), 
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=15,
@@ -1431,6 +1496,15 @@ class FletMainWindow:
             else:
                 btn.bgcolor = ft.Colors.BLUE_GREY_800
 
+        # Enable or disable the Show Points button depending on selection and depth availability
+        try:
+            if self.show_points_btn is not None:
+                self.show_points_btn.disabled = (
+                    self.selected_object is None or self.frozen_depth_frame is None
+                )
+        except Exception:
+            pass
+
         # Redraw frozen frame with highlighted label
         self._update_frozen_frame_highlight()
 
@@ -1527,8 +1601,167 @@ class FletMainWindow:
                 padding=12,
             )
 
-        # Update frozen frame
-        self.frozen_frame = img_with_masks
+        # If depth visualization is active and we have a frozen depth frame, show overlay on depth image
+        is_depth_view = getattr(self.image_processor, "show_depth_visualization", False) if getattr(self, "image_processor", None) else False
+        if is_depth_view and getattr(self, "frozen_depth_frame", None) is not None:
+            try:
+                depth_img = self.image_processor._colorize_depth(self.frozen_depth_frame, self.frozen_raw_frame.shape)
+                # Draw overlay points (green) and optionally highlight selected object's center
+                overlay_img = depth_img.copy()
+                if getattr(self, "_overlay_points", None):
+                    for (x, y, z) in self._overlay_points:
+                        try:
+                            cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+                        except Exception:
+                            pass
+                # Draw selected object center for reference
+                if self.selected_object is not None and len(centers) > self.selected_object:
+                    try:
+                        cx, cy = centers[self.selected_object]
+                        cv2.circle(overlay_img, (int(cx), int(cy)), 8, (255, 255, 255), 2)
+                    except Exception:
+                        pass
+                self.frozen_frame = overlay_img
+            except Exception:
+                # Fallback to regular RGB overlay if something fails
+                overlay_img = img_with_masks.copy()
+                if getattr(self, "_overlay_points", None):
+                    for (x, y, z) in self._overlay_points:
+                        try:
+                            cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+                        except Exception:
+                            pass
+                self.frozen_frame = overlay_img
+        else:
+            # If overlay points are present, draw them on the image for visual verification
+            if getattr(self, "_overlay_points", None):
+                overlay_img = img_with_masks.copy()
+                for (x, y, z) in self._overlay_points:
+                    # Draw small circle at (x, y) in BGR (green)
+                    try:
+                        cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+                    except Exception:
+                        pass
+                self.frozen_frame = overlay_img
+            else:
+                # Update frozen frame
+                self.frozen_frame = img_with_masks
+
+    def get_object_depth_points(self, object_index: int, subsample: int = 4, to_meters: bool = False):
+        """Return list of (x, y, depth_mm) or (X, Y, Z) if to_meters and RealSense available for selected frozen object."""
+        import numpy as np
+        import cv2
+
+        if not getattr(self, "frozen_detections", None):
+            return []
+
+        contours = self.frozen_detections.get("contours")
+        if not contours or object_index >= len(contours):
+            return []
+
+        contour = contours[object_index]
+
+        rgb = getattr(self, "frozen_raw_frame", None)
+        depth = getattr(self, "frozen_depth_frame", None)
+        if rgb is None or depth is None:
+            print("No frozen RGB or depth frame available for point extraction")
+            return []
+
+        h_rgb, w_rgb = rgb.shape[:2]
+        h_depth, w_depth = depth.shape[:2]
+
+        mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
+        cv2.drawContours(mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED)
+
+        ys, xs = np.where(mask_rgb == 255)
+        if len(xs) == 0:
+            return []
+
+        xs = xs[::subsample]
+        ys = ys[::subsample]
+
+        scale_x = w_depth / w_rgb
+        scale_y = h_depth / h_rgb
+        xs_d = np.clip((xs * scale_x).astype(int), 0, w_depth - 1)
+        ys_d = np.clip((ys * scale_y).astype(int), 0, h_depth - 1)
+
+        depths = depth[ys_d, xs_d]
+
+        points = []
+        use_realsense = getattr(self.image_processor, "use_realsense", False) and getattr(self.image_processor, "rs_camera", None)
+        intr = None
+        rs_mod = None
+        if to_meters and use_realsense:
+            try:
+                import pyrealsense2 as rs_mod
+                profile = self.image_processor.rs_camera.profile
+                depth_stream = profile.get_stream(rs_mod.stream.depth).as_video_stream_profile()
+                intr = depth_stream.get_intrinsics()
+            except Exception as e:
+                intr = None
+                print(f"Failed to get RealSense intrinsics: {e}")
+
+        for u_d, v_d, z in zip(xs_d, ys_d, depths):
+            if z == 0:
+                continue
+            if to_meters and use_realsense and intr is not None:
+                try:
+                    pt = rs_mod.rs2_deproject_pixel_to_point(intr, [int(u_d), int(v_d)], float(z) / 1000.0)
+                    points.append((float(pt[0]), float(pt[1]), float(pt[2])))
+                except Exception:
+                    points.append((int(u_d), int(v_d), int(z)))
+            else:
+                points.append((int(u_d), int(v_d), int(z)))
+
+        return points
+
+    def get_object_mask_pixels(self, object_index: int, subsample: int = 8):
+        """Return list of (x, y, depth_mm or 0 if unavailable) in RGB image coordinates for the object mask."""
+        import numpy as np
+        import cv2
+
+        if not getattr(self, "frozen_detections", None):
+            return []
+
+        contours = self.frozen_detections.get("contours")
+        if not contours or object_index >= len(contours):
+            return []
+
+        contour = contours[object_index]
+        rgb = getattr(self, "frozen_raw_frame", None)
+        depth = getattr(self, "frozen_depth_frame", None)
+        if rgb is None:
+            return []
+
+        h_rgb, w_rgb = rgb.shape[:2]
+        h_depth = depth.shape[0] if depth is not None else None
+        w_depth = depth.shape[1] if depth is not None else None
+
+        mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
+        cv2.drawContours(mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED)
+
+        ys, xs = np.where(mask_rgb == 255)
+        if len(xs) == 0:
+            return []
+
+        xs = xs[::subsample]
+        ys = ys[::subsample]
+
+        points = []
+        if depth is not None:
+            # Map to depth coords
+            scale_x = w_depth / w_rgb
+            scale_y = h_depth / h_rgb
+            xs_d = np.clip((xs * scale_x).astype(int), 0, w_depth - 1)
+            ys_d = np.clip((ys * scale_y).astype(int), 0, h_depth - 1)
+            depths = depth[ys_d, xs_d]
+            for x, y, z in zip(xs, ys, depths):
+                points.append((int(x), int(y), int(z)))
+        else:
+            for x, y in zip(xs, ys):
+                points.append((int(x), int(y), 0))
+
+        return points
 
     def _clear_object_buttons(self):
         """Clear object selection buttons when unfreezing"""
@@ -1536,6 +1769,12 @@ class FletMainWindow:
         self.object_buttons_row.visible = False
         self.selected_object = None
         self.frozen_raw_frame = None
+        # Disable Show Points button when no objects are present
+        try:
+            if self.show_points_btn is not None:
+                self.show_points_btn.disabled = True
+        except Exception:
+            pass
         self.page.update()
 
     def _on_camera_changed(self, e):
@@ -1647,6 +1886,7 @@ class FletMainWindow:
         self.frozen_frame = None
         self.frozen_raw_frame = None
         self.frozen_detections = None
+        self.frozen_depth_frame = None
         self._clear_object_buttons()
         print("Video unfrozen - showing live camera feed")
 
@@ -2107,6 +2347,15 @@ class FletMainWindow:
             # Capture video for 1 second then freeze
             def capture_and_freeze():
                 time.sleep(1.0)
+                # Copy latest depth frame if available for later point cloud extraction
+                try:
+                    if hasattr(self.image_processor, "depth_frame") and self.image_processor.depth_frame is not None:
+                        self.frozen_depth_frame = self.image_processor.depth_frame.copy()
+                    else:
+                        self.frozen_depth_frame = None
+                except Exception as ex:
+                    self.frozen_depth_frame = None
+                    print(f"Find Objects: could not copy depth frame: {ex}")
                 self.video_frozen = True
                 print("Find Objects: Video frozen on detected objects")
 
@@ -2121,6 +2370,15 @@ class FletMainWindow:
             # Capture video for 1 second then freeze again
             def capture_and_freeze():
                 time.sleep(1.0)
+                # Copy latest depth frame if available for later point cloud extraction
+                try:
+                    if hasattr(self.image_processor, "depth_frame") and self.image_processor.depth_frame is not None:
+                        self.frozen_depth_frame = self.image_processor.depth_frame.copy()
+                    else:
+                        self.frozen_depth_frame = None
+                except Exception as ex:
+                    self.frozen_depth_frame = None
+                    print(f"Find Objects: could not copy depth frame: {ex}")
                 self.video_frozen = True
                 print("Find Objects: Video frozen on new frame")
 
@@ -2141,6 +2399,301 @@ class FletMainWindow:
         # - Move to drop position
         print("Grasp execution not yet implemented")
 
+    def _export_selected_object_pointcloud(self, e=None, subsample: int = 4, to_meters: bool = True):
+        """Export selected object's point cloud to logs/pointclouds as compressed .npz"""
+        import time
+        import numpy as np
+        from pathlib import Path
+
+        if self.selected_object is None:
+            print("No object selected to export")
+            return
+
+        pts = self.get_object_depth_points(self.selected_object, subsample=subsample, to_meters=to_meters)
+        if not pts:
+            print("No points available to export")
+            return
+
+        # Show overlay of sampled points for user verification before saving
+        try:
+            self._show_point_overlay(self.selected_object, subsample=max(1, subsample), duration=1.5)
+            # Give user a brief moment to see overlay
+            import time
+            time.sleep(1.0)
+        except Exception as ex:
+            print(f"Overlay failed: {ex}")
+
+        arr = np.array(pts)
+        out_dir = Path("logs/pointclouds")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"pointcloud_obj{self.selected_object+1}_{timestamp}.npz"
+        try:
+            np.savez_compressed(out_path, points=arr)
+            print(f"✓ Point cloud saved: {out_path} ({arr.shape[0]} points)")
+            if hasattr(self, "status_text"):
+                self.status_text.value = f"Point cloud saved: {out_path.name}"
+                self.page.update()
+        except Exception as ex:
+            print(f"Failed to save point cloud: {ex}")
+
+    def _export_full_pointcloud(self, e=None, subsample: int = 1, to_meters: bool = True):
+        """Export the full depth frame as a compressed .npz containing points (X,Y,Z) in meters when available.
+
+        This exports all non-zero depth pixels (optionally subsampled) from the current frozen depth frame (if frozen)
+        or the latest depth frame from the image processor.
+        """
+        import time
+        import numpy as np
+        from pathlib import Path
+
+        # Choose depth frame: prefer frozen depth frame if video is frozen
+        depth = None
+        if getattr(self, "video_frozen", False) and getattr(self, "frozen_depth_frame", None) is not None:
+            depth = self.frozen_depth_frame.copy()
+        else:
+            depth = getattr(self.image_processor, "depth_frame", None) if getattr(self, "image_processor", None) else None
+
+        if depth is None:
+            print("No depth frame available to export")
+            if hasattr(self, "status_text"):
+                self.status_text.value = "No depth frame available to export"
+                self.page.update()
+            return
+
+        h, w = depth.shape[:2]
+
+        # Get all non-zero depth pixels
+        ys, xs = np.nonzero(depth)
+        if subsample > 1:
+            ys = ys[::subsample]
+            xs = xs[::subsample]
+
+        depths = depth[ys, xs]
+
+        points_list = []
+        use_realsense = getattr(self.image_processor, "use_realsense", False) and getattr(self.image_processor, "rs_camera", None)
+        intr = None
+        rs_mod = None
+        if to_meters and use_realsense:
+            try:
+                import pyrealsense2 as rs_mod
+                profile = self.image_processor.rs_camera.profile
+                depth_stream = profile.get_stream(rs_mod.stream.depth).as_video_stream_profile()
+                intr = depth_stream.get_intrinsics()
+            except Exception as e:
+                intr = None
+                print(f"Failed to get RealSense intrinsics: {e}")
+
+        # Build points list (deproject if intrinsics available)
+        for u, v, z in zip(xs, ys, depths):
+            if z == 0:
+                continue
+            if to_meters and use_realsense and intr is not None:
+                try:
+                    pt = rs_mod.rs2_deproject_pixel_to_point(intr, [int(u), int(v)], float(z) / 1000.0)
+                    points_list.append((float(pt[0]), float(pt[1]), float(pt[2])))
+                except Exception:
+                    points_list.append((int(u), int(v), int(z)))
+            else:
+                points_list.append((int(u), int(v), int(z)))
+
+        arr = np.array(points_list)
+        out_dir = Path("logs/pointclouds")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"pointcloud_full_{timestamp}.npz"
+        try:
+            np.savez_compressed(out_path, points=arr)
+            print(f"✓ Full point cloud saved: {out_path} ({arr.shape[0]} points)")
+            if hasattr(self, "status_text"):
+                self.status_text.value = f"Full point cloud saved: {out_path.name}"
+                self.page.update()
+        except Exception as ex:
+            print(f"Failed to save full point cloud: {ex}")
+
+    def _export_selected_object_ply(self, e=None, subsample: int = 4):
+        """Export selected object's point cloud to PLY (XYZ in meters when available)."""
+        import time
+        import numpy as np
+        from pathlib import Path
+
+        if self.selected_object is None:
+            print("No object selected to export")
+            return
+
+        pts = self.get_object_depth_points(self.selected_object, subsample=subsample, to_meters=True)
+        if not pts:
+            print("No points available to export")
+            return
+
+        # Show overlay of sampled points for user verification before saving
+        try:
+            self._show_point_overlay(self.selected_object, subsample=max(1, subsample), duration=1.5)
+            import time
+            time.sleep(1.0)
+        except Exception as ex:
+            print(f"Overlay failed: {ex}")
+
+        arr = np.array(pts, dtype=float)
+
+        out_dir = Path("logs/pointclouds")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"pointcloud_obj{self.selected_object+1}_{timestamp}.ply"
+
+        try:
+            with open(out_path, "w") as f:
+                f.write("ply\nformat ascii 1.0\n")
+                f.write(f"element vertex {arr.shape[0]}\n")
+                f.write("property float x\nproperty float y\nproperty float z\n")
+                f.write("end_header\n")
+                for x, y, z in arr:
+                    f.write(f"{x:.6f} {y:.6f} {z:.6f}\n")
+
+            print(f"✓ PLY saved: {out_path} ({arr.shape[0]} points)")
+            # Record last exported path for preview
+            try:
+                self.last_exported_ply = str(out_path)
+            except Exception:
+                self.last_exported_ply = None
+
+            if hasattr(self, "status_text"):
+                self.status_text.value = f"PLY saved: {out_path.name}"
+                self.page.update()
+            return str(out_path)
+        except Exception as ex:
+            print(f"Failed to save PLY: {ex}")
+            return None
+
+    def _preview_selected_object_ply(self, e=None):
+        """Preview the last exported PLY file using Cloudview.py as a subprocess."""
+        import subprocess
+        import sys
+        import os
+        from pathlib import Path
+
+        # Ensure there is an exported file; try to export if not present
+        if not getattr(self, "last_exported_ply", None):
+            print("No previously exported PLY found - exporting now...")
+            path = self._export_selected_object_ply(e)
+        else:
+            path = self.last_exported_ply
+
+        if not path:
+            print("No PLY available to preview")
+            return
+
+        # Resolve Cloudview script path
+        cwd = Path.cwd()
+        cloudview_candidate = cwd / "Cloudview.py"
+        if not cloudview_candidate.exists():
+            # Try to locate Cloudview anywhere in repo
+            import glob
+
+            matches = glob.glob("**/Cloudview.py", recursive=True)
+            if matches:
+                cloudview_candidate = Path(matches[0])
+            else:
+                print("Cloudview.py not found in repo - cannot preview")
+                return
+
+        try:
+            # Launch Cloudview in background
+            subprocess.Popen([sys.executable, str(cloudview_candidate), str(path)],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            print(f"Launching Cloudview for: {path}")
+            if hasattr(self, "status_text"):
+                self.status_text.value = f"Previewing: {Path(path).name}"
+                self.page.update()
+        except Exception as ex:
+            print(f"Failed to launch Cloudview: {ex}")
+
+    def _on_show_points(self, e=None):
+        """UI handler for the Show Points button - switch to depth view and show overlay for selected object."""
+        if self.selected_object is None:
+            print("No object selected to show points")
+            return
+        # Switch to depth view when showing points so we can highlight depth pixels
+        self._show_point_overlay(self.selected_object, subsample=8, duration=2.0, switch_to_depth=True)
+
+    def _show_point_overlay(self, object_index: int, subsample: int = 8, duration: float = 1.5, switch_to_depth: bool = True):
+        """Temporarily overlay sampled mask pixels on the frozen frame for visual verification.
+
+        object_index: index of selected object
+        subsample: keep every Nth mask pixel for performance
+        duration: seconds to display overlay before clearing
+        switch_to_depth: if True, temporarily switch display to depth visualization while overlay is shown
+        """
+        import threading
+
+        if object_index is None:
+            return
+
+        # If requested, switch to depth view temporarily (only if RealSense is available)
+        prev_depth_view = None
+        try:
+            if switch_to_depth and getattr(self, "image_processor", None) and self.image_processor.use_realsense:
+                prev_depth_view = getattr(self.image_processor, "show_depth_visualization", False)
+                if not prev_depth_view:
+                    # Turn on depth visualization
+                    try:
+                        self.image_processor.toggle_depth_visualization()
+                        # Update depth toggle button appearance
+                        self.depth_toggle_btn.bgcolor = "#2196F3"
+                        self.depth_toggle_btn.icon_color = "#FFFFFF"
+                        self.depth_toggle_btn.tooltip = "Showing Depth view (click for RGB)"
+                        if self._ui_built:
+                            self.page.update()
+                    except Exception:
+                        prev_depth_view = None
+        except Exception:
+            prev_depth_view = None
+
+        points = self.get_object_mask_pixels(object_index, subsample=subsample)
+        if not points:
+            print("No mask pixels available for overlay")
+            return
+
+        # Store overlay points and refresh display
+        self._overlay_points = points
+        try:
+            self._update_frozen_frame_highlight()
+            if self._ui_built:
+                self.page.update()
+        except Exception:
+            pass
+
+        # Clear overlay after duration in background thread and optionally restore depth view
+        def clear_overlay():
+            import time
+
+            time.sleep(duration)
+            self._overlay_points = None
+            try:
+                self._update_frozen_frame_highlight()
+                if self._ui_built:
+                    self.page.update()
+            except Exception:
+                pass
+
+            # Restore previous depth view if we changed it
+            try:
+                if prev_depth_view is False and getattr(self, "image_processor", None) and getattr(self.image_processor, "use_realsense", False):
+                    # Toggle back to previous (RGB) view
+                    self.image_processor.toggle_depth_visualization()
+                    # Update depth toggle button appearance
+                    self.depth_toggle_btn.bgcolor = "#E0E0E0"
+                    self.depth_toggle_btn.icon_color = "#424242"
+                    self.depth_toggle_btn.tooltip = "Showing RGB view (click for Depth)"
+                    if self._ui_built:
+                        self.page.update()
+            except Exception:
+                pass
+
+        threading.Thread(target=clear_overlay, daemon=True).start()
     def _on_stop(self):
         """Handle Stop button - immediately halts all arm movement"""
         print("Stop: Halting all arm movement...")
