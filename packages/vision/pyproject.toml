@@ -19,6 +19,7 @@ dependencies = [
     "torch>=2.0.0",
     "rfdetr @ git+https://github.com/roboflow/rf-detr.git@0c1e8330e41db310e4d86ddf7a5c1b26e7f67489",
     "boxmot>=10.0.0",  # ByteTrack and multi-object tracking
+    "open3d>=0.18.0",  # Point cloud processing for grasp planning
 ]
 
 [project.optional-dependencies]

@@ -1,233 +1,111 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## ⚠️ CRITICAL: API Documentation Verification
-
-**BEFORE making ANY changes to third-party library APIs (Flet, PyQt, YOLO, etc.):**
-
-1. **ALWAYS use Context7** to check the official API documentation
-2. **Verify correct API syntax, parameter names, and capitalization**
-3. **Never guess or assume API signatures** - incorrect APIs cause runtime errors
+Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-Access Ability Arm is a Python monorepo application for the Drane Engineering assistive robotic arm.
+Access Ability Arm is a Python monorepo for an assistive robotic arm (UFactory Lite6) that uses computer vision to help ALS patients interact with objects.
 
-**Key Technologies:**
-- **RF-DETR Seg**: State-of-the-art segmentation (44.3 mAP, Nov 2025, ~130MB)
-- **MediaPipe**: Face landmark tracking
-- **Flet**: Cross-platform GUI (desktop + web)
-- **RealSense**: Optional depth sensing
-- **GPU**: Apple Metal, NVIDIA CUDA, or CPU
+**Current Focus**: Implementing grasp planning with Open3D + AnyGrasp/GraspNet. See [docs/grasp_planning_report.md](docs/grasp_planning_report.md).
 
-## Environment
+**Key Technologies**: RF-DETR Seg (segmentation), MediaPipe (face tracking), Flet (GUI), RealSense D435 (depth), xArm SDK (robot control)
 
-**Python 3.11 required** (MediaPipe does not support 3.14+)
+## Quick Start
 
 ```bash
-# Setup
-python3.11 -m venv venv
-source venv/bin/activate
+# Python 3.11 required (MediaPipe constraint)
+python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Run
-python main.py              # Desktop
+python main.py              # Desktop (webcam)
 python main.py --web        # Web browser
+make run-with-daemon        # RealSense depth (macOS, requires sudo)
 ```
 
 ## Monorepo Structure
 
 ```
-access-ability-arm/
-├── packages/
-│   ├── core/         # aaa-core: config, hardware, workers
-│   ├── vision/       # aaa-vision: RF-DETR, face detection
-│   ├── gui/          # aaa-gui: Flet interface
-│   └── lite6_driver/ # aaa-lite6-driver: UFactory Lite6 arm
-├── config/
-│   ├── config.yaml.template  # Config template
-│   └── config.yaml   # User config (git-ignored)
-├── data/
-│   └── models/       # Auto-downloaded model weights
-├── scripts/
-│   ├── setup_config.py   # Interactive config wizard
-│   └── update_config.py  # Quick config updates
-├── main.py           # Entry point
-└── requirements.txt  # Installs all 4 packages
+packages/
+├── core/         # aaa-core: config, hardware, workers, daemon
+├── vision/       # aaa-vision: RF-DETR, face detection
+├── gui/          # aaa-gui: Flet interface
+└── lite6_driver/ # aaa-lite6-driver: UFactory Lite6 arm
 ```
-
-## Key Modules
-
-**aaa_core:**
-- `config.settings` - Configuration (loads from `config/config.yaml`)
-- `hardware.camera_manager` - Camera enumeration
-- `hardware.button_controller` - Button input (start once, not per press!)
-- `workers.image_processor` - Camera processing thread
-- `workers.daemon_image_processor` - Daemon-based processing (reads from socket)
-- `workers.arm_controller_flet` - Flet arm controller (callbacks)
-- `daemon.camera_daemon_socket` - RealSense daemon (runs with sudo)
-- `daemon.camera_client_socket` - Client (connects to daemon via Unix socket)
-
-**aaa_vision:**
-- `rfdetr_seg` - RF-DETR (0.3 confidence threshold)
-- `face_detector` - MediaPipe face mesh
-- `detection_manager` - Mode orchestration
-
-**aaa_gui:**
-- `flet.main_window` - Material Design UI
-
-**aaa_lite6_driver:**
-- `lite6_arm` - UFactory Lite6 6-DOF arm control (xArm SDK)
-
-## Camera Daemon Architecture (RealSense on macOS)
-
-**Problem**: macOS Monterey+ requires `sudo` for RealSense USB access, but running GUI with `sudo` breaks Flet/PyQt.
-
-**Solution**: Unix domain socket IPC for cross-user communication:
-
-```
-┌─────────────────────────────────────────┐
-│  User Context (no sudo)                 │
-│  ┌───────────────────────────────────┐  │
-│  │  Flet GUI (main_window.py)        │  │
-│  │  • Auto-detects daemon            │  │
-│  │  • Fallback to webcam if no daemon│  │
-│  └──────────┬────────────────────────┘  │
-│             │                            │
-│  ┌──────────▼────────────────────────┐  │
-│  │  DaemonImageProcessor             │  │
-│  │  • Reads from CameraClientSocket  │  │
-│  │  • 30 fps processing              │  │
-│  │  • Full detection support         │  │
-│  └──────────┬────────────────────────┘  │
-│             │                            │
-│  ┌──────────▼────────────────────────┐  │
-│  │  CameraClientSocket               │  │
-│  │  • Connects to /tmp/aaa_camera.sock│ │
-│  └──────────┬────────────────────────┘  │
-└─────────────┼────────────────────────────┘
-              │
-      ═══════════════════
-      ║  Unix Socket   ║
-      ║  (mode 0666)   ║
-      ═══════════════════
-              │
-┌─────────────┼────────────────────────────┐
-│  Root Context (sudo)                     │
-│  ┌──────────▼────────────────────────┐  │
-│  │  CameraDaemonSocket               │  │
-│  │  • Captures RealSense at 25-30fps │  │
-│  │  • Broadcasts to all clients      │  │
-│  │  • Frame format: header + RGB +   │  │
-│  │    depth + metadata (JSON)        │  │
-│  └──────────┬────────────────────────┘  │
-│             │                            │
-│  ┌──────────▼────────────────────────┐  │
-│  │  RealsenseCamera                  │  │
-│  │  • 1280×720 @ 30fps               │  │
-│  │  • Aligned RGB + depth            │  │
-│  └───────────────────────────────────┘  │
-└──────────────────────────────────────────┘
-```
-
-**Usage:**
-```bash
-# Start daemon (runs with sudo)
-make daemon-start
-
-# Run GUI (no sudo needed)
-make run
-
-# Or combined
-make run-with-daemon
-
-# Daemon management
-make daemon-stop
-make daemon-restart
-make daemon-status
-```
-
-**Implementation Details:**
-- Socket path: `/tmp/aaa_camera.sock` (permissions: 0666)
-- Frame format: `[rgb_size: uint32][depth_size: uint32][metadata_size: uint32][rgb_data][depth_data][json_metadata]`
-- Zero-copy within daemon, single copy on client receive (~2-3ms overhead)
-- Multi-client support (daemon broadcasts to all connected GUIs)
-- GUI auto-detects daemon by checking socket existence
-
-**Why Unix Sockets (not shared memory)?**
-- macOS POSIX shared memory doesn't support cross-user access
-- Unix sockets work perfectly for root→user IPC
-- Performance: 25-30 fps with <5ms latency (same as shared memory would be)
 
 ## Critical Implementation Notes
 
 ### RF-DETR Seg
-- **DO NOT** call `model.optimize_for_inference()` - breaks mask output!
-- **API**: Pass single PIL image: `predict(pil_image)` NOT `predict([pil_image])`
-- **Class IDs**: 1-indexed dictionary `{1: 'person', 2: 'bicycle', ...}`
-- **Model location**: Auto-downloads to `data/models/rf-detr-seg-preview.pt`
-- **Confidence**: 0.3 (configurable in `packages/vision/src/aaa_vision/rfdetr_seg.py`)
+- **DO NOT** call `model.optimize_for_inference()` - breaks mask output
+- **API**: `predict(pil_image)` takes single PIL image, NOT a list
+- **Class IDs**: 1-indexed `{1: 'person', 2: 'bicycle', ...}`
+- **Confidence**: 0.3 threshold (in `packages/vision/src/aaa_vision/rfdetr_seg.py`)
 
 ### Button Controller
 - **Start once** in `_setup_components()`, NOT on every button press
-- Calling `start()` multiple times raises `RuntimeError: threads can only be started once`
+- Multiple `start()` calls raise `RuntimeError: threads can only be started once`
 
-### Model Paths
-- RF-DETR models: `data/models/`
-- All model loading uses project root detection (5 levels up from module files)
+### RealSense Camera
+- RGB: 1920×1080 @ 30fps, Depth: 848×480 @ 30fps
+- macOS requires daemon for depth (sudo USB access issue)
+- Visual presets: Default, High Accuracy, Medium Density, High Density
+- See [docs/hardware/realsense-d435-specs.md](docs/hardware/realsense-d435-specs.md)
 
-### Detection Modes
-Press 'T' to cycle:
-1. **Object Detection** (default): RF-DETR for 80 COCO classes
-2. **Face Tracking**: MediaPipe 20 mouth landmarks
-3. **Combined**: Both simultaneously
+## Camera Daemon (macOS RealSense Only)
 
-## Installation & Development
+macOS requires `sudo` for RealSense USB, but GUI breaks with sudo. Solution: daemon with Unix socket IPC.
 
 ```bash
-# Install packages
-make install         # or: pip install -r requirements.txt
-
-# Run application
-make run             # Desktop
-make web             # Web browser
-
-# Code quality
-make lint            # Check style
-make format          # Format code
-make clean           # Remove artifacts
+make daemon-start      # Start daemon (sudo)
+make run               # Run GUI (no sudo) - auto-detects daemon
+make daemon-stop       # Stop daemon
 ```
 
-## Common Issues
+Socket: `/tmp/aaa_camera.sock` | Format: `[sizes][rgb][depth][json_metadata]`
 
-**Camera not detected:** Check system permissions, try different indices
+Full architecture: [docs/archive/decisions/daemon-architecture-implementation-plan.md](docs/archive/decisions/daemon-architecture-implementation-plan.md)
 
-**Model download fails:** Check internet, models auto-download to `data/models/`
+## Key Modules
 
-**Import errors:** Verify venv activated, reinstall: `pip install -r requirements.txt`
+| Module | Path | Purpose |
+|--------|------|---------|
+| Settings | `aaa_core.config.settings` | Loads `config/config.yaml` |
+| Camera Manager | `aaa_core.hardware.camera_manager` | Camera enumeration |
+| Image Processor | `aaa_core.workers.image_processor` | Camera processing thread |
+| Daemon Processor | `aaa_core.workers.daemon_image_processor` | Reads from daemon socket |
+| RF-DETR | `aaa_vision.rfdetr_seg` | Object segmentation |
+| Face Detector | `aaa_vision.face_detector` | MediaPipe face mesh |
+| Main Window | `aaa_gui.flet.main_window` | Flet GUI |
+| Lite6 Arm | `aaa_lite6_driver.lite6_arm` | Robot control (xArm SDK) |
 
-**Button thread error:** Start thread once in setup, not per button press
+## Detection Modes
 
-**Slow performance:** Check GPU acceleration in console, switch to face tracking mode
+Press **T** to cycle:
+1. **Object Detection**: RF-DETR for 80 COCO classes
+2. **Face Tracking**: MediaPipe mouth landmarks
+3. **Combined**: Both simultaneously
 
-## Configuration
+## Common Commands
 
-Use interactive scripts (no manual editing required):
 ```bash
-python scripts/setup_config.py    # First-time setup wizard
-python scripts/update_config.py   # Quick updates (IP, speeds, etc.)
+make install         # Install packages
+make run             # Desktop app
+make web             # Web app (localhost:8550)
+make lint            # Check style
+make format          # Format code
+
+# Config
+python scripts/setup_config.py    # First-time wizard
+python scripts/update_config.py   # Quick updates
 ```
 
 ## Documentation
 
-- [README.md](README.md) - Quick start
-- [docs/installation.md](docs/installation.md) - Detailed setup
-- [docs/monorepo.md](docs/monorepo.md) - Architecture details
-- [docs/ufactory_studio.md](docs/ufactory_studio.md) - Lite6 arm setup
+- [docs/README.md](docs/README.md) - Documentation index
+- [docs/installation.md](docs/installation.md) - Setup guide
+- [docs/grasp_planning_report.md](docs/grasp_planning_report.md) - Current project plan
+- [docs/hardware/](docs/hardware/) - RealSense, sensors, platforms
+- [docs/research/](docs/research/) - Exploration and analysis
 
-## Platform Notes
+## API Documentation
 
-- **macOS**: Metal GPU auto-enabled on M-series, Continuity Camera supported
-- **Windows**: CUDA GPU auto-enabled on NVIDIA cards
-- **Linux**: V4L2 camera access
+Before modifying third-party library calls (Flet, PyRealsense2, xArm SDK), verify the API using Context7 or official docs. Incorrect APIs cause runtime errors.
