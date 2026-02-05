@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aaa-gripper-driver"
+version = "0.1.0"
+description = "Waveshare SC Servo gripper driver for Access Ability Arm"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [
+    {name = "Access Ability Arm Team"}
+]
+dependencies = [
+    "aaa-core",
+    "pyserial>=3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["vendor/**/*"]

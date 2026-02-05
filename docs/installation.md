@@ -8,6 +8,7 @@
 
 **Hardware:**
 - **UFactory Lite6 robotic arm** (optional - app works without arm)
+- **Waveshare SC Servo Gripper** (optional - replaces Lite6 built-in gripper)
 - **Intel RealSense camera** (optional - app works with standard webcams)
 - **Any webcam** for basic operation
 
@@ -188,6 +189,45 @@ python scripts/update_config.py
 
 **Note for Apple Silicon Macs:** You may see a platform warning (linux/amd64 vs arm64) - this is normal and the simulation will work correctly via Rosetta 2 emulation.
 
+## Optional: Waveshare SC Servo Gripper
+
+The project includes a driver for Waveshare SC series servos (SC09/SC15) connected via the Bus Servo Adapter (A). This provides an alternative gripper with force control capabilities.
+
+**Hardware Required:**
+- [Waveshare Bus Servo Adapter (A)](https://www.waveshare.com/wiki/Bus_Servo_Adapter_(A))
+- SC series servo (SC09, SC15, etc.)
+- USB cable (adapter to computer)
+- External 6-8V power supply for the servo
+
+**Setup:**
+
+The gripper driver package is included and installed automatically with `pip install -r requirements.txt`.
+
+**Testing the Connection:**
+
+```bash
+source venv/bin/activate
+
+# Find your serial port
+ls /dev/cu.usbserial-* 2>/dev/null  # macOS
+ls /dev/ttyUSB* 2>/dev/null          # Linux
+
+# Test connection (replace XXX with your port)
+python packages/gripper_driver/examples/test_connection.py --port /dev/cu.usbserial-XXX
+
+# Interactive testing and calibration
+python packages/gripper_driver/examples/interactive.py --port /dev/cu.usbserial-XXX
+```
+
+**Available Test Scripts:**
+- `test_connection.py` - Verify servo communication
+- `test_positions.py` - Test preset positions (open, close, etc.)
+- `test_force.py` - Test grip force levels
+- `test_modes.py` - Test point and push modes
+- `interactive.py` - Interactive CLI for manual testing and calibration
+
+See [Gripper Integration Plan](gripper_integration_plan.md) for detailed documentation.
+
 ## Configuration
 
 After installation, configure your arm and settings:
@@ -215,6 +255,7 @@ You should see:
 ```
 ✓ RealSense camera support available  (or ✗ if not installed)
 ✓ Lite6 arm driver available  (or ✗ if not installed)
+✓ SC Servo gripper driver available
 ✓ RF-DETR Seg object detection available (SOTA Nov 2025, 44.3 mAP)
 ✓ Installation successful
 ```

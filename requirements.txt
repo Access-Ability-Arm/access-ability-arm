@@ -14,6 +14,9 @@
 # Lite6 robotic arm driver (UFactory xArm SDK)
 -e packages/lite6_driver
 
+# SC Servo gripper driver (Waveshare Bus Servo Adapter)
+-e packages/gripper_driver
+
 # Optional: Install with PyQt6 GUI instead
 # -e packages/gui[pyqt]
 
