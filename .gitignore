@@ -43,3 +43,6 @@ data/models/*.pt
 # DNN model files (not in repo) - stored in data/dnn/
 data/dnn/
 .zed/settings.json
+
+# Log files
+logs/pointclouds/
