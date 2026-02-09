@@ -45,4 +45,5 @@ data/dnn/
 .zed/settings.json
 
 # Log files
-logs/pointclouds/
+logs/pointclouds/*
+!logs/pointclouds/.gitkeep
