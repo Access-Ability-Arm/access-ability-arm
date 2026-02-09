@@ -9,9 +9,10 @@ import time
 from typing import Callable, Optional
 
 import numpy as np
+from aaa_vision.detection_manager import DetectionManager
+
 from aaa_core.config.console import error, status, success
 from aaa_core.daemon.camera_client_socket import CameraClientSocket
-from aaa_vision.detection_manager import DetectionManager
 
 
 class DaemonImageProcessor(threading.Thread):
@@ -70,6 +71,12 @@ class DaemonImageProcessor(threading.Thread):
         # Store last RGB frame for re-detection
         self._last_rgb_frame = None
 
+        # Store last depth frame for point cloud extraction
+        self.depth_frame = None
+
+        # Store last aligned color frame (848x480, pixel-aligned to depth)
+        self._last_aligned_color = None
+
         # Track recent frame brightness for auto-exposure (rolling buffer of ~2 seconds @ 30fps)
         from collections import deque
 
@@ -85,8 +92,10 @@ class DaemonImageProcessor(threading.Thread):
 
         while self.thread_active:
             try:
-                # Read frame from daemon via shared memory
-                rgb_frame, depth_frame, metadata = self.camera_client.get_frame()
+                # Read frame from daemon via socket
+                rgb_frame, depth_frame, metadata, aligned_color = (
+                    self.camera_client.get_frame()
+                )
 
                 if rgb_frame is not None:
                     frame_count += 1
@@ -98,6 +107,16 @@ class DaemonImageProcessor(threading.Thread):
 
                     # Store for re-detection
                     self._last_rgb_frame = image_rgb.copy()
+
+                    # Store depth frame for point cloud extraction
+                    self.depth_frame = (
+                        depth_frame.copy() if depth_frame is not None else None
+                    )
+
+                    # Store aligned color (848x480, pixel-aligned to depth)
+                    self._last_aligned_color = (
+                        aligned_color.copy() if aligned_color is not None else None
+                    )
 
                     # Track brightness for auto-exposure (calculate from RGB)
                     avg_brightness = np.mean(image_rgb)

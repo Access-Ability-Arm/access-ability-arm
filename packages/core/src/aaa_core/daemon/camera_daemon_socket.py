@@ -34,9 +34,10 @@ class CameraDaemonSocket:
     - Multiple client connections
 
     Frame Format (sent over socket):
-    - Header: [rgb_size: uint32, depth_size: uint32, metadata_size: uint32]
-    - RGB data: rgb_size bytes (720x1280x3 uint8, BGR from RealSense)
-    - Depth data: depth_size bytes (720x1280 uint16)
+    - Header: [rgb_size: uint32, depth_size: uint32, aligned_rgb_size: uint32, metadata_size: uint32]
+    - RGB data: rgb_size bytes (1080x1920x3 uint8, BGR from RealSense)
+    - Depth data: depth_size bytes (480x848 uint16)
+    - Aligned RGB data: aligned_rgb_size bytes (480x848x3 uint8, BGR, pixel-aligned to depth)
     - Metadata: metadata_size bytes (JSON)
     """
 
@@ -72,6 +73,7 @@ class CameraDaemonSocket:
         # Latest frame (cached for new clients)
         self.latest_rgb = None
         self.latest_depth = None
+        self.latest_aligned_color = None
         self.latest_metadata = {}
         self.frame_lock = threading.Lock()
 
@@ -107,7 +109,9 @@ class CameraDaemonSocket:
             acceptor_thread.start()
 
             # Start command listener thread
-            self.command_thread = threading.Thread(target=self._command_listener, daemon=True)
+            self.command_thread = threading.Thread(
+                target=self._command_listener, daemon=True
+            )
             self.command_thread.start()
 
             # Start capture loop
@@ -119,6 +123,7 @@ class CameraDaemonSocket:
         except Exception as e:
             error(f"Fatal error in daemon: {e}")
             import traceback
+
             traceback.print_exc()
             self.stop()
             raise
@@ -231,7 +236,7 @@ class CameraDaemonSocket:
             while self.running:
                 try:
                     data, addr = self.command_socket.recvfrom(1024)
-                    command = json.loads(data.decode('utf-8'))
+                    command = json.loads(data.decode("utf-8"))
                     self._handle_command(command)
                 except socket.timeout:
                     continue
@@ -244,10 +249,10 @@ class CameraDaemonSocket:
 
     def _handle_command(self, command):
         """Handle a command from client"""
-        cmd_type = command.get('command')
+        cmd_type = command.get("command")
 
-        if cmd_type == 'set_exposure':
-            exposure_value = command.get('value')
+        if cmd_type == "set_exposure":
+            exposure_value = command.get("value")
             if exposure_value and self.rs_camera:
                 if self.rs_camera.set_exposure(exposure_value):
                     status(f"✓ Exposure set to {exposure_value}")
@@ -290,6 +295,7 @@ class CameraDaemonSocket:
         except Exception as e:
             error(f"Failed to initialize RealSense camera: {e}")
             import traceback
+
             traceback.print_exc()
             raise
 
@@ -303,13 +309,19 @@ class CameraDaemonSocket:
         while self.running:
             try:
                 # Capture frame from RealSense
-                ret, rgb_frame, depth_frame = self.rs_camera.get_frame_stream()
+                ret, rgb_frame, depth_frame, aligned_color = (
+                    self.rs_camera.get_frame_stream()
+                )
 
                 if ret and rgb_frame is not None and depth_frame is not None:
                     # Update frame counter
                     self.frame_count += 1
                     current_time = time.time()
-                    fps = self.frame_count / (current_time - self.start_time) if self.frame_count > 0 else 0.0
+                    fps = (
+                        self.frame_count / (current_time - self.start_time)
+                        if self.frame_count > 0
+                        else 0.0
+                    )
 
                     # Create metadata
                     metadata = {
@@ -323,34 +335,53 @@ class CameraDaemonSocket:
                     with self.frame_lock:
                         self.latest_rgb = rgb_frame.copy()
                         self.latest_depth = depth_frame.copy()
+                        self.latest_aligned_color = (
+                            aligned_color.copy() if aligned_color is not None else None
+                        )
                         self.latest_metadata = metadata
 
                     # Send to all connected clients
-                    self._broadcast_frame(rgb_frame, depth_frame, metadata)
+                    self._broadcast_frame(
+                        rgb_frame, depth_frame, aligned_color, metadata
+                    )
 
                     # Status update every 5 seconds
                     if current_time - last_status_time >= 5.0:
-                        print(f"Daemon: {self.frame_count} frames captured, {fps:.1f} fps")
+                        print(
+                            f"Daemon: {self.frame_count} frames captured, {fps:.1f} fps"
+                        )
                         last_status_time = current_time
 
             except Exception as e:
                 error(f"Error in capture loop: {e}")
                 import traceback
+
                 traceback.print_exc()
                 time.sleep(0.1)  # Avoid busy loop on error
 
-    def _broadcast_frame(self, rgb_frame, depth_frame, metadata):
+    def _broadcast_frame(self, rgb_frame, depth_frame, aligned_color, metadata):
         """Send frame to all connected clients"""
         # Serialize frame data
         rgb_bytes = rgb_frame.tobytes()
         depth_bytes = depth_frame.tobytes()
-        metadata_bytes = json.dumps(metadata).encode('utf-8')
+        aligned_color_bytes = (
+            aligned_color.tobytes() if aligned_color is not None else b""
+        )
+        metadata_bytes = json.dumps(metadata).encode("utf-8")
 
-        # Create header: [rgb_size, depth_size, metadata_size]
-        header = struct.pack('III', len(rgb_bytes), len(depth_bytes), len(metadata_bytes))
+        # Create header: [rgb_size, depth_size, aligned_rgb_size, metadata_size]
+        header = struct.pack(
+            "IIII",
+            len(rgb_bytes),
+            len(depth_bytes),
+            len(aligned_color_bytes),
+            len(metadata_bytes),
+        )
 
         # Combine into single message
-        message = header + rgb_bytes + depth_bytes + metadata_bytes
+        message = (
+            header + rgb_bytes + depth_bytes + aligned_color_bytes + metadata_bytes
+        )
 
         # Send to all clients (remove disconnected ones)
         with self.client_lock:
@@ -370,4 +401,6 @@ class CameraDaemonSocket:
                     pass
 
             if disconnected:
-                status(f"{len(disconnected)} client(s) disconnected (remaining: {len(self.client_sockets)})")
+                status(
+                    f"{len(disconnected)} client(s) disconnected (remaining: {len(self.client_sockets)})"
+                )

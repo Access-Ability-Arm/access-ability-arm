@@ -1,6 +1,7 @@
 # https://pysource.com
 import numpy as np
 import pyrealsense2 as rs
+
 from aaa_core.config.console import error, status, success, warning
 
 
@@ -113,41 +114,48 @@ class RealsenseCamera:
         except Exception as e:
             status(f"  RealSense: Sensor configuration skipped ({e})")
 
-        # Alignment disabled - RGB is 1920x1080, depth is 848x480 (native resolutions)
-        # This saves bandwidth and processing power. Depth won't be pixel-aligned with RGB,
-        # but for object segmentation we don't need perfect alignment.
-        # To re-enable alignment (upscales depth to match RGB resolution):
-        # align_to = rs.stream.color
-        # self.align = rs.align(align_to)
-        self.align = None
+        # Align color TO depth so both share the 848x480 depth grid.
+        # This produces a pixel-aligned color+depth pair for point cloud generation
+        # without upscaling depth (preserves native depth resolution).
+        # The 1920x1080 RGB feed is still returned separately for video display.
+        self.align = rs.align(rs.stream.depth)
 
     def get_frame_stream(self):
-        # Wait for a coherent pair of frames: depth and color
+        """
+        Capture a coherent set of frames from RealSense.
+
+        Returns:
+            Tuple of (success, color_1080p, depth_480p, aligned_color_480p)
+            - color_1080p: BGR uint8 (1080, 1920, 3) for video display
+            - depth_480p: uint16 (480, 848) native depth in mm
+            - aligned_color_480p: BGR uint8 (480, 848, 3) pixel-aligned to depth
+        """
         try:
             # Use longer timeout (10 seconds) to handle exposure adjustments
             frames = self.pipeline.wait_for_frames(timeout_ms=10000)
 
-            # Apply alignment if enabled (upscales depth to match RGB)
-            if self.align:
-                aligned_frames = self.align.process(frames)
-                depth_frame = aligned_frames.get_depth_frame()
-                color_frame = aligned_frames.get_color_frame()
-            else:
-                # No alignment - use native resolutions
-                depth_frame = frames.get_depth_frame()
-                color_frame = frames.get_color_frame()
+            # Get native color frame (1920x1080) for video display
+            color_frame = frames.get_color_frame()
+            # Get native depth frame (848x480)
+            depth_frame = frames.get_depth_frame()
 
             if not depth_frame or not color_frame:
-                # If there is no frame, probably camera not connected
                 error(
                     "Impossible to get the frame, make sure that the Intel "
                     "Realsense camera is correctly connected"
                 )
-                return False, None, None
+                return False, None, None, None
+
+            # Produce aligned color (848x480) that shares the depth grid
+            aligned_color_frame = None
+            if self.align:
+                aligned_frames = self.align.process(frames)
+                aligned_color_frame = aligned_frames.get_color_frame()
+
         except RuntimeError as e:
             # Timeout or other runtime error
             error(f"RealSense frame timeout: {e}")
-            return False, None, None
+            return False, None, None, None
 
         # Apply filter to fill the Holes in the depth image
         spatial = rs.spatial_filter()
@@ -157,22 +165,15 @@ class RealsenseCamera:
         hole_filling = rs.hole_filling_filter()
         filled_depth = hole_filling.process(filtered_depth)
 
-        # Create colormap to show the depth of the Objects
-        colorizer = rs.colorizer()
-        depth_colormap = np.asanyarray(  # noqa: F841
-            colorizer.colorize(filled_depth).get_data()
-        )
-
         # Convert images to numpy arrays
-        # distance = depth_frame.get_distance(int(50),int(50))
-        # print("distance", distance)
         depth_image = np.asanyarray(filled_depth.get_data())
         color_image = np.asanyarray(color_frame.get_data())
 
-        # cv2.imshow("Colormap", depth_colormap)
-        # cv2.imshow("depth img", depth_image)
+        aligned_color_image = None
+        if aligned_color_frame:
+            aligned_color_image = np.asanyarray(aligned_color_frame.get_data())
 
-        return True, color_image, depth_image
+        return True, color_image, depth_image, aligned_color_image
 
     def set_exposure(self, exposure_value: int) -> bool:
         """

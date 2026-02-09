@@ -73,7 +73,9 @@ class FletMainWindow:
         self.status_text = None
         self.camera_dropdown = None
         self.arm_status_text = None
-        self.show_points_btn = None  # Button to show sampled mask points on frozen frame
+        self.show_points_btn = (
+            None  # Button to show sampled mask points on frozen frame
+        )
 
         # Movement speed percentage (1-100%)
         self.movement_speed_percent = 20  # Default 20%
@@ -88,7 +90,12 @@ class FletMainWindow:
         self.frozen_frame = None
         self.frozen_detections = None  # Store detection data when frozen
         self.frozen_raw_frame = None  # Store the raw frozen frame for re-highlighting
-        self.frozen_depth_frame = None  # Store depth frame at freeze time (if available)
+        self.frozen_depth_frame = (
+            None  # Store depth frame at freeze time (if available)
+        )
+        self.frozen_aligned_color = None  # Store aligned color (848x480) at freeze time
+        self.object_analysis = None  # ObjectAnalysis result for selected object
+        self._analysis_in_progress = False  # Flag for background analysis thread
         self.last_exported_ply = None  # Path to the last exported PLY file
         self._overlay_points = None  # Temporary overlay points to show on frozen frame
         self.object_buttons = []  # Store overlay buttons for frozen objects
@@ -639,8 +646,9 @@ class FletMainWindow:
                                 ft.IconButton(
                                     icon=ft.Icons.REMOVE,
                                     tooltip=f"{direction} negative",
-                                    on_click=lambda e,
-                                    d=direction: self._on_button_press(d, "neg"),
+                                    on_click=lambda e, d=direction: (
+                                        self._on_button_press(d, "neg")
+                                    ),
                                     bgcolor="#EF9A9A",  # Red 200
                                     icon_color="#B71C1C",  # Red 900
                                     icon_size=30,
@@ -651,8 +659,9 @@ class FletMainWindow:
                                 ft.IconButton(
                                     icon=ft.Icons.ADD,
                                     tooltip=f"{direction} positive",
-                                    on_click=lambda e,
-                                    d=direction: self._on_button_press(d, "pos"),
+                                    on_click=lambda e, d=direction: (
+                                        self._on_button_press(d, "pos")
+                                    ),
                                     bgcolor="#A5D6A7",  # Green 200
                                     icon_color="#1B5E20",  # Green 900
                                     icon_size=30,
@@ -831,16 +840,20 @@ class FletMainWindow:
                         height=38,
                     ),
                     # Show sampled mask points overlay for selected object
-                    (self.show_points_btn if self.show_points_btn is not None else ft.ElevatedButton(
-                        text="Show Points",
-                        icon=ft.Icons.VISIBILITY,
-                        on_click=lambda e: self._on_show_points(e),
-                        bgcolor="#795548",  # Brown 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                        disabled=True,
-                    )), 
+                    (
+                        self.show_points_btn
+                        if self.show_points_btn is not None
+                        else ft.ElevatedButton(
+                            text="Show Points",
+                            icon=ft.Icons.VISIBILITY,
+                            on_click=lambda e: self._on_show_points(e),
+                            bgcolor="#795548",  # Brown 500
+                            color="#FFFFFF",
+                            width=135,
+                            height=38,
+                            disabled=True,
+                        )
+                    ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=15,
@@ -1484,9 +1497,12 @@ class FletMainWindow:
         # Toggle selection if clicking the same object
         if self.selected_object == object_index:
             self.selected_object = None
+            self.object_analysis = None
+            self._analysis_in_progress = False
             print(f"Deselected object #{object_index + 1}: {class_name}")
         else:
             self.selected_object = object_index
+            self.object_analysis = None
             print(f"Selected object #{object_index + 1}: {class_name}")
 
         # Highlight the selected button
@@ -1509,6 +1525,276 @@ class FletMainWindow:
         self._update_frozen_frame_highlight()
 
         self.page.update()
+
+        # Auto-trigger analysis if an object is selected and depth is available
+        if (
+            self.selected_object is not None
+            and self.frozen_depth_frame is not None
+            and not self._analysis_in_progress
+        ):
+            # Show "Analyzing..." state on button immediately
+            try:
+                btn = self.object_buttons_row.controls[self.selected_object]
+                btn.bgcolor = "#FF8F00"  # Amber 800
+                btn.text = f"Analyzing..."
+                self.page.update()
+            except Exception:
+                pass
+            # Spawn background analysis thread
+            self._analysis_in_progress = True
+            threading.Thread(
+                target=self._analyze_selected_object,
+                args=(object_index,),
+                daemon=True,
+            ).start()
+
+    def _analyze_selected_object(self, object_index: int):
+        """Run 3D object analysis in background thread."""
+        try:
+            from aaa_vision.object_analyzer import ObjectAnalyzer
+            from aaa_vision.point_cloud import PointCloudProcessor
+
+            classes = self.frozen_detections["classes"]
+            class_name = classes[object_index]
+            contours = self.frozen_detections.get("contours", [])
+
+            if object_index >= len(contours):
+                raise ValueError("No contour data for selected object")
+
+            depth = self.frozen_depth_frame
+            aligned_color = self.frozen_aligned_color
+            if depth is None:
+                raise ValueError("No depth frame available")
+
+            processor = PointCloudProcessor()
+
+            # Build binary mask from contour (in RGB space 1920x1080, scale to 848x480)
+            contour = contours[object_index]
+            h_depth, w_depth = depth.shape[:2]
+            mask_rgb = np.zeros((1080, 1920), dtype=np.uint8)
+            cv2.drawContours(
+                mask_rgb,
+                [np.array(contour, dtype=np.int32)],
+                -1,
+                255,
+                thickness=cv2.FILLED,
+            )
+            mask_depth = cv2.resize(
+                mask_rgb, (w_depth, h_depth), interpolation=cv2.INTER_NEAREST
+            )
+
+            # Create object point cloud using aligned pair
+            object_pcd = processor.extract_object(depth, mask_depth, aligned_color)
+
+            # Create scene point cloud
+            scene_pcd = processor.create_from_depth(depth, aligned_color)
+            scene_pcd = processor.preprocess(scene_pcd)
+
+            # Run analysis
+            analyzer = ObjectAnalyzer(processor)
+            analysis = analyzer.analyze(object_pcd, scene_pcd)
+
+            # Store result (only if same object is still selected)
+            if self.selected_object == object_index:
+                self.object_analysis = analysis
+                self._analysis_in_progress = False
+
+                print(
+                    f"Analysis complete: {class_name} -> {analysis.shape.shape_type} "
+                    f"(conf={analysis.shape.confidence:.2f}, "
+                    f"width={analysis.grasp_width * 1000:.1f}mm, "
+                    f"graspable={analysis.graspable}, "
+                    f"confidence={analysis.grasp_confidence})"
+                )
+
+                # Update button text
+                try:
+                    btn = self.object_buttons_row.controls[object_index]
+                    btn.text = f"{class_name} \u2713"
+                    btn.bgcolor = ft.Colors.GREEN_700
+                    self._update_frozen_frame_highlight()
+                    self.page.update()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self._analysis_in_progress = False
+            print(f"Object analysis failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+            # Update button to show failure
+            if self.selected_object == object_index:
+                self.object_analysis = None
+                try:
+                    classes = self.frozen_detections["classes"]
+                    btn = self.object_buttons_row.controls[object_index]
+                    btn.text = f"{classes[object_index]} (analysis failed)"
+                    btn.bgcolor = ft.Colors.GREEN_700
+                    self.page.update()
+                except Exception:
+                    pass
+
+    def _project_to_pixel(self, point_3d: np.ndarray) -> tuple:
+        """
+        Project a 3D point in camera coordinates to 2D pixel in RGB frame.
+
+        Returns (pixel_x, pixel_y) in 1920x1080 RGB coordinates.
+        """
+        # Try to get RealSense depth intrinsics
+        intr = None
+        try:
+            import pyrealsense2 as rs
+
+            if (
+                hasattr(self.image_processor, "rs_camera")
+                and self.image_processor.rs_camera
+            ):
+                profile = self.image_processor.rs_camera.profile
+                depth_stream = profile.get_stream(
+                    rs.stream.depth
+                ).as_video_stream_profile()
+                intr = depth_stream.get_intrinsics()
+        except Exception:
+            pass
+
+        if intr is not None:
+            import pyrealsense2 as rs
+
+            pixel = rs.rs2_project_point_to_pixel(
+                intr, [float(point_3d[0]), float(point_3d[1]), float(point_3d[2])]
+            )
+            px_depth, py_depth = int(pixel[0]), int(pixel[1])
+        else:
+            # Fallback: default D435 intrinsics at 848x480
+            fx, fy = 425.19, 425.19
+            cx, cy = 423.86, 239.87
+            if point_3d[2] != 0:
+                px_depth = int(point_3d[0] * fx / point_3d[2] + cx)
+                py_depth = int(point_3d[1] * fy / point_3d[2] + cy)
+            else:
+                px_depth, py_depth = int(cx), int(cy)
+
+        # Scale from depth (848x480) to display (1920x1080)
+        px_rgb = int(px_depth * 1920 / 848)
+        py_rgb = int(py_depth * 1080 / 480)
+
+        return px_rgb, py_rgb
+
+    def _draw_gripper_icon(self, img: np.ndarray, analysis) -> np.ndarray:
+        """Draw gripper overlay at projected grasp point on the image."""
+        px, py = self._project_to_pixel(analysis.grasp_point)
+
+        # Clamp to image bounds
+        h, w = img.shape[:2]
+        px = max(0, min(px, w - 1))
+        py = max(0, min(py, h - 1))
+
+        # Color based on graspability and confidence
+        if not analysis.graspable:
+            color = (0, 0, 255)  # Red (BGR)
+            label = (
+                "Too large for gripper"
+                if analysis.grasp_width > 0.066
+                else "Too small to grasp"
+            )
+        elif analysis.grasp_confidence >= 0.7:
+            color = (0, 220, 0)  # Green
+            label = f"Ready to grasp ({analysis.grasp_confidence:.0%})"
+        elif analysis.grasp_confidence >= 0.4:
+            color = (0, 220, 220)  # Yellow (BGR)
+            label = f"Grasp possible ({analysis.grasp_confidence:.0%})"
+        else:
+            color = (0, 140, 255)  # Orange (BGR)
+            label = f"Uncertain grasp ({analysis.grasp_confidence:.0%})"
+
+        # Draw gripper fingers (two parallel rectangles)
+        finger_len = 30  # pixels
+        finger_width = 8
+        gap = 20  # half-gap between fingers
+
+        # White outer border (3px) + colored inner fill (2px)
+        # Left finger
+        cv2.rectangle(
+            img,
+            (px - gap - finger_width, py - finger_len),
+            (px - gap, py + finger_len),
+            (255, 255, 255),
+            3,
+        )
+        cv2.rectangle(
+            img,
+            (px - gap - finger_width, py - finger_len),
+            (px - gap, py + finger_len),
+            color,
+            2,
+        )
+        # Right finger
+        cv2.rectangle(
+            img,
+            (px + gap, py - finger_len),
+            (px + gap + finger_width, py + finger_len),
+            (255, 255, 255),
+            3,
+        )
+        cv2.rectangle(
+            img,
+            (px + gap, py - finger_len),
+            (px + gap + finger_width, py + finger_len),
+            color,
+            2,
+        )
+
+        # Center crosshair
+        cv2.circle(img, (px, py), 5, (255, 255, 255), 3)
+        cv2.circle(img, (px, py), 5, color, 2)
+
+        # X overlay for non-graspable
+        if not analysis.graspable:
+            cv2.line(img, (px - 25, py - 25), (px + 25, py + 25), (0, 0, 255), 3)
+            cv2.line(img, (px - 25, py + 25), (px + 25, py - 25), (0, 0, 255), 3)
+
+        # Label text (min 24px at 1080p)
+        font_scale = 0.9
+        thickness = 2
+        (text_w, text_h), baseline = cv2.getTextSize(
+            label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+        )
+        label_x = px - text_w // 2
+        label_y = py + finger_len + 30 + text_h
+
+        # Clamp label position
+        label_x = max(5, min(label_x, w - text_w - 5))
+        label_y = max(text_h + 5, min(label_y, h - 5))
+
+        # Background rectangle for text
+        cv2.rectangle(
+            img,
+            (label_x - 4, label_y - text_h - 4),
+            (label_x + text_w + 4, label_y + baseline + 4),
+            (0, 0, 0),
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            (label_x - 4, label_y - text_h - 4),
+            (label_x + text_w + 4, label_y + baseline + 4),
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            img,
+            label,
+            (label_x, label_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            color,
+            thickness,
+            cv2.LINE_AA,
+        )
+
+        return img
 
     def _update_frozen_frame_highlight(self):
         """Redraw frozen frame with selected object highlighted"""
@@ -1602,23 +1888,36 @@ class FletMainWindow:
             )
 
         # If depth visualization is active and we have a frozen depth frame, show overlay on depth image
-        is_depth_view = getattr(self.image_processor, "show_depth_visualization", False) if getattr(self, "image_processor", None) else False
+        is_depth_view = (
+            getattr(self.image_processor, "show_depth_visualization", False)
+            if getattr(self, "image_processor", None)
+            else False
+        )
         if is_depth_view and getattr(self, "frozen_depth_frame", None) is not None:
             try:
-                depth_img = self.image_processor._colorize_depth(self.frozen_depth_frame, self.frozen_raw_frame.shape)
+                depth_img = self.image_processor._colorize_depth(
+                    self.frozen_depth_frame, self.frozen_raw_frame.shape
+                )
                 # Draw overlay points (green) and optionally highlight selected object's center
                 overlay_img = depth_img.copy()
                 if getattr(self, "_overlay_points", None):
-                    for (x, y, z) in self._overlay_points:
+                    for x, y, z in self._overlay_points:
                         try:
-                            cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+                            cv2.circle(
+                                overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1
+                            )
                         except Exception:
                             pass
                 # Draw selected object center for reference
-                if self.selected_object is not None and len(centers) > self.selected_object:
+                if (
+                    self.selected_object is not None
+                    and len(centers) > self.selected_object
+                ):
                     try:
                         cx, cy = centers[self.selected_object]
-                        cv2.circle(overlay_img, (int(cx), int(cy)), 8, (255, 255, 255), 2)
+                        cv2.circle(
+                            overlay_img, (int(cx), int(cy)), 8, (255, 255, 255), 2
+                        )
                     except Exception:
                         pass
                 self.frozen_frame = overlay_img
@@ -1626,9 +1925,11 @@ class FletMainWindow:
                 # Fallback to regular RGB overlay if something fails
                 overlay_img = img_with_masks.copy()
                 if getattr(self, "_overlay_points", None):
-                    for (x, y, z) in self._overlay_points:
+                    for x, y, z in self._overlay_points:
                         try:
-                            cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+                            cv2.circle(
+                                overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1
+                            )
                         except Exception:
                             pass
                 self.frozen_frame = overlay_img
@@ -1636,21 +1937,40 @@ class FletMainWindow:
             # If overlay points are present, draw them on the image for visual verification
             if getattr(self, "_overlay_points", None):
                 overlay_img = img_with_masks.copy()
-                for (x, y, z) in self._overlay_points:
+                for x, y, z in self._overlay_points:
                     # Draw small circle at (x, y) in BGR (green)
                     try:
                         cv2.circle(overlay_img, (int(x), int(y)), 3, (0, 255, 0), -1)
                     except Exception:
                         pass
+                # Draw gripper overlay if analysis is available
+                if getattr(self, "object_analysis", None) is not None:
+                    try:
+                        overlay_img = self._draw_gripper_icon(
+                            overlay_img, self.object_analysis
+                        )
+                    except Exception as e:
+                        logger.debug(f"Gripper overlay failed: {e}")
                 self.frozen_frame = overlay_img
             else:
                 # Update frozen frame
-                self.frozen_frame = img_with_masks
+                final_img = img_with_masks
+                # Draw gripper overlay if analysis is available
+                if getattr(self, "object_analysis", None) is not None:
+                    try:
+                        final_img = self._draw_gripper_icon(
+                            img_with_masks.copy(), self.object_analysis
+                        )
+                    except Exception as e:
+                        logger.debug(f"Gripper overlay failed: {e}")
+                self.frozen_frame = final_img
 
-    def get_object_depth_points(self, object_index: int, subsample: int = 4, to_meters: bool = False):
+    def get_object_depth_points(
+        self, object_index: int, subsample: int = 4, to_meters: bool = False
+    ):
         """Return list of (x, y, depth_mm) or (X, Y, Z) if to_meters and RealSense available for selected frozen object."""
-        import numpy as np
         import cv2
+        import numpy as np
 
         if not getattr(self, "frozen_detections", None):
             return []
@@ -1671,7 +1991,9 @@ class FletMainWindow:
         h_depth, w_depth = depth.shape[:2]
 
         mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
-        cv2.drawContours(mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED)
+        cv2.drawContours(
+            mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED
+        )
 
         ys, xs = np.where(mask_rgb == 255)
         if len(xs) == 0:
@@ -1688,14 +2010,19 @@ class FletMainWindow:
         depths = depth[ys_d, xs_d]
 
         points = []
-        use_realsense = getattr(self.image_processor, "use_realsense", False) and getattr(self.image_processor, "rs_camera", None)
+        use_realsense = getattr(
+            self.image_processor, "use_realsense", False
+        ) and getattr(self.image_processor, "rs_camera", None)
         intr = None
         rs_mod = None
         if to_meters and use_realsense:
             try:
                 import pyrealsense2 as rs_mod
+
                 profile = self.image_processor.rs_camera.profile
-                depth_stream = profile.get_stream(rs_mod.stream.depth).as_video_stream_profile()
+                depth_stream = profile.get_stream(
+                    rs_mod.stream.depth
+                ).as_video_stream_profile()
                 intr = depth_stream.get_intrinsics()
             except Exception as e:
                 intr = None
@@ -1706,7 +2033,9 @@ class FletMainWindow:
                 continue
             if to_meters and use_realsense and intr is not None:
                 try:
-                    pt = rs_mod.rs2_deproject_pixel_to_point(intr, [int(u_d), int(v_d)], float(z) / 1000.0)
+                    pt = rs_mod.rs2_deproject_pixel_to_point(
+                        intr, [int(u_d), int(v_d)], float(z) / 1000.0
+                    )
                     points.append((float(pt[0]), float(pt[1]), float(pt[2])))
                 except Exception:
                     points.append((int(u_d), int(v_d), int(z)))
@@ -1717,8 +2046,8 @@ class FletMainWindow:
 
     def get_object_mask_pixels(self, object_index: int, subsample: int = 8):
         """Return list of (x, y, depth_mm or 0 if unavailable) in RGB image coordinates for the object mask."""
-        import numpy as np
         import cv2
+        import numpy as np
 
         if not getattr(self, "frozen_detections", None):
             return []
@@ -1738,7 +2067,9 @@ class FletMainWindow:
         w_depth = depth.shape[1] if depth is not None else None
 
         mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
-        cv2.drawContours(mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED)
+        cv2.drawContours(
+            mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED
+        )
 
         ys, xs = np.where(mask_rgb == 255)
         if len(xs) == 0:
@@ -1887,6 +2218,7 @@ class FletMainWindow:
         self.frozen_raw_frame = None
         self.frozen_detections = None
         self.frozen_depth_frame = None
+        self.frozen_aligned_color = None
         self._clear_object_buttons()
         print("Video unfrozen - showing live camera feed")
 
@@ -2349,13 +2681,24 @@ class FletMainWindow:
                 time.sleep(1.0)
                 # Copy latest depth frame if available for later point cloud extraction
                 try:
-                    if hasattr(self.image_processor, "depth_frame") and self.image_processor.depth_frame is not None:
-                        self.frozen_depth_frame = self.image_processor.depth_frame.copy()
+                    if (
+                        hasattr(self.image_processor, "depth_frame")
+                        and self.image_processor.depth_frame is not None
+                    ):
+                        self.frozen_depth_frame = (
+                            self.image_processor.depth_frame.copy()
+                        )
                     else:
                         self.frozen_depth_frame = None
                 except Exception as ex:
                     self.frozen_depth_frame = None
                     print(f"Find Objects: could not copy depth frame: {ex}")
+                # Copy aligned color frame (848x480, pixel-aligned to depth)
+                self.frozen_aligned_color = getattr(
+                    self.image_processor, "_last_aligned_color", None
+                )
+                if self.frozen_aligned_color is not None:
+                    self.frozen_aligned_color = self.frozen_aligned_color.copy()
                 self.video_frozen = True
                 print("Find Objects: Video frozen on detected objects")
 
@@ -2372,13 +2715,24 @@ class FletMainWindow:
                 time.sleep(1.0)
                 # Copy latest depth frame if available for later point cloud extraction
                 try:
-                    if hasattr(self.image_processor, "depth_frame") and self.image_processor.depth_frame is not None:
-                        self.frozen_depth_frame = self.image_processor.depth_frame.copy()
+                    if (
+                        hasattr(self.image_processor, "depth_frame")
+                        and self.image_processor.depth_frame is not None
+                    ):
+                        self.frozen_depth_frame = (
+                            self.image_processor.depth_frame.copy()
+                        )
                     else:
                         self.frozen_depth_frame = None
                 except Exception as ex:
                     self.frozen_depth_frame = None
                     print(f"Find Objects: could not copy depth frame: {ex}")
+                # Copy aligned color frame (848x480, pixel-aligned to depth)
+                self.frozen_aligned_color = getattr(
+                    self.image_processor, "_last_aligned_color", None
+                )
+                if self.frozen_aligned_color is not None:
+                    self.frozen_aligned_color = self.frozen_aligned_color.copy()
                 self.video_frozen = True
                 print("Find Objects: Video frozen on new frame")
 
@@ -2399,26 +2753,34 @@ class FletMainWindow:
         # - Move to drop position
         print("Grasp execution not yet implemented")
 
-    def _export_selected_object_pointcloud(self, e=None, subsample: int = 4, to_meters: bool = True):
+    def _export_selected_object_pointcloud(
+        self, e=None, subsample: int = 4, to_meters: bool = True
+    ):
         """Export selected object's point cloud to logs/pointclouds as compressed .npz"""
         import time
-        import numpy as np
         from pathlib import Path
+
+        import numpy as np
 
         if self.selected_object is None:
             print("No object selected to export")
             return
 
-        pts = self.get_object_depth_points(self.selected_object, subsample=subsample, to_meters=to_meters)
+        pts = self.get_object_depth_points(
+            self.selected_object, subsample=subsample, to_meters=to_meters
+        )
         if not pts:
             print("No points available to export")
             return
 
         # Show overlay of sampled points for user verification before saving
         try:
-            self._show_point_overlay(self.selected_object, subsample=max(1, subsample), duration=1.5)
+            self._show_point_overlay(
+                self.selected_object, subsample=max(1, subsample), duration=1.5
+            )
             # Give user a brief moment to see overlay
             import time
+
             time.sleep(1.0)
         except Exception as ex:
             print(f"Overlay failed: {ex}")
@@ -2427,7 +2789,7 @@ class FletMainWindow:
         out_dir = Path("logs/pointclouds")
         out_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        out_path = out_dir / f"pointcloud_obj{self.selected_object+1}_{timestamp}.npz"
+        out_path = out_dir / f"pointcloud_obj{self.selected_object + 1}_{timestamp}.npz"
         try:
             np.savez_compressed(out_path, points=arr)
             print(f"✓ Point cloud saved: {out_path} ({arr.shape[0]} points)")
@@ -2437,22 +2799,32 @@ class FletMainWindow:
         except Exception as ex:
             print(f"Failed to save point cloud: {ex}")
 
-    def _export_full_pointcloud(self, e=None, subsample: int = 1, to_meters: bool = True):
+    def _export_full_pointcloud(
+        self, e=None, subsample: int = 1, to_meters: bool = True
+    ):
         """Export the full depth frame as a compressed .npz containing points (X,Y,Z) in meters when available.
 
         This exports all non-zero depth pixels (optionally subsampled) from the current frozen depth frame (if frozen)
         or the latest depth frame from the image processor.
         """
         import time
-        import numpy as np
         from pathlib import Path
+
+        import numpy as np
 
         # Choose depth frame: prefer frozen depth frame if video is frozen
         depth = None
-        if getattr(self, "video_frozen", False) and getattr(self, "frozen_depth_frame", None) is not None:
+        if (
+            getattr(self, "video_frozen", False)
+            and getattr(self, "frozen_depth_frame", None) is not None
+        ):
             depth = self.frozen_depth_frame.copy()
         else:
-            depth = getattr(self.image_processor, "depth_frame", None) if getattr(self, "image_processor", None) else None
+            depth = (
+                getattr(self.image_processor, "depth_frame", None)
+                if getattr(self, "image_processor", None)
+                else None
+            )
 
         if depth is None:
             print("No depth frame available to export")
@@ -2472,14 +2844,19 @@ class FletMainWindow:
         depths = depth[ys, xs]
 
         points_list = []
-        use_realsense = getattr(self.image_processor, "use_realsense", False) and getattr(self.image_processor, "rs_camera", None)
+        use_realsense = getattr(
+            self.image_processor, "use_realsense", False
+        ) and getattr(self.image_processor, "rs_camera", None)
         intr = None
         rs_mod = None
         if to_meters and use_realsense:
             try:
                 import pyrealsense2 as rs_mod
+
                 profile = self.image_processor.rs_camera.profile
-                depth_stream = profile.get_stream(rs_mod.stream.depth).as_video_stream_profile()
+                depth_stream = profile.get_stream(
+                    rs_mod.stream.depth
+                ).as_video_stream_profile()
                 intr = depth_stream.get_intrinsics()
             except Exception as e:
                 intr = None
@@ -2491,7 +2868,9 @@ class FletMainWindow:
                 continue
             if to_meters and use_realsense and intr is not None:
                 try:
-                    pt = rs_mod.rs2_deproject_pixel_to_point(intr, [int(u), int(v)], float(z) / 1000.0)
+                    pt = rs_mod.rs2_deproject_pixel_to_point(
+                        intr, [int(u), int(v)], float(z) / 1000.0
+                    )
                     points_list.append((float(pt[0]), float(pt[1]), float(pt[2])))
                 except Exception:
                     points_list.append((int(u), int(v), int(z)))
@@ -2515,22 +2894,28 @@ class FletMainWindow:
     def _export_selected_object_ply(self, e=None, subsample: int = 4):
         """Export selected object's point cloud to PLY (XYZ in meters when available)."""
         import time
-        import numpy as np
         from pathlib import Path
+
+        import numpy as np
 
         if self.selected_object is None:
             print("No object selected to export")
             return
 
-        pts = self.get_object_depth_points(self.selected_object, subsample=subsample, to_meters=True)
+        pts = self.get_object_depth_points(
+            self.selected_object, subsample=subsample, to_meters=True
+        )
         if not pts:
             print("No points available to export")
             return
 
         # Show overlay of sampled points for user verification before saving
         try:
-            self._show_point_overlay(self.selected_object, subsample=max(1, subsample), duration=1.5)
+            self._show_point_overlay(
+                self.selected_object, subsample=max(1, subsample), duration=1.5
+            )
             import time
+
             time.sleep(1.0)
         except Exception as ex:
             print(f"Overlay failed: {ex}")
@@ -2540,7 +2925,7 @@ class FletMainWindow:
         out_dir = Path("logs/pointclouds")
         out_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        out_path = out_dir / f"pointcloud_obj{self.selected_object+1}_{timestamp}.ply"
+        out_path = out_dir / f"pointcloud_obj{self.selected_object + 1}_{timestamp}.ply"
 
         try:
             with open(out_path, "w") as f:
@@ -2568,9 +2953,9 @@ class FletMainWindow:
 
     def _preview_selected_object_ply(self, e=None):
         """Preview the last exported PLY file using Cloudview.py as a subprocess."""
+        import os
         import subprocess
         import sys
-        import os
         from pathlib import Path
 
         # Ensure there is an exported file; try to export if not present
@@ -2600,10 +2985,12 @@ class FletMainWindow:
 
         try:
             # Launch Cloudview in background
-            subprocess.Popen([sys.executable, str(cloudview_candidate), str(path)],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,
-                             start_new_session=True)
+            subprocess.Popen(
+                [sys.executable, str(cloudview_candidate), str(path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
             print(f"Launching Cloudview for: {path}")
             if hasattr(self, "status_text"):
                 self.status_text.value = f"Previewing: {Path(path).name}"
@@ -2617,9 +3004,17 @@ class FletMainWindow:
             print("No object selected to show points")
             return
         # Switch to depth view when showing points so we can highlight depth pixels
-        self._show_point_overlay(self.selected_object, subsample=8, duration=2.0, switch_to_depth=True)
+        self._show_point_overlay(
+            self.selected_object, subsample=8, duration=2.0, switch_to_depth=True
+        )
 
-    def _show_point_overlay(self, object_index: int, subsample: int = 8, duration: float = 1.5, switch_to_depth: bool = True):
+    def _show_point_overlay(
+        self,
+        object_index: int,
+        subsample: int = 8,
+        duration: float = 1.5,
+        switch_to_depth: bool = True,
+    ):
         """Temporarily overlay sampled mask pixels on the frozen frame for visual verification.
 
         object_index: index of selected object
@@ -2635,8 +3030,14 @@ class FletMainWindow:
         # If requested, switch to depth view temporarily (only if RealSense is available)
         prev_depth_view = None
         try:
-            if switch_to_depth and getattr(self, "image_processor", None) and self.image_processor.use_realsense:
-                prev_depth_view = getattr(self.image_processor, "show_depth_visualization", False)
+            if (
+                switch_to_depth
+                and getattr(self, "image_processor", None)
+                and self.image_processor.use_realsense
+            ):
+                prev_depth_view = getattr(
+                    self.image_processor, "show_depth_visualization", False
+                )
                 if not prev_depth_view:
                     # Turn on depth visualization
                     try:
@@ -2644,7 +3045,9 @@ class FletMainWindow:
                         # Update depth toggle button appearance
                         self.depth_toggle_btn.bgcolor = "#2196F3"
                         self.depth_toggle_btn.icon_color = "#FFFFFF"
-                        self.depth_toggle_btn.tooltip = "Showing Depth view (click for RGB)"
+                        self.depth_toggle_btn.tooltip = (
+                            "Showing Depth view (click for RGB)"
+                        )
                         if self._ui_built:
                             self.page.update()
                     except Exception:
@@ -2681,7 +3084,11 @@ class FletMainWindow:
 
             # Restore previous depth view if we changed it
             try:
-                if prev_depth_view is False and getattr(self, "image_processor", None) and getattr(self.image_processor, "use_realsense", False):
+                if (
+                    prev_depth_view is False
+                    and getattr(self, "image_processor", None)
+                    and getattr(self.image_processor, "use_realsense", False)
+                ):
                     # Toggle back to previous (RGB) view
                     self.image_processor.toggle_depth_visualization()
                     # Update depth toggle button appearance
@@ -2694,6 +3101,7 @@ class FletMainWindow:
                 pass
 
         threading.Thread(target=clear_overlay, daemon=True).start()
+
     def _on_stop(self):
         """Handle Stop button - immediately halts all arm movement"""
         print("Stop: Halting all arm movement...")

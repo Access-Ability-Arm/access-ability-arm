@@ -9,9 +9,10 @@ from typing import Callable, Optional
 
 import cv2
 import numpy as np
+from aaa_vision.detection_manager import DetectionManager
+
 from aaa_core.config.console import error, status, success, underline
 from aaa_core.config.settings import app_config
-from aaa_vision.detection_manager import DetectionManager
 
 
 class ImageProcessor(threading.Thread):
@@ -57,6 +58,9 @@ class ImageProcessor(threading.Thread):
 
         # Store last raw RGB frame for frozen frame re-processing
         self._last_rgb_frame = None
+
+        # Store last aligned color frame (848x480, pixel-aligned to depth)
+        self._last_aligned_color = None
 
         # Horizontal flip (mirror) for front-facing cameras
         self.flip_horizontal = False
@@ -420,8 +424,9 @@ class ImageProcessor(threading.Thread):
         depth_frame = None
 
         if self.use_realsense and self.rs_camera:
-            ret, frame, depth_frame = self.rs_camera.get_frame_stream()
+            ret, frame, depth_frame, aligned_color = self.rs_camera.get_frame_stream()
             self.depth_frame = depth_frame
+            self._last_aligned_color = aligned_color
         elif self.camera:
             ret, frame = self.camera.read()
 

@@ -48,3 +48,9 @@ data/dnn/
 # Log files
 logs/pointclouds/*
 !logs/pointclouds/.gitkeep
+
+# Claude Code
+.claude/
+
+# Test data (downloaded YCB/GraspNet point clouds)
+test_data/
