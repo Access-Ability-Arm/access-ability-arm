@@ -2044,6 +2044,63 @@ class FletMainWindow:
 
         return points
 
+    def _extract_object_colors(
+        self, object_index: int, subsample: int = 4,
+        aligned_color: "np.ndarray | None" = None,
+        depth: "np.ndarray | None" = None,
+    ) -> "np.ndarray | None":
+        """Extract RGB colors from aligned color frame for object mask pixels.
+
+        Returns Nx3 uint8 array matching the points from get_object_depth_points,
+        or None if color data is unavailable.
+        """
+        import cv2
+        import numpy as np
+
+        if aligned_color is None or depth is None:
+            return None
+
+        if not getattr(self, "frozen_detections", None):
+            return None
+
+        contours = self.frozen_detections.get("contours")
+        if not contours or object_index >= len(contours):
+            return None
+
+        contour = contours[object_index]
+        rgb = getattr(self, "frozen_raw_frame", None)
+        if rgb is None:
+            return None
+
+        h_rgb, w_rgb = rgb.shape[:2]
+        h_depth, w_depth = depth.shape[:2]
+
+        mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
+        cv2.drawContours(
+            mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED
+        )
+
+        ys, xs = np.where(mask_rgb == 255)
+        if len(xs) == 0:
+            return None
+
+        xs = xs[::subsample]
+        ys = ys[::subsample]
+
+        scale_x = w_depth / w_rgb
+        scale_y = h_depth / h_rgb
+        xs_d = np.clip((xs * scale_x).astype(int), 0, w_depth - 1)
+        ys_d = np.clip((ys * scale_y).astype(int), 0, h_depth - 1)
+
+        depths = depth[ys_d, xs_d]
+        valid = depths > 0
+
+        # Aligned color is BGR (from RealSense), convert to RGB
+        colors_bgr = aligned_color[ys_d[valid], xs_d[valid]]
+        colors_rgb = colors_bgr[:, ::-1].copy()
+
+        return colors_rgb
+
     def get_object_mask_pixels(self, object_index: int, subsample: int = 8):
         """Return list of (x, y, depth_mm or 0 if unavailable) in RGB image coordinates for the object mask."""
         import cv2
@@ -2791,8 +2848,20 @@ class FletMainWindow:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         out_path = out_dir / f"pointcloud_obj{self.selected_object + 1}_{timestamp}.npz"
         try:
-            np.savez_compressed(out_path, points=arr)
-            print(f"✓ Point cloud saved: {out_path} ({arr.shape[0]} points)")
+            # Extract RGB colors from aligned color frame (848x480, same grid as depth)
+            save_kwargs = {"points": arr}
+            aligned_color = getattr(self, "frozen_aligned_color", None)
+            depth = getattr(self, "frozen_depth_frame", None)
+            if aligned_color is not None and depth is not None:
+                colors = self._extract_object_colors(
+                    self.selected_object, subsample=subsample, aligned_color=aligned_color, depth=depth
+                )
+                if colors is not None and len(colors) == len(arr):
+                    save_kwargs["colors"] = colors
+
+            np.savez_compressed(out_path, **save_kwargs)
+            has_colors = "colors" in save_kwargs
+            print(f"✓ Point cloud saved: {out_path} ({arr.shape[0]} points, rgb={'yes' if has_colors else 'no'})")
             if hasattr(self, "status_text"):
                 self.status_text.value = f"Point cloud saved: {out_path.name}"
                 self.page.update()
@@ -2883,8 +2952,27 @@ class FletMainWindow:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         out_path = out_dir / f"pointcloud_full_{timestamp}.npz"
         try:
-            np.savez_compressed(out_path, points=arr)
-            print(f"✓ Full point cloud saved: {out_path} ({arr.shape[0]} points)")
+            # Extract RGB colors from aligned color frame (same 848x480 grid as depth)
+            save_kwargs = {"points": arr}
+            aligned_color = None
+            if getattr(self, "video_frozen", False):
+                aligned_color = getattr(self, "frozen_aligned_color", None)
+            else:
+                aligned_color = getattr(self.image_processor, "_last_aligned_color", None) if getattr(self, "image_processor", None) else None
+
+            if aligned_color is not None:
+                # xs, ys are in depth coordinates; filter to valid (z > 0) same as points_list
+                valid = depths > 0
+                xs_valid = xs[valid]
+                ys_valid = ys[valid]
+                colors_bgr = aligned_color[ys_valid, xs_valid]
+                colors_rgb = colors_bgr[:, ::-1].copy()
+                if len(colors_rgb) == len(arr):
+                    save_kwargs["colors"] = colors_rgb
+
+            np.savez_compressed(out_path, **save_kwargs)
+            has_colors = "colors" in save_kwargs
+            print(f"✓ Full point cloud saved: {out_path} ({arr.shape[0]} points, rgb={'yes' if has_colors else 'no'})")
             if hasattr(self, "status_text"):
                 self.status_text.value = f"Full point cloud saved: {out_path.name}"
                 self.page.update()

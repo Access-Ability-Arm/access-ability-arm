@@ -30,7 +30,12 @@ def find_latest_pointcloud(search_dir: str = "logs/pointclouds") -> str:
     return str(files[0])
 
 
-def load_points(path: str) -> np.ndarray:
+def load_points(path: str):
+    """Load point cloud from .npz file.
+
+    Returns:
+        Tuple of (points Nx3 float, colors Nx3 float 0-1 or None)
+    """
     data = np.load(path)
     # Try to retrieve 'points' otherwise use first array
     if "points" in data:
@@ -45,11 +50,19 @@ def load_points(path: str) -> np.ndarray:
     if pts.ndim != 2 or pts.shape[1] not in (2, 3):
         raise ValueError(f"Unsupported point array shape: {pts.shape}")
 
+    # Load RGB colors if present (uint8 Nx3 -> float 0-1)
+    colors = None
+    if "colors" in data:
+        colors = np.asarray(data["colors"], dtype=float) / 255.0
+        print(f"  RGB colors loaded ({colors.shape[0]} entries)")
+
     if pts.shape[1] == 3:
         # Filter out invalid depth (0 or sensor max 65535)
         valid = (pts[:, 2] > 0) & (pts[:, 2] < 65535)
         removed = len(pts) - valid.sum()
         pts = pts[valid]
+        if colors is not None:
+            colors = colors[valid]
         if removed > 0:
             print(f"  Filtered {removed} invalid depth points")
 
@@ -67,10 +80,10 @@ def load_points(path: str) -> np.ndarray:
             pts = np.column_stack([x_m, y_m, z_m])
             print(f"  Deprojected to meters: {len(pts)} points")
 
-    return pts
+    return pts, colors
 
 
-def view_with_open3d(points: np.ndarray, path: str = None):
+def view_with_open3d(points: np.ndarray, path: str = None, colors: np.ndarray = None):
     from pathlib import Path
 
     import open3d as o3d
@@ -84,11 +97,17 @@ def view_with_open3d(points: np.ndarray, path: str = None):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pts)
 
-    # Simple color by Z value for visualization
-    zvals = np.asarray(pcd.points)[:, 2]
-    znorm = (zvals - zvals.min()) / (np.ptp(zvals) + 1e-9)
-    colors = plt_cm_viridis(znorm)
-    pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    if colors is not None and len(colors) == len(pts):
+        # Use saved RGB colors (already 0-1 float)
+        pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+        print("  Using RGB colors from file")
+    else:
+        # Fallback: color by Z value
+        zvals = np.asarray(pcd.points)[:, 2]
+        znorm = (zvals - zvals.min()) / (np.ptp(zvals) + 1e-9)
+        z_colors = plt_cm_viridis(znorm)
+        pcd.colors = o3d.utility.Vector3dVector(z_colors[:, :3])
+        print("  Using depth-based coloring (no RGB data in file)")
 
     # Window title with filename when provided
     window_name = f"Point Cloud - {Path(path).name}" if path else "Point Cloud"
@@ -303,7 +322,8 @@ def view_with_open3d(points: np.ndarray, path: str = None):
 
 
 def view_with_matplotlib(
-    points: np.ndarray, max_points: int = 200000, path: str = None
+    points: np.ndarray, max_points: int = 200000, path: str = None,
+    colors: np.ndarray = None,
 ):
     from pathlib import Path
 
@@ -311,6 +331,7 @@ def view_with_matplotlib(
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     pts = points.astype(float)
+    pt_colors = colors
     if pts.shape[1] == 2:
         # Treat as (x, y) + zero z
         z = np.zeros((pts.shape[0], 1), dtype=float)
@@ -320,10 +341,16 @@ def view_with_matplotlib(
     if pts.shape[0] > max_points:
         idx = np.random.choice(pts.shape[0], max_points, replace=False)
         pts = pts[idx]
+        if pt_colors is not None:
+            pt_colors = pt_colors[idx]
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
-    sc = ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=pts[:, 2], cmap="viridis", s=1)
+    if pt_colors is not None and len(pt_colors) == len(pts):
+        sc = ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=pt_colors, s=1)
+        print("  Using RGB colors from file")
+    else:
+        sc = ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=pts[:, 2], cmap="viridis", s=1)
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
@@ -473,7 +500,7 @@ def main():
         else:
             path = find_latest_pointcloud()
         print(f"Loading: {path}")
-        points = load_points(path)
+        points, colors = load_points(path)
         print(f"Loaded {points.shape[0]} points (shape={points.shape})")
         print(
             f"  X range: [{points[:, 0].min():.4f}, {points[:, 0].max():.4f}]"
@@ -487,7 +514,7 @@ def main():
                 import open3d
 
                 # Use Open3D viewer
-                view_with_open3d(points, path=path)
+                view_with_open3d(points, path=path, colors=colors)
                 return
             except Exception as e:
                 print(
@@ -495,7 +522,8 @@ def main():
                 )
 
         view_with_matplotlib(
-            points, max_points=200000 // max(1, args.subsample), path=path
+            points, max_points=200000 // max(1, args.subsample), path=path,
+            colors=colors,
         )
 
     except Exception as ex:
