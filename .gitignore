@@ -37,6 +37,9 @@ Thumbs.db
 # User configuration (use config/config.yaml.template as base)
 config/config.yaml
 
+# Camera calibration files (generated per-setup by calibrate_camera_extrinsic.py)
+config/*calibration*.json
+
 # Model files (large binary files) - stored in data/models/
 data/models/*.pt
 *.pt

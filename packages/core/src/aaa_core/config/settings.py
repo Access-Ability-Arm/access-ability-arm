@@ -82,7 +82,7 @@ class AppConfig:
     skip_cameras: List[str] = field(default_factory=list)  # Camera name patterns to skip
 
     # Camera calibration settings (depth-to-color alignment)
-    camera_calibration_file: Optional[str] = None  # Path to calibration_extrinsic.json
+    camera_calibration_file: Optional[str] = None  # Path to config/calibration_extrinsic.json
     camera_calibration_enabled: bool = True  # Auto-enable if calibration file exists
 
     # Video display settings

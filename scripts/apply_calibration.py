@@ -5,7 +5,7 @@ and applies the extrinsic transform to move points from depth camera frame to
 color camera frame (or world frame if specified).
 
 Usage:
-  python scripts/apply_calibration.py <pointcloud.npy|.npz|.ply> [--calibration calibration_extrinsic.json] [--output transformed.ply]
+  python scripts/apply_calibration.py <pointcloud.npy|.npz|.ply> [--calibration config/calibration_extrinsic.json] [--output transformed.ply]
 
 Example:
   python scripts/apply_calibration.py logs/pointclouds/pointcloud_obj1_20260113_203318.npz --output transformed.ply
@@ -82,7 +82,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Apply depth-to-color calibration extrinsic to point cloud")
     parser.add_argument("pointcloud", help="Input point cloud file (.npy, .npz, or .ply)")
     parser.add_argument(
-        "--calibration", "-c", default="calibration_extrinsic.json", help="Calibration JSON file"
+        "--calibration", "-c", default="config/calibration_extrinsic.json", help="Calibration JSON file"
     )
     parser.add_argument("--output", "-o", help="Output point cloud file (.npy or .ply)")
     args = parser.parse_args(argv)

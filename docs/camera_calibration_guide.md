@@ -48,7 +48,7 @@ python scripts/debug_checkerboard.py
 
 ```bash
 # Interactive capture mode
-python scripts/calibrate_camera_extrinsic.py --checkerboard 9 6 --square-size 0.03 --output calibration_extrinsic.json
+python scripts/calibrate_camera_extrinsic.py --checkerboard 9 6 --square-size 0.03 --output config/calibration_extrinsic.json
 ```
 
 **Workflow:**
@@ -56,7 +56,7 @@ python scripts/calibrate_camera_extrinsic.py --checkerboard 9 6 --square-size 0.
 - Press **`c`** to capture and auto-detect
 - Capture 3+ poses from different angles (left, right, top, bottom, tilted)
 - Press **`p`** to compute the extrinsic transform
-- Calibration is saved to `calibration_extrinsic.json`
+- Calibration is saved to `config/calibration_extrinsic.json`
 
 **Output:** JSON file containing:
 - Depth and color camera intrinsics
@@ -71,7 +71,7 @@ python scripts/calibrate_camera_extrinsic.py --checkerboard 9 6 --square-size 0.
 python scripts/test_calibrated_pointcloud.py
 
 # Or use explicit calibration file
-python scripts/test_calibrated_pointcloud.py --calibration calibration_extrinsic.json
+python scripts/test_calibrated_pointcloud.py --calibration config/calibration_extrinsic.json
 ```
 
 ### 5. Apply to Existing Point Clouds
@@ -84,7 +84,7 @@ python scripts/apply_calibration.py logs/pointclouds/pointcloud_obj1_20260113_20
 
 # Just show stats
 python scripts/apply_calibration.py logs/pointclouds/pointcloud_obj1_20260113_203318.npz \
-  --calibration calibration_extrinsic.json
+  --calibration config/calibration_extrinsic.json
 ```
 
 ## Configuration
@@ -97,10 +97,10 @@ Add to your `config/config.yaml`:
 camera:
   calibration:
     enabled: true
-    file: calibration_extrinsic.json  # Path to your calibration file
+    file: config/calibration_extrinsic.json  # Path to your calibration file
 ```
 
-or leave `file: null` to auto-detect from project root.
+or leave `file: null` to auto-detect from `config/calibration_extrinsic.json`.
 
 ### Programmatic Usage
 
@@ -109,7 +109,7 @@ from aaa_vision.calibration import CameraCalibration
 from aaa_vision.point_cloud import PointCloudProcessor
 
 # Load calibration
-calibration = CameraCalibration.load_from_json("calibration_extrinsic.json")
+calibration = CameraCalibration.load_from_json("config/calibration_extrinsic.json")
 
 # Create point cloud processor with calibration
 processor = PointCloudProcessor(calibration=calibration)

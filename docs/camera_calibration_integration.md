@@ -20,7 +20,7 @@ pcd = processor.create_from_depth(depth_image, color_image)
 ```python
 from aaa_vision.point_cloud import PointCloudProcessor
 
-# Automatically loads calibration from calibration_extrinsic.json if present
+# Automatically loads calibration from config/calibration_extrinsic.json if present
 processor = PointCloudProcessor(auto_load_calibration=True)
 pcd = processor.create_from_depth(depth_image, color_image)
 
@@ -33,7 +33,7 @@ pcd = processor.apply_calibration(pcd)
 from aaa_vision.point_cloud import PointCloudProcessor
 from aaa_vision.calibration import CameraCalibration
 
-calibration = CameraCalibration.load_from_json("path/to/calibration_extrinsic.json")
+calibration = CameraCalibration.load_from_json("config/calibration_extrinsic.json")
 
 processor = PointCloudProcessor(
     calibration=calibration,
@@ -107,10 +107,10 @@ Add to your `config/config.yaml`:
 camera:
   calibration:
     enabled: true
-    file: calibration_extrinsic.json
+    file: config/calibration_extrinsic.json
 ```
 
-Or leave `file: null` to auto-load from project root.
+Or leave `file: null` to auto-load from `config/calibration_extrinsic.json`.
 
 ## Minimal Example
 

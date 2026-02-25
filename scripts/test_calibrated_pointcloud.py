@@ -2,12 +2,12 @@
 Example script showing how to integrate camera calibration into the main image processing pipeline.
 
 This script demonstrates:
-1. Loading calibration from calibration_extrinsic.json
+1. Loading calibration from config/calibration_extrinsic.json
 2. Using PointCloudProcessor with calibration
 3. Creating aligned point clouds for grasp planning
 
 Usage:
-  python scripts/test_calibrated_pointcloud.py [--calibration calibration_extrinsic.json]
+  python scripts/test_calibrated_pointcloud.py [--calibration config/calibration_extrinsic.json]
 """
 
 from pathlib import Path

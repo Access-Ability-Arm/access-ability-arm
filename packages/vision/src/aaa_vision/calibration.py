@@ -83,10 +83,10 @@ class CameraCalibration:
 
 
 def get_default_calibration_path() -> str:
-    """Get default calibration file path (project root)."""
-    import os
-    workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    return str(Path(workspace_root) / "calibration_extrinsic.json")
+    """Get default calibration file path (config/ directory)."""
+    # Navigate up: calibration.py -> aaa_vision/ -> src/ -> vision/ -> packages/ -> project_root
+    project_root = Path(__file__).parent.parent.parent.parent.parent
+    return str(project_root / "config" / "calibration_extrinsic.json")
 
 
 def try_load_calibration() -> Optional[CameraCalibration]:

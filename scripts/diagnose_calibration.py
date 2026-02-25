@@ -292,7 +292,7 @@ def main():
     parser.add_argument("pointcloud", help="Path to .npz/.npy/.ply point cloud file")
     parser.add_argument(
         "--calibration",
-        help="Path to calibration JSON (default: my_calibration.json or calibration_extrinsic.json)",
+        help="Path to calibration JSON (default: config/my_calibration.json or config/calibration_extrinsic.json)",
         default=None,
     )
     parser.add_argument("--out", help="Output directory for diagnostics", default="diagnostics")
@@ -305,13 +305,13 @@ def main():
     # Determine calibration file
     calib_path = args.calibration
     if calib_path is None:
-        # prefer my_calibration.json then calibration_extrinsic.json
-        for candidate in ["my_calibration.json", "calibration_extrinsic.json"]:
+        # prefer config/my_calibration.json then config/calibration_extrinsic.json
+        for candidate in ["config/my_calibration.json", "config/calibration_extrinsic.json"]:
             if Path(candidate).exists():
                 calib_path = candidate
                 break
     if calib_path is None:
-        raise FileNotFoundError("No calibration file specified and none found in project root")
+        raise FileNotFoundError("No calibration file specified and none found in config/")
 
     print(f"Loading calibration: {calib_path}")
     calib = load_calibration(calib_path)

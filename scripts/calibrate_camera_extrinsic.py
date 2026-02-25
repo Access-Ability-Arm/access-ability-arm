@@ -5,10 +5,10 @@ This script:
   2. Detects checkerboard corners in the color image
   3. Reads depth values and deprojects to 3D in the depth frame
   4. Computes depth->color extrinsic (R, t) using solvePnP
-  5. Saves to calibration_extrinsic.json for reuse
+  5. Saves to config/calibration_extrinsic.json for reuse
 
 Usage:
-  python scripts/calibrate_camera_extrinsic.py [--output calibration_extrinsic.json] [--checkerboard 9 6] [--square-size 0.03]
+  python scripts/calibrate_camera_extrinsic.py [--output config/calibration_extrinsic.json] [--checkerboard 9 6] [--square-size 0.03]
 
   Interactive controls (during capture):
     'c' - Capture a frame and detect checkerboard
@@ -148,7 +148,7 @@ def reprojection_error(
 def interactive_capture(
     pattern_size: tuple[int, int] = (9, 6),
     square_size: float = 0.03,
-    output_file: str = "calibration_extrinsic.json",
+    output_file: str = "config/calibration_extrinsic.json",
 ):
     """Interactively capture checkerboards and compute extrinsic."""
     if rs is None:
@@ -297,7 +297,7 @@ def interactive_capture(
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Calibrate RealSense depth-to-color extrinsic using checkerboard")
     parser.add_argument(
-        "--output", "-o", help="Output JSON filename", default="calibration_extrinsic.json"
+        "--output", "-o", help="Output JSON filename", default="config/calibration_extrinsic.json"
     )
     parser.add_argument(
         "--checkerboard",
