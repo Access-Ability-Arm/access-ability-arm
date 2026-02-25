@@ -7,6 +7,7 @@ This module provides utilities for:
 - Workspace cropping
 - Table plane segmentation
 - Extracting object-specific point clouds using segmentation masks
+- Applying depth-to-color camera calibration
 """
 
 from dataclasses import dataclass
@@ -14,6 +15,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import open3d as o3d
+
+from aaa_vision.calibration import CameraCalibration, try_load_calibration
 
 
 @dataclass
@@ -57,6 +60,8 @@ class PointCloudProcessor:
         intrinsics: Optional[CameraIntrinsics] = None,
         depth_scale: float = 1000.0,
         depth_trunc: float = 3.0,
+        calibration: Optional[CameraCalibration] = None,
+        auto_load_calibration: bool = True,
     ):
         """
         Initialize point cloud processor.
@@ -65,11 +70,18 @@ class PointCloudProcessor:
             intrinsics: Camera intrinsic parameters. Uses D435 defaults if None.
             depth_scale: Depth units per meter (1000 for mm, 1 for meters)
             depth_trunc: Maximum depth in meters (points beyond are ignored)
+            calibration: Optional CameraCalibration for depth-to-color transform
+            auto_load_calibration: If True and calibration is None, attempt to auto-load
         """
         self.intrinsics = intrinsics or DEFAULT_D435_INTRINSICS
         self.o3d_intrinsics = self.intrinsics.to_open3d()
         self.depth_scale = depth_scale
         self.depth_trunc = depth_trunc
+        
+        # Load calibration
+        self.calibration = calibration
+        if self.calibration is None and auto_load_calibration:
+            self.calibration = try_load_calibration()
 
     def create_from_depth(
         self,
@@ -190,6 +202,40 @@ class PointCloudProcessor:
             pcd_down.orient_normals_towards_camera_location(camera_location=[0, 0, 0])
 
         return pcd_down
+
+    def apply_calibration(
+        self,
+        pcd: o3d.geometry.PointCloud,
+    ) -> o3d.geometry.PointCloud:
+        """
+        Apply depth-to-color camera calibration extrinsic to point cloud.
+        
+        Transforms the point cloud from depth camera frame to color camera frame
+        using the loaded calibration (if available).
+        
+        Args:
+            pcd: Input point cloud (in depth camera frame)
+        
+        Returns:
+            Point cloud transformed to color camera frame (or original if no calibration)
+        """
+        if self.calibration is None:
+            # No calibration loaded, return original
+            return pcd
+        
+        if len(pcd.points) == 0:
+            return pcd
+        
+        # Get points as numpy array
+        points = np.asarray(pcd.points)
+        
+        # Apply transformation
+        points_transformed = self.calibration.transform_points(points)
+        
+        # Update point cloud
+        pcd.points = o3d.utility.Vector3dVector(points_transformed)
+        
+        return pcd
 
     def crop_to_workspace(
         self,

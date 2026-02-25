@@ -14,6 +14,15 @@ from aaa_vision.detection_manager import DetectionManager
 from aaa_core.config.console import error, status, success, underline
 from aaa_core.config.settings import app_config
 
+# Optional calibration support
+try:
+    from aaa_vision.calibration import CameraCalibration, try_load_calibration
+    CALIBRATION_AVAILABLE = True
+except Exception:
+    CameraCalibration = None
+    try_load_calibration = None
+    CALIBRATION_AVAILABLE = False
+
 
 class ImageProcessor(threading.Thread):
     """
@@ -65,6 +74,11 @@ class ImageProcessor(threading.Thread):
         # Horizontal flip (mirror) for front-facing cameras
         self.flip_horizontal = False
         self.current_camera_name = None
+        # Whether to apply manual calibration mapping from depth->color
+        self.apply_calibration_enabled = bool(getattr(app_config, "camera_calibration_enabled", False))
+
+        # Cache for computed remap matrices keyed by (cal_file, color_shape, depth_shape)
+        self._calib_remap_cache = {}
 
         # Camera will be initialized when thread starts (in run() method)
         # to avoid blocking the UI thread
@@ -334,6 +348,21 @@ class ImageProcessor(threading.Thread):
         status(f"Switched to {view_mode} view")
         return self.show_depth_visualization
 
+    def set_apply_calibration(self, enabled: bool):
+        """
+        Enable or disable applying the depth->color calibration at runtime.
+
+        This method simply records the desired state; the rest of the
+        processing pipeline can read `self.apply_calibration_enabled` to
+        steer behavior (e.g., using aligned color frames or applying
+        manual extrinsics when constructing overlays/pointclouds).
+        """
+        try:
+            self.apply_calibration_enabled = bool(enabled)
+            status(f"Apply calibration {'enabled' if enabled else 'disabled'}")
+        except Exception:
+            self.apply_calibration_enabled = False
+
     def _colorize_depth(self, depth_frame: np.ndarray, rgb_shape: tuple) -> np.ndarray:
         """
         Convert depth frame to colorized visualization
@@ -363,6 +392,107 @@ class ImageProcessor(threading.Thread):
         # Convert BGR to RGB for display
         return cv2.cvtColor(depth_resized, cv2.COLOR_BGR2RGB)
 
+    def _compute_aligned_color_with_calibration(self, color_image: np.ndarray, depth_image: np.ndarray, cal) -> np.ndarray:
+        """
+        Remap `color_image` (full-res color) to the depth image grid using the provided `CameraCalibration`.
+
+        Args:
+            color_image: BGR uint8 color image (e.g., 1920x1080)
+            depth_image: uint16 or float depth image (480x848) in millimeters or meters
+            cal: CameraCalibration instance
+
+        Returns:
+            aligned_color: BGR uint8 image with same HxW as `depth_image`
+        """
+        # Ensure depth is float (meters)
+        depth_h, depth_w = depth_image.shape[:2]
+
+        # Use cache key to avoid recomputing expensive remap each frame
+        cal_file = getattr(cal, "calibration_file", None)
+        key = (cal_file, color_image.shape, depth_image.shape)
+        if key in self._calib_remap_cache:
+            map_x, map_y = self._calib_remap_cache[key]
+        else:
+            # Build projection mapping from depth pixels to color image coordinates
+            fx_d = cal.depth_intrinsics["fx"]
+            fy_d = cal.depth_intrinsics["fy"]
+            ppx_d = cal.depth_intrinsics["ppx"]
+            ppy_d = cal.depth_intrinsics["ppy"]
+
+            fx_c = cal.color_intrinsics["fx"]
+            fy_c = cal.color_intrinsics["fy"]
+            ppx_c = cal.color_intrinsics["ppx"]
+            ppy_c = cal.color_intrinsics["ppy"]
+
+            ys, xs = np.indices((depth_h, depth_w))
+            xs = xs.astype(np.float32)
+            ys = ys.astype(np.float32)
+
+            # Prepare maps for each depth pixel; depth values supplied per-frame
+            # We will compute map_x/map_y per-frame because they depend on depth values.
+            # Cache only the pixel coordinate grids and intrinsics.
+            self._calib_remap_cache[key] = (xs, ys, fx_d, fy_d, ppx_d, ppy_d, fx_c, fy_c, ppx_c, ppy_c, cal.rotation_matrix, cal.translation_vector)
+            map_x = None
+            map_y = None
+
+        # Unpack cached components if available
+        cached = self._calib_remap_cache.get(key)
+        if cached and len(cached) == 11:
+            xs, ys, fx_d, fy_d, ppx_d, ppy_d, fx_c, fy_c, ppx_c, ppy_c, R, t = cached
+
+            # depth may be in mm or meters; detect and convert to meters
+            depth_vals = depth_image.astype(np.float32)
+            # Heuristic: if max depth > 1000 -> assume mm
+            if depth_vals.max() > 1000:
+                depth_m = depth_vals / 1000.0
+            else:
+                depth_m = depth_vals
+
+            # Avoid division by zero
+            Z = depth_m
+            valid = Z > 0.001
+
+            X = (xs - ppx_d) * Z / fx_d
+            Y = (ys - ppy_d) * Z / fy_d
+
+            pts_d = np.stack([X, Y, Z], axis=-1).reshape(-1, 3)  # (H*W, 3)
+
+            # Transform to color camera frame: p_c = R @ p_d + t
+            pts_c = (R @ pts_d.T + t.reshape(3, 1)).T
+
+            # Project into color image
+            Xc = pts_c[:, 0]
+            Yc = pts_c[:, 1]
+            Zc = pts_c[:, 2]
+            u = (fx_c * (Xc / Zc) + ppx_c).astype(np.float32)
+            v = (fy_c * (Yc / Zc) + ppy_c).astype(np.float32)
+
+            map_x = u.reshape(depth_h, depth_w)
+            map_y = v.reshape(depth_h, depth_w)
+
+            # Use cv2.remap to sample color image (note color_image is BGR)
+            # cv2.remap expects maps in float32
+            try:
+                aligned = cv2.remap(
+                    color_image,
+                    map_x,
+                    map_y,
+                    interpolation=cv2.INTER_LINEAR,
+                    borderMode=cv2.BORDER_CONSTANT,
+                    borderValue=(0, 0, 0),
+                )
+            except Exception:
+                # If remap fails for any reason, fall back to resized blank
+                aligned = cv2.resize(color_image, (depth_w, depth_h), interpolation=cv2.INTER_LINEAR)
+
+            return aligned
+
+        # Fallback: resize color to depth shape
+        try:
+            return cv2.resize(color_image, (depth_w, depth_h), interpolation=cv2.INTER_LINEAR)
+        except Exception:
+            return np.zeros((depth_h, depth_w, 3), dtype=np.uint8)
+
     def run(self):
         """Main processing loop"""
         status("Image processor is running")
@@ -390,6 +520,35 @@ class ImageProcessor(threading.Thread):
 
                 # Store the raw RGB frame (before processing) for frozen frame re-processing
                 self._last_rgb_frame = image_rgb.copy()
+
+                # If using RealSense, optionally compute aligned color using saved calibration
+                if self.use_realsense and depth_frame is not None:
+                    # If caller requested applying manual calibration mapping, compute aligned color
+                    if getattr(self, "apply_calibration_enabled", False) and CALIBRATION_AVAILABLE:
+                        try:
+                            # Attempt to load calibration (from app_config or default)
+                            cal = None
+                            cal_path = getattr(app_config, "camera_calibration_file", None)
+                            if cal_path:
+                                try:
+                                    cal = CameraCalibration.load_from_json(cal_path)
+                                except Exception:
+                                    cal = try_load_calibration() if try_load_calibration else None
+                            else:
+                                cal = try_load_calibration() if try_load_calibration else None
+
+                            if cal is not None:
+                                # Compute aligned color (depth grid sized) by remapping color_image
+                                try:
+                                    aligned = self._compute_aligned_color_with_calibration(
+                                        frame, depth_frame, cal
+                                    )
+                                    self._last_aligned_color = aligned
+                                except Exception:
+                                    # Fall back to SDK aligned color if available
+                                    pass
+                        except Exception:
+                            pass
 
                 # Process with detection (labels will now be correct orientation)
                 processed_image = self.detection_manager.process_frame(

@@ -26,6 +26,12 @@ try:
 except ImportError:
     DAEMON_AVAILABLE = False
 
+# Try to detect a default calibration if present
+try:
+    from aaa_vision.calibration import try_load_calibration
+except Exception:
+    try_load_calibration = None
+
 import flet as ft
 
 # Import Flet-compatible arm controller
@@ -98,6 +104,8 @@ class FletMainWindow:
         self._analysis_in_progress = False  # Flag for background analysis thread
         self.last_exported_ply = None  # Path to the last exported PLY file
         self._overlay_points = None  # Temporary overlay points to show on frozen frame
+        # Whether to apply the depth->color calibration when aligning views
+        self.apply_calibration_enabled = bool(app_config.camera_calibration_enabled)
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
 
@@ -479,6 +487,20 @@ class FletMainWindow:
             visible=False,  # Hidden until depth is available
         )
 
+        # Calibration apply toggle (next to depth toggle) - hidden until a calibration file is configured
+        self.calib_toggle_btn = ft.IconButton(
+            icon=ft.Icons.LINK,
+            tooltip=(
+                "Apply depth->color calibration (enabled)"
+                if app_config.camera_calibration_enabled
+                else "Apply depth->color calibration (disabled)"
+            ),
+            on_click=lambda _: self._on_toggle_apply_calibration(),
+            bgcolor=("#2196F3" if app_config.camera_calibration_enabled else "#E0E0E0"),
+            icon_color=("#FFFFFF" if app_config.camera_calibration_enabled else "#424242"),
+            visible=False,
+        )
+
         # Refresh camera view button (only shown on Auto tab when frozen)
         self.refresh_camera_btn = ft.IconButton(
             icon=ft.Icons.REFRESH,
@@ -591,6 +613,13 @@ class FletMainWindow:
                                                         self.exposure_controls,
                                                     ],
                                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                                ),
+                                                # Calibration toggle (placed below the main controls for visibility)
+                                                ft.Row(
+                                                    [
+                                                        self.calib_toggle_btn,
+                                                    ],
+                                                    alignment=ft.MainAxisAlignment.START,
                                                 ),
                                                 # Status row
                                                 ft.Row(
@@ -745,9 +774,11 @@ class FletMainWindow:
                 ],
                 spacing=10,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                scroll=ft.ScrollMode.AUTO,
+                scroll=ft.ScrollMode.ALWAYS,  # Always show scrollbar for menu buttons
+                expand=True,  # Fill available space in parent
             ),
             padding=10,
+            expand=True,  # Expand to fill tab space
         )
 
         # Auto controls tab content
@@ -857,8 +888,11 @@ class FletMainWindow:
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=15,
+                scroll=ft.ScrollMode.ALWAYS,  # Always show scrollbar for menu buttons
+                expand=True,  # Fill available space in parent
             ),
             padding=20,
+            expand=True,  # Expand to fill tab space
         )
 
         # Create tabs
@@ -1055,6 +1089,18 @@ class FletMainWindow:
 
         # Show/hide depth toggle button based on depth availability
         self.depth_toggle_btn.visible = has_depth
+        # Show calibration toggle only when depth is available and a calibration file is configured
+        try:
+            has_cal_file = bool(getattr(app_config, "camera_calibration_file", None))
+            # If no explicit config file, check default calibration location
+            if not has_cal_file and try_load_calibration is not None:
+                try:
+                    has_cal_file = try_load_calibration() is not None
+                except Exception:
+                    has_cal_file = False
+        except Exception:
+            has_cal_file = False
+        self.calib_toggle_btn.visible = has_depth and has_cal_file
 
         seg_model = (
             app_config.segmentation_model.upper()
@@ -1586,8 +1632,17 @@ class FletMainWindow:
             # Create object point cloud using aligned pair
             object_pcd = processor.extract_object(depth, mask_depth, aligned_color)
 
+            # If calibration is available, transform object cloud to color frame
+            if getattr(processor, "calibration", None) is not None:
+                object_pcd = processor.apply_calibration(object_pcd)
+
             # Create scene point cloud
             scene_pcd = processor.create_from_depth(depth, aligned_color)
+
+            # If calibration is available, transform scene cloud to color frame before preprocessing
+            if getattr(processor, "calibration", None) is not None:
+                scene_pcd = processor.apply_calibration(scene_pcd)
+
             scene_pcd = processor.preprocess(scene_pcd)
 
             # Run analysis
@@ -2532,6 +2587,49 @@ class FletMainWindow:
                 self.depth_toggle_btn.bgcolor = "#E0E0E0"  # Grey 300 when showing RGB
                 self.depth_toggle_btn.icon_color = "#424242"  # Grey 800
                 self.depth_toggle_btn.tooltip = "Showing RGB view (click for Depth)"
+            self.page.update()
+
+    def _on_toggle_apply_calibration(self):
+        """Toggle applying the depth->color calibration at runtime"""
+        # Flip state
+        self.apply_calibration_enabled = not getattr(
+            self, "apply_calibration_enabled", False
+        )
+
+        # Update button appearance
+        if self.apply_calibration_enabled:
+            self.calib_toggle_btn.bgcolor = "#2196F3"
+            self.calib_toggle_btn.icon_color = "#FFFFFF"
+            self.calib_toggle_btn.tooltip = "Calibration enabled (click to disable)"
+        else:
+            self.calib_toggle_btn.bgcolor = "#E0E0E0"
+            self.calib_toggle_btn.icon_color = "#424242"
+            self.calib_toggle_btn.tooltip = "Calibration disabled (click to enable)"
+
+        # Propagate to image processor if it supports runtime toggling
+        try:
+            if getattr(self, "image_processor", None):
+                if hasattr(self.image_processor, "set_apply_calibration"):
+                    self.image_processor.set_apply_calibration(self.apply_calibration_enabled)
+                else:
+                    setattr(self.image_processor, "apply_calibration_enabled", self.apply_calibration_enabled)
+        except Exception:
+            pass
+
+        # Persist flag in app_config and user config file
+        try:
+            app_config.camera_calibration_enabled = bool(self.apply_calibration_enabled)
+            # Save to config.yaml so the preference persists across runs
+            try:
+                from aaa_core.config.settings import save_camera_config
+
+                save_camera_config(enabled=self.apply_calibration_enabled)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        if getattr(self, "_ui_built", False):
             self.page.update()
 
     def _on_exposure_change(self, e):

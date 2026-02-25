@@ -81,6 +81,10 @@ class AppConfig:
     default_camera: int = 0
     skip_cameras: List[str] = field(default_factory=list)  # Camera name patterns to skip
 
+    # Camera calibration settings (depth-to-color alignment)
+    camera_calibration_file: Optional[str] = None  # Path to calibration_extrinsic.json
+    camera_calibration_enabled: bool = True  # Auto-enable if calibration file exists
+
     # Video display settings
     display_width: int = 800
     display_height: int = 650
@@ -192,6 +196,47 @@ def apply_user_config(config: AppConfig, user_config: dict):
             config.default_camera = camera['default_camera']
         if 'skip_cameras' in camera:
             config.skip_cameras = camera['skip_cameras'] or []
+
+
+def save_camera_config(enabled: Optional[bool] = None, calibration_file: Optional[str] = None):
+    """
+    Save camera-related settings to the user config file under the 'camera' section.
+
+    Args:
+        enabled: Optional boolean to set 'camera_calibration_enabled'
+        calibration_file: Optional path to set 'camera_calibration_file'
+    """
+    if not YAML_AVAILABLE:
+        return
+
+    config_path = get_config_path()
+
+    # Load existing config if present
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                user_config = yaml.safe_load(f) or {}
+        except Exception:
+            user_config = {}
+    else:
+        user_config = {}
+
+    if 'camera' not in user_config:
+        user_config['camera'] = {}
+
+    if enabled is not None:
+        user_config['camera']['camera_calibration_enabled'] = bool(enabled)
+
+    if calibration_file is not None:
+        user_config['camera']['camera_calibration_file'] = calibration_file
+
+    # Write back
+    try:
+        with open(config_path, 'w') as f:
+            yaml.dump(user_config, f, default_flow_style=False, sort_keys=False)
+        print(f"ℹ Saved camera config to {config_path}")
+    except Exception as e:
+        error(f"Error saving camera config to {config_path}: {e}")
 
     # Detection settings
     if 'detection' in user_config:
