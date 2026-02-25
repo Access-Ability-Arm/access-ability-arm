@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import numpy as np
 from aaa_vision.detection_manager import DetectionManager
 
-from aaa_core.config.console import error, status, success
+from aaa_core.config.console import error, status, success, warning
 from aaa_core.daemon.camera_client_socket import CameraClientSocket
 
 
@@ -100,7 +100,7 @@ class DaemonImageProcessor(threading.Thread):
                 if rgb_frame is not None:
                     frame_count += 1
                     if frame_count % 30 == 0:  # Debug every 30 frames
-                        print(f"[DaemonImageProcessor] Received frame {frame_count}")
+                        status(f"[DaemonImageProcessor] Received frame {frame_count}")
 
                     # Convert BGR to RGB (RealSense provides BGR)
                     image_rgb = rgb_frame[:, :, ::-1].copy()
@@ -139,10 +139,10 @@ class DaemonImageProcessor(threading.Thread):
                         self.callback(processed_frame)
                     else:
                         if frame_count == 1:
-                            print("[DaemonImageProcessor] WARNING: No callback set!")
+                            warning("[DaemonImageProcessor] No callback set!")
                 else:
                     if frame_count == 0:
-                        print("[DaemonImageProcessor] Waiting for first frame...")
+                        status("[DaemonImageProcessor] Waiting for first frame...")
                     time.sleep(0.1)  # Wait longer if no frame
 
                 # Sleep to target ~30 fps
@@ -283,6 +283,6 @@ class DaemonImageProcessor(threading.Thread):
         """Clear brightness history buffer (useful after exposure changes)"""
         with self._brightness_lock:
             self._brightness_history.clear()
-        print(
-            "✓ Brightness history cleared (waiting for new frames with updated exposure)"
+        success(
+            "Brightness history cleared (waiting for new frames with updated exposure)"
         )

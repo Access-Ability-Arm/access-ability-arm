@@ -11,7 +11,17 @@ Features:
 - Cross-platform (desktop, web, mobile)
 """
 
+import logging
 import warnings
+
+# Configure file logging before any imports that trigger console output
+from aaa_core.config.logging_config import setup_logging
+
+_log_file = setup_logging()
+
+# Reduce Flet log noise (DEBUG is extremely verbose)
+logging.getLogger("flet").setLevel(logging.INFO)
+logging.getLogger("flet_desktop").setLevel(logging.INFO)
 
 import flet as ft
 
@@ -152,6 +162,8 @@ if __name__ == "__main__":
 
     if app_config.realsense_available:
         _check_realsense_conflicts()
+
+    info(f"Log file: {_log_file}")
 
     # Run Flet app
     if args.web:

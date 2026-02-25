@@ -78,14 +78,14 @@ class CameraClientSocket:
             aligned_color is None if daemon uses legacy 3-segment protocol.
         """
         if not self.connected:
-            print("[CameraClient] Not connected!")
+            error("[CameraClient] Not connected!")
             return None, None, None, None
 
         try:
             # New 4-segment protocol: 16-byte header
             header_data = self._recv_exactly(16)
             if not header_data:
-                print("[CameraClient] Failed to receive header")
+                error("[CameraClient] Failed to receive header")
                 return None, None, None, None
 
             rgb_size, depth_size, aligned_rgb_size, metadata_size = struct.unpack(

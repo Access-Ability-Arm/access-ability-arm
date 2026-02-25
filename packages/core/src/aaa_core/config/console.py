@@ -3,6 +3,18 @@ Console output formatting utilities
 Provides colored output for better readability
 """
 
+import logging
+import re
+import sys
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_logger = logging.getLogger("aaa_core.console")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from a string."""
+    return _ANSI_RE.sub("", text)
+
 
 class Colors:
     """ANSI color codes for terminal output"""
@@ -64,31 +76,37 @@ class Colors:
 def success(message):
     """Print success message in green with checkmark"""
     _safe_print(f"{Colors.BRIGHT_GREEN}✓{Colors.RESET} {Colors.GREEN}{message}{Colors.RESET}")
+    _logger.info("[OK] %s", _strip_ansi(str(message)))
 
 
 def error(message):
     """Print error message in red with X"""
     _safe_print(f"{Colors.BRIGHT_RED}✗{Colors.RESET} {Colors.RED}{message}{Colors.RESET}")
+    _logger.error("[ERR] %s", _strip_ansi(str(message)))
 
 
 def warning(message):
     """Print warning message in yellow with warning symbol"""
     _safe_print(f"{Colors.BRIGHT_YELLOW}⚠{Colors.RESET} {Colors.YELLOW}{message}{Colors.RESET}")
+    _logger.warning("[WARN] %s", _strip_ansi(str(message)))
 
 
 def info(message):
     """Print info message in cyan"""
     _safe_print(f"{Colors.BRIGHT_CYAN}ℹ{Colors.RESET} {Colors.CYAN}{message}{Colors.RESET}")
+    _logger.info("[INFO] %s", _strip_ansi(str(message)))
 
 
 def header(message):
     """Print header message in bold bright white"""
     _safe_print(f"{Colors.BOLD}{Colors.BRIGHT_WHITE}{message}{Colors.RESET}")
+    _logger.info("[HDR] %s", _strip_ansi(str(message)))
 
 
 def status(message):
     """Print status message in blue"""
     _safe_print(f"{Colors.BLUE}{message}{Colors.RESET}")
+    _logger.info("[STATUS] %s", _strip_ansi(str(message)))
 
 
 def underline(text):
@@ -98,8 +116,6 @@ def underline(text):
 
 
 # Auto-disable colors if not in a TTY
-import sys  # noqa: E402
-
 if not sys.stdout.isatty():
     Colors.disable()
 
