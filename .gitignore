@@ -37,6 +37,10 @@ Thumbs.db
 # User configuration (use config/config.yaml.template as base)
 config/config.yaml
 
+# Machine-specific camera calibration files
+config/calibration_*.json
+config/my_calibration.json
+
 # Model files (large binary files) - stored in data/models/
 data/models/*.pt
 *.pt
