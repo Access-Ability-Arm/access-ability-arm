@@ -1896,7 +1896,9 @@ class FletMainWindow:
         if is_depth_view and getattr(self, "frozen_depth_frame", None) is not None:
             try:
                 depth_img = self.image_processor._colorize_depth(
-                    self.frozen_depth_frame, self.frozen_raw_frame.shape
+                    self.frozen_depth_frame,
+                    aligned_color=self.frozen_aligned_color,
+                    display_shape=self.frozen_raw_frame.shape,
                 )
                 # Draw overlay points (green) and optionally highlight selected object's center
                 overlay_img = depth_img.copy()

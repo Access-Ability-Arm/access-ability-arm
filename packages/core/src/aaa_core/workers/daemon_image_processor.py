@@ -131,7 +131,9 @@ class DaemonImageProcessor(threading.Thread):
                     # If depth visualization is enabled, show colorized depth instead
                     if self.show_depth_visualization and depth_frame is not None:
                         processed_frame = self._colorize_depth(
-                            depth_frame, image_rgb.shape
+                            depth_frame,
+                            aligned_color=self._last_aligned_color,
+                            display_shape=image_rgb.shape,
                         )
 
                     # Call callback with processed frame
@@ -188,16 +190,25 @@ class DaemonImageProcessor(threading.Thread):
         status(f"Switched to {view_mode} view")
         return self.show_depth_visualization
 
-    def _colorize_depth(self, depth_frame: np.ndarray, rgb_shape: tuple) -> np.ndarray:
+    def _colorize_depth(
+        self,
+        depth_frame: np.ndarray,
+        aligned_color: np.ndarray = None,
+        display_shape: tuple = None,
+    ) -> np.ndarray:
         """
-        Convert depth frame to colorized visualization
+        Convert depth frame to colorized visualization, optionally blended
+        with the SDK-aligned color frame for pixel-accurate overlay.
 
         Args:
-            depth_frame: Raw depth frame (uint16, values in mm)
-            rgb_shape: Shape of RGB frame to match (height, width, channels)
+            depth_frame: Raw depth frame (uint16, values in mm) at native 848x480
+            aligned_color: SDK-aligned color frame (BGR, same resolution as depth).
+                If provided, blended with the colorized depth for context.
+            display_shape: Target display shape (height, width, ...) to upscale to.
+                If None, returns at native depth resolution.
 
         Returns:
-            Colorized depth image as RGB numpy array
+            Colorized (and optionally blended) depth image as RGB numpy array
         """
         import cv2
 
@@ -208,16 +219,21 @@ class DaemonImageProcessor(threading.Thread):
         # Apply colormap (TURBO gives good depth perception)
         depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
 
-        # Resize to match RGB frame dimensions
-        target_height, target_width = rgb_shape[:2]
-        depth_resized = cv2.resize(
-            depth_colorized,
-            (target_width, target_height),
-            interpolation=cv2.INTER_LINEAR,
-        )
+        # Blend with SDK-aligned color at native depth resolution (pixel-accurate)
+        if aligned_color is not None and aligned_color.shape[:2] == depth_frame.shape[:2]:
+            blended = cv2.addWeighted(aligned_color, 0.4, depth_colorized, 0.6, 0)
+        else:
+            blended = depth_colorized
 
         # Convert BGR to RGB for display
-        return cv2.cvtColor(depth_resized, cv2.COLOR_BGR2RGB)
+        result = cv2.cvtColor(blended, cv2.COLOR_BGR2RGB)
+
+        # Upscale to display size if requested
+        if display_shape is not None:
+            h, w = display_shape[:2]
+            result = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        return result
 
     def toggle_detection_mode(self):
         """Toggle detection mode"""
