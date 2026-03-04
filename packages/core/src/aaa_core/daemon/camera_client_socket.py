@@ -35,9 +35,11 @@ class CameraClientSocket:
         # Updated to match new camera configuration:
         # RGB: 1920x1080 @ 30 FPS, Depth: 848x480 @ 30 FPS
         # Aligned RGB: 848x480 @ 30 FPS (pixel-aligned to depth)
+        # Display depth: 1920x1080 (depth aligned to color FOV for display)
         self.rgb_shape = (1080, 1920, 3)
         self.depth_shape = (480, 848)
         self.aligned_color_shape = (480, 848, 3)
+        self.display_depth_shape = (1080, 1920)
         self.connected = False
 
         self._connect()
@@ -73,49 +75,58 @@ class CameraClientSocket:
         Read latest frame from daemon
 
         Returns:
-            Tuple of (rgb_frame, depth_frame, metadata, aligned_color)
-            or (None, None, None, None) if error.
-            aligned_color is None if daemon uses legacy 3-segment protocol.
+            Tuple of (rgb_frame, depth_frame, metadata, aligned_color, display_depth)
+            or (None, None, None, None, None) if error.
         """
         if not self.connected:
             error("[CameraClient] Not connected!")
-            return None, None, None, None
+            return None, None, None, None, None
 
         try:
-            # New 4-segment protocol: 16-byte header
-            header_data = self._recv_exactly(16)
+            # 5-segment protocol: 20-byte header
+            header_data = self._recv_exactly(20)
             if not header_data:
                 error("[CameraClient] Failed to receive header")
-                return None, None, None, None
+                return None, None, None, None, None
 
-            rgb_size, depth_size, aligned_rgb_size, metadata_size = struct.unpack(
-                "IIII", header_data
+            rgb_size, depth_size, aligned_rgb_size, display_depth_size, metadata_size = (
+                struct.unpack("IIIII", header_data)
             )
 
             # Receive RGB frame
             rgb_data = self._recv_exactly(rgb_size)
             if not rgb_data:
-                return None, None, None, None
+                return None, None, None, None, None
 
             # Receive depth frame
             depth_data = self._recv_exactly(depth_size)
             if not depth_data:
-                return None, None, None, None
+                return None, None, None, None, None
 
             # Receive aligned color frame (if present)
             aligned_color_frame = None
             if aligned_rgb_size > 0:
                 aligned_color_data = self._recv_exactly(aligned_rgb_size)
                 if not aligned_color_data:
-                    return None, None, None, None
+                    return None, None, None, None, None
                 aligned_color_frame = np.frombuffer(
                     aligned_color_data, dtype=np.uint8
                 ).reshape(self.aligned_color_shape)
 
+            # Receive display depth frame (if present)
+            display_depth_frame = None
+            if display_depth_size > 0:
+                display_depth_data = self._recv_exactly(display_depth_size)
+                if not display_depth_data:
+                    return None, None, None, None, None
+                display_depth_frame = np.frombuffer(
+                    display_depth_data, dtype=np.uint16
+                ).reshape(self.display_depth_shape)
+
             # Receive metadata
             metadata_data = self._recv_exactly(metadata_size)
             if not metadata_data:
-                return None, None, None, None
+                return None, None, None, None, None
 
             # Reconstruct frames
             rgb_frame = np.frombuffer(rgb_data, dtype=np.uint8).reshape(self.rgb_shape)
@@ -126,15 +137,15 @@ class CameraClientSocket:
             # Parse metadata
             metadata = json.loads(metadata_data.decode("utf-8"))
 
-            return rgb_frame, depth_frame, metadata, aligned_color_frame
+            return rgb_frame, depth_frame, metadata, aligned_color_frame, display_depth_frame
 
         except socket.timeout:
             # Timeout waiting for frame (daemon might be slow)
-            return None, None, None, None
+            return None, None, None, None, None
         except Exception as e:
             error(f"Error receiving frame: {e}")
             self.connected = False
-            return None, None, None, None
+            return None, None, None, None, None
 
     def _recv_exactly(self, size):
         """Receive exactly size bytes from socket"""

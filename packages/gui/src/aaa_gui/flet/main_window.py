@@ -94,6 +94,7 @@ class FletMainWindow:
             None  # Store depth frame at freeze time (if available)
         )
         self.frozen_aligned_color = None  # Store aligned color (848x480) at freeze time
+        self.frozen_display_depth = None  # Store display depth (1920x1080) at freeze time
         self.object_analysis = None  # ObjectAnalysis result for selected object
         self._analysis_in_progress = False  # Flag for background analysis thread
         self.last_exported_ply = None  # Path to the last exported PLY file
@@ -771,36 +772,6 @@ class FletMainWindow:
                     ),
                     # Object selection buttons (shown when frozen)
                     self.object_buttons_row,
-                    # Execute button
-                    ft.ElevatedButton(
-                        text="Execute",
-                        icon=ft.Icons.PLAY_ARROW,
-                        on_click=lambda e: self._on_execute(),
-                        bgcolor="#4CAF50",  # Green 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    # Stop button
-                    ft.ElevatedButton(
-                        text="Stop",
-                        icon=ft.Icons.STOP,
-                        on_click=lambda e: self._on_stop(),
-                        bgcolor="#F44336",  # Red 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    # Home button
-                    ft.ElevatedButton(
-                        text="Home",
-                        icon=ft.Icons.HOME,
-                        on_click=lambda e: self._on_home(),
-                        bgcolor="#FF9800",  # Orange 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
                     # Export point cloud for selected object
                     ft.ElevatedButton(
                         text="Export PointCloud",
@@ -817,24 +788,6 @@ class FletMainWindow:
                         icon=ft.Icons.CLOUD_DOWNLOAD,
                         on_click=lambda e: self._export_full_pointcloud(e),
                         bgcolor="#283593",  # Indigo 800
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    ft.ElevatedButton(
-                        text="Export PLY",
-                        icon=ft.Icons.FILE_DOWNLOAD,
-                        on_click=lambda e: self._export_selected_object_ply(e),
-                        bgcolor="#009688",  # Teal 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    ft.ElevatedButton(
-                        text="Preview PLY",
-                        icon=ft.Icons.OPEN_IN_NEW,
-                        on_click=lambda e: self._preview_selected_object_ply(e),
-                        bgcolor="#607D8B",  # Blue Grey 500
                         color="#FFFFFF",
                         width=135,
                         height=38,
@@ -1899,6 +1852,7 @@ class FletMainWindow:
                     self.frozen_depth_frame,
                     aligned_color=self.frozen_aligned_color,
                     display_shape=self.frozen_raw_frame.shape,
+                    display_depth=getattr(self, "frozen_display_depth", None),
                 )
                 # Draw overlay points (green) and optionally highlight selected object's center
                 overlay_img = depth_img.copy()
@@ -2278,6 +2232,7 @@ class FletMainWindow:
         self.frozen_detections = None
         self.frozen_depth_frame = None
         self.frozen_aligned_color = None
+        self.frozen_display_depth = None
         self._clear_object_buttons()
         print("Video unfrozen - showing live camera feed")
 
@@ -2758,6 +2713,12 @@ class FletMainWindow:
                 )
                 if self.frozen_aligned_color is not None:
                     self.frozen_aligned_color = self.frozen_aligned_color.copy()
+                # Copy display depth frame (1920x1080, aligned to color FOV)
+                self.frozen_display_depth = getattr(
+                    self.image_processor, "_last_display_depth", None
+                )
+                if self.frozen_display_depth is not None:
+                    self.frozen_display_depth = self.frozen_display_depth.copy()
                 self.video_frozen = True
                 print("Find Objects: Video frozen on detected objects")
 
@@ -2792,6 +2753,12 @@ class FletMainWindow:
                 )
                 if self.frozen_aligned_color is not None:
                     self.frozen_aligned_color = self.frozen_aligned_color.copy()
+                # Copy display depth frame (1920x1080, aligned to color FOV)
+                self.frozen_display_depth = getattr(
+                    self.image_processor, "_last_display_depth", None
+                )
+                if self.frozen_display_depth is not None:
+                    self.frozen_display_depth = self.frozen_display_depth.copy()
                 self.video_frozen = True
                 print("Find Objects: Video frozen on new frame")
 

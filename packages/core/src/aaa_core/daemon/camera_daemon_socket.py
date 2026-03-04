@@ -34,10 +34,12 @@ class CameraDaemonSocket:
     - Multiple client connections
 
     Frame Format (sent over socket):
-    - Header: [rgb_size: uint32, depth_size: uint32, aligned_rgb_size: uint32, metadata_size: uint32]
+    - Header: [rgb_size: uint32, depth_size: uint32, aligned_rgb_size: uint32,
+               display_depth_size: uint32, metadata_size: uint32]
     - RGB data: rgb_size bytes (1080x1920x3 uint8, BGR from RealSense)
     - Depth data: depth_size bytes (480x848 uint16)
     - Aligned RGB data: aligned_rgb_size bytes (480x848x3 uint8, BGR, pixel-aligned to depth)
+    - Display depth data: display_depth_size bytes (1080x1920 uint16, depth aligned to color FOV)
     - Metadata: metadata_size bytes (JSON)
     """
 
@@ -74,6 +76,7 @@ class CameraDaemonSocket:
         self.latest_rgb = None
         self.latest_depth = None
         self.latest_aligned_color = None
+        self.latest_display_depth = None
         self.latest_metadata = {}
         self.frame_lock = threading.Lock()
 
@@ -84,10 +87,15 @@ class CameraDaemonSocket:
         status("Camera daemon initialized (socket mode)")
 
     def _signal_handler(self, signum, frame):
-        """Handle shutdown signals gracefully"""
+        """Handle shutdown signals gracefully.
+
+        Uses os._exit() instead of sys.exit() to avoid a segfault caused by
+        librealsense's polling_device_watcher thread racing with Python's
+        object destructor cleanup on macOS ARM64.
+        """
         print(f"\nReceived signal {signum}, shutting down...")
         self.stop()
-        sys.exit(0)
+        os._exit(0)
 
     def start(self):
         """Initialize camera and socket, start capture loop"""
@@ -133,13 +141,14 @@ class CameraDaemonSocket:
         status("Stopping camera daemon...")
         self.running = False
 
-        # Stop camera
+        # Stop camera - explicitly stop pipeline before letting Python
+        # garbage-collect, to avoid librealsense device_watcher race condition
         if self.rs_camera:
             try:
-                # RealSense doesn't have explicit stop in our wrapper
-                self.rs_camera = None
+                self.rs_camera.release()
             except Exception as e:
                 error(f"Error stopping camera: {e}")
+            self.rs_camera = None
 
         # Close all client connections
         with self.client_lock:
@@ -309,7 +318,7 @@ class CameraDaemonSocket:
         while self.running:
             try:
                 # Capture frame from RealSense
-                ret, rgb_frame, depth_frame, aligned_color = (
+                ret, rgb_frame, depth_frame, aligned_color, display_depth = (
                     self.rs_camera.get_frame_stream()
                 )
 
@@ -338,11 +347,14 @@ class CameraDaemonSocket:
                         self.latest_aligned_color = (
                             aligned_color.copy() if aligned_color is not None else None
                         )
+                        self.latest_display_depth = (
+                            display_depth.copy() if display_depth is not None else None
+                        )
                         self.latest_metadata = metadata
 
                     # Send to all connected clients
                     self._broadcast_frame(
-                        rgb_frame, depth_frame, aligned_color, metadata
+                        rgb_frame, depth_frame, aligned_color, display_depth, metadata
                     )
 
                     # Status update every 5 seconds
@@ -359,7 +371,7 @@ class CameraDaemonSocket:
                 traceback.print_exc()
                 time.sleep(0.1)  # Avoid busy loop on error
 
-    def _broadcast_frame(self, rgb_frame, depth_frame, aligned_color, metadata):
+    def _broadcast_frame(self, rgb_frame, depth_frame, aligned_color, display_depth, metadata):
         """Send frame to all connected clients"""
         # Serialize frame data
         rgb_bytes = rgb_frame.tobytes()
@@ -367,20 +379,25 @@ class CameraDaemonSocket:
         aligned_color_bytes = (
             aligned_color.tobytes() if aligned_color is not None else b""
         )
+        display_depth_bytes = (
+            display_depth.tobytes() if display_depth is not None else b""
+        )
         metadata_bytes = json.dumps(metadata).encode("utf-8")
 
-        # Create header: [rgb_size, depth_size, aligned_rgb_size, metadata_size]
+        # Create header: [rgb_size, depth_size, aligned_rgb_size, display_depth_size, metadata_size]
         header = struct.pack(
-            "IIII",
+            "IIIII",
             len(rgb_bytes),
             len(depth_bytes),
             len(aligned_color_bytes),
+            len(display_depth_bytes),
             len(metadata_bytes),
         )
 
         # Combine into single message
         message = (
-            header + rgb_bytes + depth_bytes + aligned_color_bytes + metadata_bytes
+            header + rgb_bytes + depth_bytes + aligned_color_bytes
+            + display_depth_bytes + metadata_bytes
         )
 
         # Send to all clients (remove disconnected ones)

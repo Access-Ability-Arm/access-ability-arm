@@ -62,6 +62,9 @@ class ImageProcessor(threading.Thread):
         # Store last aligned color frame (848x480, pixel-aligned to depth)
         self._last_aligned_color = None
 
+        # Store last display depth frame (1920x1080, aligned to color FOV for display)
+        self._last_display_depth = None
+
         # Horizontal flip (mirror) for front-facing cameras
         self.flip_horizontal = False
         self.current_camera_name = None
@@ -339,38 +342,44 @@ class ImageProcessor(threading.Thread):
         depth_frame: np.ndarray,
         aligned_color: np.ndarray = None,
         display_shape: tuple = None,
+        display_depth: np.ndarray = None,
     ) -> np.ndarray:
         """
-        Convert depth frame to colorized visualization, optionally blended
-        with the SDK-aligned color frame for pixel-accurate overlay.
+        Convert depth frame to colorized visualization.
+
+        If display_depth (1920x1080, aligned to color FOV) is provided, it is
+        used directly — no upscaling needed and the FOV matches the RGB view.
 
         Args:
             depth_frame: Raw depth frame (uint16, values in mm) at native 848x480
             aligned_color: SDK-aligned color frame (BGR, same resolution as depth).
-                If provided, blended with the colorized depth for context.
-            display_shape: Target display shape (height, width, ...) to upscale to.
-                If None, returns at native depth resolution.
+                Used only as fallback when display_depth is not available.
+            display_shape: Target display shape — fallback upscale target when
+                display_depth is not available.
+            display_depth: Depth aligned to color camera FOV (uint16, mm) at 1920x1080.
 
         Returns:
-            Colorized (and optionally blended) depth image as RGB numpy array
+            Colorized depth image as RGB numpy array at display resolution
         """
-        # Normalize depth to 0-255 range (clip at 5000mm = 5m for better contrast)
+        if display_depth is not None:
+            # Use display_depth directly — already at 1920x1080 in color FOV
+            depth_clipped = np.clip(display_depth, 0, 5000)
+            depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
+            depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
+            return cv2.cvtColor(depth_colorized, cv2.COLOR_BGR2RGB)
+
+        # Fallback: original path using native depth + upscale
         depth_clipped = np.clip(depth_frame, 0, 5000)
         depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
-
-        # Apply colormap (TURBO gives good depth perception)
         depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
 
-        # Blend with SDK-aligned color at native depth resolution (pixel-accurate)
         if aligned_color is not None and aligned_color.shape[:2] == depth_frame.shape[:2]:
             blended = cv2.addWeighted(aligned_color, 0.4, depth_colorized, 0.6, 0)
         else:
             blended = depth_colorized
 
-        # Convert BGR to RGB for display
         result = cv2.cvtColor(blended, cv2.COLOR_BGR2RGB)
 
-        # Upscale to display size if requested
         if display_shape is not None:
             h, w = display_shape[:2]
             result = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -400,6 +409,8 @@ class ImageProcessor(threading.Thread):
                         depth_frame = cv2.flip(depth_frame, 1)
                     if self._last_aligned_color is not None:
                         self._last_aligned_color = cv2.flip(self._last_aligned_color, 1)
+                    if self._last_display_depth is not None:
+                        self._last_display_depth = cv2.flip(self._last_display_depth, 1)
 
                 # Convert to RGB
                 image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -424,6 +435,7 @@ class ImageProcessor(threading.Thread):
                         depth_frame,
                         aligned_color=self._last_aligned_color,
                         display_shape=image_rgb.shape,
+                        display_depth=self._last_display_depth,
                     )
 
                 # Call callback if provided
@@ -444,9 +456,12 @@ class ImageProcessor(threading.Thread):
         depth_frame = None
 
         if self.use_realsense and self.rs_camera:
-            ret, frame, depth_frame, aligned_color = self.rs_camera.get_frame_stream()
+            ret, frame, depth_frame, aligned_color, display_depth = (
+                self.rs_camera.get_frame_stream()
+            )
             self.depth_frame = depth_frame
             self._last_aligned_color = aligned_color
+            self._last_display_depth = display_depth
         elif self.camera:
             ret, frame = self.camera.read()
 

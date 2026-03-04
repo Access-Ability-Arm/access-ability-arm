@@ -66,13 +66,14 @@ def main():
         print("\n")
         status("Shutting down on user request...")
         daemon.stop()
+        os._exit(0)
     except Exception as e:
         print("\n")
         error(f"Fatal error: {e}")
         import traceback
         traceback.print_exc()
         daemon.stop()
-        sys.exit(1)
+        os._exit(1)
 
 
 if __name__ == "__main__":

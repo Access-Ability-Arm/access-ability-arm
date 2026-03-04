@@ -10,17 +10,11 @@ class RealsenseCamera:
         # Configure depth and color streams
         status("Loading Intel Realsense Camera")
 
-        # Report USB connection type and device info
-        self._report_device_info()
-
         self.pipeline = rs.pipeline()
 
         config = rs.config()
         # RGB: 1080p for better segmentation detail
         rgb_width, rgb_height, rgb_fps = 1920, 1080, 30
-        config.enable_stream(
-            rs.stream.color, rgb_width, rgb_height, rs.format.bgr8, rgb_fps
-        )
         config.enable_stream(
             rs.stream.color, rgb_width, rgb_height, rs.format.bgr8, rgb_fps
         )
@@ -41,6 +35,11 @@ class RealsenseCamera:
 
         # Store profile for later use
         self.profile = profile
+
+        # Report device info from the active pipeline (avoids creating a
+        # separate rs.context whose background device-watcher thread can
+        # race with the pipeline and segfault on macOS/libusb)
+        self._report_device_info(profile)
 
         # Verify actual stream configurations
         for stream_profile in profile.get_streams():
@@ -120,15 +119,21 @@ class RealsenseCamera:
         # The 1920x1080 RGB feed is still returned separately for video display.
         self.align = rs.align(rs.stream.depth)
 
+        # Align depth TO color so display depth shares the 1920x1080 color FOV.
+        # This eliminates the zoom mismatch when toggling between RGB and depth views
+        # (depth sensor has wider FOV: 86x57 deg vs color's 69x42 deg).
+        self.align_to_color = rs.align(rs.stream.color)
+
     def get_frame_stream(self):
         """
         Capture a coherent set of frames from RealSense.
 
         Returns:
-            Tuple of (success, color_1080p, depth_480p, aligned_color_480p)
+            Tuple of (success, color_1080p, depth_480p, aligned_color_480p, display_depth_1080p)
             - color_1080p: BGR uint8 (1080, 1920, 3) for video display
             - depth_480p: uint16 (480, 848) native depth in mm
             - aligned_color_480p: BGR uint8 (480, 848, 3) pixel-aligned to depth
+            - display_depth_1080p: uint16 (1080, 1920) depth aligned to color FOV for display
         """
         try:
             # Use longer timeout (10 seconds) to handle exposure adjustments
@@ -144,7 +149,7 @@ class RealsenseCamera:
                     "Impossible to get the frame, make sure that the Intel "
                     "Realsense camera is correctly connected"
                 )
-                return False, None, None, None
+                return False, None, None, None, None
 
             # Produce aligned color (848x480) that shares the depth grid
             aligned_color_frame = None
@@ -152,10 +157,16 @@ class RealsenseCamera:
                 aligned_frames = self.align.process(frames)
                 aligned_color_frame = aligned_frames.get_color_frame()
 
+            # Produce display depth (1920x1080) aligned to color camera FOV
+            display_depth_frame = None
+            if self.align_to_color:
+                color_aligned_frames = self.align_to_color.process(frames)
+                display_depth_frame = color_aligned_frames.get_depth_frame()
+
         except RuntimeError as e:
             # Timeout or other runtime error
             error(f"RealSense frame timeout: {e}")
-            return False, None, None, None
+            return False, None, None, None, None
 
         # Apply filter to fill the Holes in the depth image
         spatial = rs.spatial_filter()
@@ -165,6 +176,16 @@ class RealsenseCamera:
         hole_filling = rs.hole_filling_filter()
         filled_depth = hole_filling.process(filtered_depth)
 
+        # Apply same filters to display depth for visual quality
+        display_depth_image = None
+        if display_depth_frame:
+            display_spatial = rs.spatial_filter()
+            display_spatial.set_option(rs.option.holes_fill, 3)
+            filtered_display = display_spatial.process(display_depth_frame)
+            display_hole_filling = rs.hole_filling_filter()
+            filled_display = display_hole_filling.process(filtered_display)
+            display_depth_image = np.asanyarray(filled_display.get_data())
+
         # Convert images to numpy arrays
         depth_image = np.asanyarray(filled_depth.get_data())
         color_image = np.asanyarray(color_frame.get_data())
@@ -173,7 +194,7 @@ class RealsenseCamera:
         if aligned_color_frame:
             aligned_color_image = np.asanyarray(aligned_color_frame.get_data())
 
-        return True, color_image, depth_image, aligned_color_image
+        return True, color_image, depth_image, aligned_color_image, display_depth_image
 
     def set_exposure(self, exposure_value: int) -> bool:
         """
@@ -208,39 +229,38 @@ class RealsenseCamera:
             error(f"Failed to set exposure: {e}")
             return False
 
-    def _report_device_info(self):
-        """Report RealSense device info including USB connection type"""
+    def _report_device_info(self, profile):
+        """Report RealSense device info from the active pipeline profile.
+
+        Uses the already-running pipeline's device rather than creating a
+        separate rs.context(), which avoids a race condition between the
+        context's background device-watcher thread and libusb on macOS
+        that causes a segfault (SIGSEGV in pthread_mutex_lock).
+        """
         try:
-            ctx = rs.context()
-            devices = ctx.query_devices()
+            dev = profile.get_device()
+            name = dev.get_info(rs.camera_info.name)
+            serial = dev.get_info(rs.camera_info.serial_number)
+            firmware = dev.get_info(rs.camera_info.firmware_version)
 
-            if len(devices) == 0:
-                warning("No RealSense devices found")
-                return
+            # Get USB type - critical for performance
+            try:
+                usb_type = dev.get_info(rs.camera_info.usb_type_descriptor)
+            except Exception:
+                usb_type = "unknown"
 
-            for dev in devices:
-                name = dev.get_info(rs.camera_info.name)
-                serial = dev.get_info(rs.camera_info.serial_number)
-                firmware = dev.get_info(rs.camera_info.firmware_version)
+            # Use print() directly to ensure output in daemon context
+            print(f"  Device: {name}")
+            print(f"  Serial: {serial}")
+            print(f"  Firmware: {firmware}")
 
-                # Get USB type - critical for performance
-                try:
-                    usb_type = dev.get_info(rs.camera_info.usb_type_descriptor)
-                except Exception:
-                    usb_type = "unknown"
-
-                # Use print() directly to ensure output in daemon context
-                print(f"  Device: {name}")
-                print(f"  Serial: {serial}")
-                print(f"  Firmware: {firmware}")
-
-                # Report USB type with warning if USB 2.x
-                if usb_type.startswith("2"):
-                    print(f"  ⚠ USB Type: {usb_type} (USB 2.0 - LIMITED PERFORMANCE!)")
-                    print("  ⚠ Tip: Unplug and replug cable with quick, firm insertion")
-                    print("  ⚠ See docs/realsense-setup.md for cable troubleshooting")
-                else:
-                    print(f"  ✓ USB Type: {usb_type} (USB 3.0 - Good)")
+            # Report USB type with warning if USB 2.x
+            if usb_type.startswith("2"):
+                print(f"  ⚠ USB Type: {usb_type} (USB 2.0 - LIMITED PERFORMANCE!)")
+                print("  ⚠ Tip: Unplug and replug cable with quick, firm insertion")
+                print("  ⚠ See docs/realsense-setup.md for cable troubleshooting")
+            else:
+                print(f"  ✓ USB Type: {usb_type} (USB 3.0 - Good)")
 
         except Exception as e:
             status(f"  Could not query device info: {e}")
