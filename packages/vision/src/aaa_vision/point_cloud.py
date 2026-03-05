@@ -332,6 +332,254 @@ class PointCloudProcessor:
 
         return pcd
 
+    def reconstruct_mesh(
+        self,
+        pcd: o3d.geometry.PointCloud,
+        method: str = "poisson",
+        depth: int = 8,
+        density_threshold_quantile: float = 0.05,
+    ) -> o3d.geometry.TriangleMesh:
+        """
+        Reconstruct a triangle mesh from a point cloud to fill gaps.
+
+        Args:
+            pcd: Input point cloud (must have normals)
+            method: "poisson" (watertight, fills holes) or "ball_pivoting"
+            depth: Octree depth for Poisson reconstruction (higher = more detail)
+            density_threshold_quantile: Remove low-density vertices (Poisson artifacts).
+                Vertices with density below this quantile are removed.
+
+        Returns:
+            Triangle mesh
+        """
+        if len(pcd.points) < 10:
+            return o3d.geometry.TriangleMesh()
+
+        # Ensure normals exist
+        if not pcd.has_normals():
+            pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamHybrid(
+                    radius=0.02, max_nn=30
+                )
+            )
+            pcd.orient_normals_towards_camera_location(camera_location=[0, 0, 0])
+
+        if method == "poisson":
+            # Suppress non-fatal "Failed to close loop" warnings from Poisson solver
+            prev_verbosity = o3d.utility.get_verbosity_level()
+            o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Warning)
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                pcd, depth=depth, linear_fit=True
+            )
+            o3d.utility.set_verbosity_level(prev_verbosity)
+
+            if len(mesh.vertices) == 0:
+                return mesh
+
+            # Remove low-density vertices (Poisson extrapolation artifacts)
+            densities = np.asarray(densities)
+            threshold = np.quantile(densities, density_threshold_quantile)
+            vertices_to_remove = densities < threshold
+            mesh.remove_vertices_by_mask(vertices_to_remove)
+
+            # Crop mesh to the bounding box of the original point cloud
+            # with a small margin to avoid clipping real geometry
+            bbox = pcd.get_axis_aligned_bounding_box()
+            margin = (np.asarray(bbox.get_max_bound()) - np.asarray(bbox.get_min_bound())) * 0.05
+            bbox.min_bound = np.asarray(bbox.min_bound) - margin
+            bbox.max_bound = np.asarray(bbox.max_bound) + margin
+            mesh = mesh.crop(bbox)
+
+        elif method == "ball_pivoting":
+            # Estimate ball radii from point spacing
+            distances = pcd.compute_nearest_neighbor_distance()
+            avg_dist = np.mean(distances)
+            radii = [avg_dist * f for f in (1.0, 1.5, 2.0, 3.0)]
+            mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+                pcd, o3d.utility.DoubleVector(radii)
+            )
+        else:
+            raise ValueError(f"Unknown method: {method}. Use 'poisson' or 'ball_pivoting'.")
+
+        # Transfer colors from point cloud to mesh vertices via nearest-neighbor
+        if pcd.has_colors() and len(mesh.vertices) > 0:
+            from scipy.spatial import cKDTree
+
+            pcd_points = np.asarray(pcd.points)
+            pcd_colors = np.asarray(pcd.colors)
+            mesh_verts = np.asarray(mesh.vertices)
+            tree = cKDTree(pcd_points)
+            _, indices = tree.query(mesh_verts, k=1)
+            mesh.vertex_colors = o3d.utility.Vector3dVector(pcd_colors[indices])
+
+        mesh.compute_vertex_normals()
+        return mesh
+
+    def complete_mesh(
+        self,
+        pcd: o3d.geometry.PointCloud,
+        shape_type: str,
+        dimensions: dict,
+        centroid: np.ndarray,
+        oriented_bbox: "o3d.geometry.OrientedBoundingBox | None" = None,
+        resolution: int = 40,
+    ) -> o3d.geometry.TriangleMesh:
+        """
+        Generate a complete mesh by fitting a geometric primitive to the observed
+        point cloud, filling in occluded regions.
+
+        For known shapes (sphere, cylinder, box), generates the full analytic
+        mesh from fitted parameters. For irregular shapes, mirrors the observed
+        surface through the centroid.
+
+        Args:
+            pcd: Observed point cloud (with normals and optionally colors)
+            shape_type: "sphere", "cylinder", "box", or "irregular"
+            dimensions: Shape parameters from ObjectAnalyzer (radius, height, axis, etc.)
+            centroid: Object center [x, y, z]
+            oriented_bbox: OBB for box alignment (required for "box" shape)
+            resolution: Mesh tessellation resolution (higher = smoother)
+
+        Returns:
+            Complete triangle mesh with vertex colors transferred from observed data
+        """
+        if shape_type == "sphere":
+            mesh = self._complete_sphere(centroid, dimensions, resolution)
+        elif shape_type == "cylinder":
+            mesh = self._complete_cylinder(centroid, dimensions, resolution)
+        elif shape_type == "box":
+            mesh = self._complete_box(centroid, dimensions, oriented_bbox)
+        else:
+            mesh = self._complete_irregular(pcd, centroid)
+
+        if len(mesh.vertices) == 0:
+            return mesh
+
+        # Transfer colors from observed point cloud to completed mesh
+        if pcd.has_colors() and len(pcd.points) > 0:
+            from scipy.spatial import cKDTree
+
+            pcd_points = np.asarray(pcd.points)
+            pcd_colors = np.asarray(pcd.colors)
+            mesh_verts = np.asarray(mesh.vertices)
+            tree = cKDTree(pcd_points)
+            _, indices = tree.query(mesh_verts, k=1)
+            mesh.vertex_colors = o3d.utility.Vector3dVector(pcd_colors[indices])
+
+        mesh.compute_vertex_normals()
+        return mesh
+
+    def _complete_sphere(
+        self, centroid: np.ndarray, dimensions: dict, resolution: int
+    ) -> o3d.geometry.TriangleMesh:
+        radius = dimensions.get("radius", 0.03)
+        center = np.array(dimensions.get("center", centroid.tolist()))
+        mesh = o3d.geometry.TriangleMesh.create_sphere(
+            radius=radius, resolution=resolution
+        )
+        mesh.translate(center)
+        return mesh
+
+    def _complete_cylinder(
+        self, centroid: np.ndarray, dimensions: dict, resolution: int
+    ) -> o3d.geometry.TriangleMesh:
+        radius = dimensions.get("radius", 0.03)
+        height = dimensions.get("height", 0.10)
+        axis = np.array(dimensions.get("axis", [0, 1, 0]), dtype=float)
+        axis = axis / (np.linalg.norm(axis) + 1e-8)
+
+        # Open3D creates cylinder along Z, centered at origin
+        mesh = o3d.geometry.TriangleMesh.create_cylinder(
+            radius=radius, height=height, resolution=resolution
+        )
+
+        # Rotate from Z-axis to the fitted axis
+        z_axis = np.array([0.0, 0.0, 1.0])
+        v = np.cross(z_axis, axis)
+        s = np.linalg.norm(v)
+        c = np.dot(z_axis, axis)
+        if s > 1e-6:
+            vx = np.array([
+                [0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0],
+            ])
+            R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
+            mesh.rotate(R, center=[0, 0, 0])
+        elif c < 0:
+            # 180-degree rotation
+            mesh.rotate(np.diag([-1, -1, 1]).astype(float), center=[0, 0, 0])
+
+        mesh.translate(centroid)
+        return mesh
+
+    def _complete_box(
+        self,
+        centroid: np.ndarray,
+        dimensions: dict,
+        oriented_bbox: "o3d.geometry.OrientedBoundingBox | None",
+    ) -> o3d.geometry.TriangleMesh:
+        w = dimensions.get("width", 0.05)
+        d = dimensions.get("depth", 0.05)
+        h = dimensions.get("height", 0.05)
+
+        # Create axis-aligned box at origin, then rotate/translate to match OBB
+        # create_box makes a box from (0,0,0) to (w,d,h), so center it first
+        mesh = o3d.geometry.TriangleMesh.create_box(width=w, height=d, depth=h)
+        mesh.translate([-w / 2, -d / 2, -h / 2])
+
+        if oriented_bbox is not None:
+            R = np.array(oriented_bbox.R)
+            mesh.rotate(R, center=[0, 0, 0])
+
+        mesh.translate(centroid)
+        return mesh
+
+    def _complete_irregular(
+        self, pcd: o3d.geometry.PointCloud, centroid: np.ndarray
+    ) -> o3d.geometry.TriangleMesh:
+        """
+        For irregular shapes, mirror observed points through the centroid,
+        merge with originals, and run Poisson reconstruction on the denser cloud.
+        """
+        points = np.asarray(pcd.points)
+        if len(points) < 10:
+            return o3d.geometry.TriangleMesh()
+
+        # Mirror points through centroid
+        mirrored = 2 * centroid - points
+
+        # Combine original and mirrored
+        combined = np.vstack([points, mirrored])
+        combined_pcd = o3d.geometry.PointCloud()
+        combined_pcd.points = o3d.utility.Vector3dVector(combined)
+
+        # Transfer colors (mirror gets same colors)
+        if pcd.has_colors():
+            orig_colors = np.asarray(pcd.colors)
+            combined_pcd.colors = o3d.utility.Vector3dVector(
+                np.vstack([orig_colors, orig_colors])
+            )
+
+        # Mirror normals (flip direction)
+        if pcd.has_normals():
+            orig_normals = np.asarray(pcd.normals)
+            combined_pcd.normals = o3d.utility.Vector3dVector(
+                np.vstack([orig_normals, -orig_normals])
+            )
+        else:
+            combined_pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamHybrid(
+                    radius=0.02, max_nn=30
+                )
+            )
+            combined_pcd.orient_normals_towards_camera_location(
+                camera_location=[0, 0, 0]
+            )
+
+        # Poisson on the denser, more complete cloud
+        return self.reconstruct_mesh(combined_pcd, method="poisson", depth=8)
+
     def cluster_objects(
         self,
         pcd: o3d.geometry.PointCloud,

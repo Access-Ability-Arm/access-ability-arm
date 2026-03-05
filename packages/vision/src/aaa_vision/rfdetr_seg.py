@@ -295,7 +295,7 @@ class RFDETRSeg:
 
         return intersection / union if union > 0 else 0.0
 
-    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None, return_colors=False, selected_indices=None):
+    def draw_object_mask(self, frame, boxes=None, classes=None, contours=None, return_colors=False, selected_indices=None, colors=None):
         """
         Draw segmentation masks on frame
 
@@ -306,6 +306,7 @@ class RFDETRSeg:
             contours: List of segmentation contours (optional)
             return_colors: If True, return (frame, colors) tuple instead of just frame
             selected_indices: List of indices to draw (optional, None = draw all)
+            colors: List of BGR color tuples to use (optional, will auto-generate if None)
 
         Returns:
             frame: Frame with masks drawn (or tuple of (frame, colors) if return_colors=True)
@@ -317,19 +318,21 @@ class RFDETRSeg:
         # Create overlay for masks
         overlay = frame.copy()
 
-        # Generate consistent colors based on class name hash
-        # This ensures same object class gets same color across frames
-        colors = []
-        for class_name in classes:
-            # Hash class name to get consistent color
-            hash_val = hash(class_name)
-            np.random.seed(hash_val % (2**32))
-            color = (
-                np.random.randint(50, 255),
-                np.random.randint(50, 255),
-                np.random.randint(50, 255)
-            )
-            colors.append(color)
+        # Use provided colors or generate from class name hash
+        if colors is None:
+            colors = []
+            for class_name in classes:
+                hash_val = hash(class_name)
+                np.random.seed(hash_val % (2**32))
+                color = (
+                    np.random.randint(50, 255),
+                    np.random.randint(50, 255),
+                    np.random.randint(50, 255)
+                )
+                colors.append(color)
+        else:
+            # Cycle colors if fewer than objects
+            colors = [colors[i % len(colors)] for i in range(len(classes))]
 
         # Draw masks (only for selected indices if specified)
         for i, contour in enumerate(contours):

@@ -1,17 +1,23 @@
 """Video Display & Labels mixin for MainWindow."""
 
+from __future__ import annotations
+
 import base64
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+if TYPE_CHECKING:
+    from .main_window import FletMainWindow
+
 
 class VideoDisplayMixin:
     """Mixin providing video feed display and label rendering methods."""
 
-    def _update_video_feed(self, img_array):
+    def _update_video_feed(self: FletMainWindow, img_array):
         """
         Update video feed with new frame
 
@@ -60,7 +66,7 @@ class VideoDisplayMixin:
             print(f"Error updating video feed: {e}")
 
     def _draw_text_pil(
-        self,
+        self: FletMainWindow,
         img,
         text,
         position,
@@ -167,7 +173,7 @@ class VideoDisplayMixin:
         return np.array(pil_img)
 
     def _calculate_label_positions(
-        self, centers, classes, img_shape, font_size=42, padding=12
+        self: FletMainWindow, centers, classes, img_shape, font_size=42, padding=12
     ):
         """
         Calculate non-overlapping label positions using force-directed algorithm (ggrepel-style)
@@ -291,7 +297,7 @@ class VideoDisplayMixin:
             (int(l["x"] + l["w"] // 2), int(l["y"] + l["h"] // 2)) for l in labels_info
         ]
 
-    def _enhance_frozen_labels(self, img_array):
+    def _enhance_frozen_labels(self: FletMainWindow, img_array):
         """
         Enhance object labels for frozen frame with larger numbered labels
 
@@ -329,6 +335,9 @@ class VideoDisplayMixin:
             "contours": contours,
         }
 
+        # Use CARD_COLORS_BGR so camera masks match the card badge colors
+        from . import _design_tokens as T
+
         # Draw masks and get the colors used for each object
         # Only draw mask for selected object if one is selected
         selected_indices = (
@@ -341,6 +350,7 @@ class VideoDisplayMixin:
             contours,
             return_colors=True,
             selected_indices=selected_indices,
+            colors=T.CARD_COLORS_BGR,
         )
 
         # Calculate label positions with overlap avoidance (ggrepel-style)

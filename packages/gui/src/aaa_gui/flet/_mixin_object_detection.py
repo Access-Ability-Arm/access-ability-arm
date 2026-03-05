@@ -1,12 +1,18 @@
 """Object detection, selection, and analysis mixin for MainWindow."""
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import flet as ft
+
+if TYPE_CHECKING:
+    from .main_window import FletMainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +20,7 @@ logger = logging.getLogger(__name__)
 class ObjectDetectionMixin:
     """Methods for object detection UI, selection, 3D analysis, and visualization."""
 
-    def _create_object_buttons(self):
+    def _create_object_buttons(self: FletMainWindow):
         """Create clickable buttons for each detected object"""
         if not self.frozen_detections:
             return
@@ -37,7 +43,7 @@ class ObjectDetectionMixin:
         self.object_buttons_row.visible = True
         self.page.update()
 
-    def _on_object_selected(self, object_index: int):
+    def _on_object_selected(self: FletMainWindow, object_index: int):
         """Handle object button click - toggle selection if already selected"""
         classes = self.frozen_detections["classes"]
         class_name = classes[object_index]
@@ -60,14 +66,8 @@ class ObjectDetectionMixin:
             else:
                 btn.bgcolor = ft.Colors.BLUE_GREY_800
 
-        # Enable or disable the Show Points button depending on selection and depth availability
-        try:
-            if self.show_points_btn is not None:
-                self.show_points_btn.disabled = (
-                    self.selected_object is None or self.frozen_depth_frame is None
-                )
-        except Exception:
-            pass
+        # Show/hide object action buttons based on selection state
+        self._update_object_action_visibility()
 
         # Redraw frozen frame with highlighted label
         self._update_frozen_frame_highlight()
@@ -96,7 +96,7 @@ class ObjectDetectionMixin:
                 daemon=True,
             ).start()
 
-    def _analyze_selected_object(self, object_index: int):
+    def _analyze_selected_object(self: FletMainWindow, object_index: int):
         """Run 3D object analysis in background thread."""
         try:
             from aaa_vision.object_analyzer import ObjectAnalyzer
@@ -145,6 +145,17 @@ class ObjectDetectionMixin:
                         )
                 except Exception:
                     pass
+                # Daemon mode: rs_camera unavailable, so fall back to approximate
+                # D435 color intrinsics at 1920x1080. Must match display_depth
+                # resolution AND _project_to_pixel fallback, otherwise the
+                # gripper overlay renders at the wrong position.
+                if color_intrinsics is None:
+                    h_dd, w_dd = display_depth.shape[:2]
+                    if w_dd == 1920 and h_dd == 1080:
+                        color_intrinsics = CameraIntrinsics(
+                            width=1920, height=1080,
+                            fx=1386.0, fy=1386.0, cx=960.0, cy=540.0,
+                        )
                 processor = PointCloudProcessor(intrinsics=color_intrinsics)
             elif native_depth is not None:
                 # Fallback: native depth with resized mask (imprecise due to FOV mismatch)
@@ -182,15 +193,21 @@ class ObjectDetectionMixin:
                     f"confidence={analysis.grasp_confidence})"
                 )
 
-                # Update button text
+                # Update button text (legacy row)
                 try:
-                    btn = self.object_buttons_row.controls[object_index]
-                    btn.text = f"{class_name} \u2713"
-                    btn.bgcolor = ft.Colors.GREEN_700
-                    self._update_frozen_frame_highlight()
-                    self.page.update()
+                    if object_index < len(self.object_buttons_row.controls):
+                        btn = self.object_buttons_row.controls[object_index]
+                        btn.text = f"{class_name} \u2713"
+                        btn.bgcolor = ft.Colors.GREEN_700
                 except Exception:
                     pass
+                # Update grasp info card if on grasp preview screen
+                try:
+                    self._update_grasp_info_card()
+                except Exception:
+                    pass
+                self._update_frozen_frame_highlight()
+                self.page.update()
 
         except Exception as e:
             self._analysis_in_progress = False
@@ -211,7 +228,7 @@ class ObjectDetectionMixin:
                 except Exception:
                     pass
 
-    def _project_to_pixel(self, point_3d: np.ndarray) -> tuple:
+    def _project_to_pixel(self: FletMainWindow, point_3d: np.ndarray) -> tuple:
         """
         Project a 3D point in camera coordinates to 2D pixel in RGB frame.
 
@@ -253,7 +270,7 @@ class ObjectDetectionMixin:
 
         return px_rgb, py_rgb
 
-    def _draw_gripper_icon(self, img: np.ndarray, analysis) -> np.ndarray:
+    def _draw_gripper_icon(self: FletMainWindow, img: np.ndarray, analysis) -> np.ndarray:
         """Draw gripper overlay at projected grasp point on the image."""
         px, py = self._project_to_pixel(analysis.grasp_point)
 
@@ -367,7 +384,7 @@ class ObjectDetectionMixin:
 
         return img
 
-    def _update_frozen_frame_highlight(self):
+    def _update_frozen_frame_highlight(self: FletMainWindow):
         """Redraw frozen frame with selected object highlighted"""
         if not self.frozen_detections:
             return
@@ -387,11 +404,20 @@ class ObjectDetectionMixin:
         contours = self.frozen_detections["contours"]
         centers = self.frozen_detections["centers"]
 
+        # Use CARD_COLORS_BGR so camera masks match the card badge colors
+        from . import _design_tokens as T
+
+        # Determine which objects to highlight
+        # Priority: selected > hovered > all
+        hovered = getattr(self, "_hovered_object", None)
+        if self.selected_object is not None:
+            selected_indices = [self.selected_object]
+        elif hovered is not None:
+            selected_indices = None  # Draw all, but we'll emphasize hovered below
+        else:
+            selected_indices = None
+
         # Draw masks and get colors
-        # Only draw mask for selected object if one is selected
-        selected_indices = (
-            [self.selected_object] if self.selected_object is not None else None
-        )
         img_with_masks, mask_colors = detection_mgr.segmentation_model.draw_object_mask(
             clean_img,
             boxes,
@@ -399,26 +425,38 @@ class ObjectDetectionMixin:
             contours,
             return_colors=True,
             selected_indices=selected_indices,
+            colors=T.CARD_COLORS_BGR,
         )
+
+        # If hovering (no selection), redraw hovered object's mask with stronger emphasis
+        if self.selected_object is None and hovered is not None and hovered < len(contours):
+            hover_overlay = img_with_masks.copy()
+            hover_color = mask_colors[hovered]
+            cv2.fillPoly(hover_overlay, [contours[hovered]], hover_color)
+            # Blend with higher alpha for emphasis
+            img_with_masks = cv2.addWeighted(img_with_masks, 0.6, hover_overlay, 0.4, 0)
+            # Thicker contour for hovered object
+            cv2.drawContours(img_with_masks, [contours[hovered]], -1, hover_color, 4)
 
         # Calculate label positions with overlap avoidance
         label_positions = self._calculate_label_positions(
             centers, classes, img_with_masks.shape
         )
 
-        # Draw numbered labels with highlighting for selected object using PIL
-        # Only draw labels for selected object if one is selected
+        # Draw numbered labels with highlighting for selected/hovered object
         for i, (center, class_name, label_pos, mask_color) in enumerate(
             zip(centers, classes, label_positions, mask_colors), start=1
         ):
+            idx = i - 1
             # Skip this label if an object is selected and this isn't it
-            if self.selected_object is not None and (i - 1) != self.selected_object:
+            if self.selected_object is not None and idx != self.selected_object:
                 continue
 
             x, y = center
             label_x, label_y = label_pos
             label = f"#{i}: {class_name}"
-            is_selected = (i - 1) == self.selected_object
+            is_selected = idx == self.selected_object
+            is_hovered = idx == hovered and self.selected_object is None
 
             # Convert BGR to RGB
             mask_color_rgb = (mask_color[2], mask_color[1], mask_color[0])
@@ -426,24 +464,30 @@ class ObjectDetectionMixin:
             # Draw connector line if label moved significantly
             distance = np.sqrt((label_x - x) ** 2 + (label_y - y) ** 2)
             if distance > 30:
+                line_thickness = 3 if (is_selected or is_hovered) else 2
                 cv2.line(
                     img_with_masks,
                     (x, y),
                     (label_x, label_y),
                     mask_color,
-                    2,
+                    line_thickness,
                     cv2.LINE_AA,
                 )
 
-            # Set colors based on selection
+            # Set colors based on selection/hover state
             if is_selected:
                 text_color = (255, 255, 255)  # White text
-                bg_color = (100, 149, 237)  # Blue background (Cornflower blue)
-                border_color = (25, 25, 112)  # Dark blue border (Midnight blue)
+                bg_color = mask_color_rgb  # Use card color as background
+                # Darken the card color for border
+                border_color = tuple(max(0, c - 60) for c in mask_color_rgb)
+            elif is_hovered:
+                text_color = (255, 255, 255)  # White text
+                bg_color = mask_color_rgb  # Use card color as background
+                border_color = (255, 255, 255)  # White border for hover
             else:
                 text_color = (70, 70, 70)  # Dark gray text
                 bg_color = (255, 255, 255)  # White background
-                border_color = mask_color_rgb  # Match segmentation contour color
+                border_color = mask_color_rgb  # Card color border
 
             # Draw using PIL for professional font rendering
             img_with_masks = self._draw_text_pil(
@@ -539,21 +583,17 @@ class ObjectDetectionMixin:
                         logger.debug(f"Gripper overlay failed: {e}")
                 self.frozen_frame = final_img
 
-    def _clear_object_buttons(self):
+    def _clear_object_buttons(self: FletMainWindow):
         """Clear object selection buttons when unfreezing"""
         self.object_buttons_row.controls.clear()
         self.object_buttons_row.visible = False
         self.selected_object = None
         self.frozen_raw_frame = None
-        # Disable Show Points button when no objects are present
-        try:
-            if self.show_points_btn is not None:
-                self.show_points_btn.disabled = True
-        except Exception:
-            pass
+        # Hide object action buttons
+        self._update_object_action_visibility()
         self.page.update()
 
-    def _on_find_objects(self):
+    def _on_find_objects(self: FletMainWindow):
         """Handle Find Objects button - switch to object detection and capture for 1 second"""
         if not self.image_processor:
             print("Find Objects: Image processor not ready")
@@ -643,7 +683,7 @@ class ObjectDetectionMixin:
 
             threading.Thread(target=capture_and_freeze, daemon=True).start()
 
-    def _on_show_points(self, e=None):
+    def _on_show_points(self: FletMainWindow, e=None):
         """UI handler for the Show Points button - switch to depth view and show overlay for selected object."""
         if self.selected_object is None:
             print("No object selected to show points")
@@ -654,7 +694,7 @@ class ObjectDetectionMixin:
         )
 
     def _show_point_overlay(
-        self,
+        self: FletMainWindow,
         object_index: int,
         subsample: int = 8,
         duration: float = 1.5,

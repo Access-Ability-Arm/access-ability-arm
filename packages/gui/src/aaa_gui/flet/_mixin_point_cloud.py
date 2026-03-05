@@ -1,11 +1,41 @@
 """Point cloud extraction and export mixin for MainWindow."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .main_window import FletMainWindow
+
 
 class PointCloudMixin:
-    """Methods for point cloud extraction, export (NPZ/PLY), and preview."""
+    """Methods for point cloud extraction, PLY export, and preview."""
+
+    @staticmethod
+    def _ensure_meters(arr):
+        """Convert pixel+depth_mm points to meters if needed.
+
+        Detects (px, py, depth_mm) format by checking coordinate ranges and
+        deprojects using default D435 color intrinsics (1920x1080).
+        """
+        import numpy as np
+
+        if len(arr) == 0 or arr.shape[1] != 3:
+            return arr
+        # Heuristic: pixel coords have X > 50 and Z (depth_mm) > 50
+        if arr[:, 0].max() > 50 and arr[:, 2].min() > 50:
+            # Use color intrinsics (1920x1080) since display_depth is aligned to color
+            fx, fy = 1386.12, 1386.12
+            cx, cy = 964.83, 545.55
+            z_m = arr[:, 2] / 1000.0
+            x_m = (arr[:, 0] - cx) * z_m / fx
+            y_m = (arr[:, 1] - cy) * z_m / fy
+            arr = np.column_stack([x_m, y_m, z_m])
+            print(f"  Deprojected {len(arr)} points from pixel+mm to meters")
+        return arr
 
     def get_object_depth_points(
-        self, object_index: int, subsample: int = 4, to_meters: bool = False
+        self: FletMainWindow, object_index: int, subsample: int = 4, to_meters: bool = False
     ):
         """Return list of (x, y, depth_mm) or (X, Y, Z) if to_meters and RealSense available for selected frozen object."""
         import cv2
@@ -109,7 +139,7 @@ class PointCloudMixin:
         return points
 
     def _extract_object_colors(
-        self, object_index: int, subsample: int = 4,
+        self: FletMainWindow, object_index: int, subsample: int = 4,
         aligned_color: "np.ndarray | None" = None,
         depth: "np.ndarray | None" = None,
         display_depth: "np.ndarray | None" = None,
@@ -172,7 +202,7 @@ class PointCloudMixin:
         else:
             return None
 
-    def get_object_mask_pixels(self, object_index: int, subsample: int = 8):
+    def get_object_mask_pixels(self: FletMainWindow, object_index: int, subsample: int = 8):
         """Return list of (x, y, depth_mm or 0 if unavailable) in RGB image coordinates for the object mask."""
         import cv2
         import numpy as np
@@ -228,179 +258,8 @@ class PointCloudMixin:
 
         return points
 
-    def _export_selected_object_pointcloud(
-        self, e=None, subsample: int = 4, to_meters: bool = True
-    ):
-        """Export selected object's point cloud to logs/pointclouds as compressed .npz"""
-        import time
-        from pathlib import Path
-
-        import numpy as np
-
-        if self.selected_object is None:
-            print("No object selected to export")
-            return
-
-        pts = self.get_object_depth_points(
-            self.selected_object, subsample=subsample, to_meters=to_meters
-        )
-        if not pts:
-            print("No points available to export")
-            return
-
-        # Show overlay of sampled points for user verification before saving
-        try:
-            self._show_point_overlay(
-                self.selected_object, subsample=max(1, subsample), duration=1.5
-            )
-            # Give user a brief moment to see overlay
-            import time
-
-            time.sleep(1.0)
-        except Exception as ex:
-            print(f"Overlay failed: {ex}")
-
-        arr = np.array(pts)
-        out_dir = Path("logs/pointclouds")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        out_path = out_dir / f"pointcloud_obj{self.selected_object + 1}_{timestamp}.npz"
-        try:
-            # Extract RGB colors using color-aligned depth when available
-            save_kwargs = {"points": arr}
-            display_depth = getattr(self, "frozen_display_depth", None)
-            aligned_color = getattr(self, "frozen_aligned_color", None)
-            depth = getattr(self, "frozen_depth_frame", None)
-            colors = self._extract_object_colors(
-                self.selected_object, subsample=subsample,
-                aligned_color=aligned_color, depth=depth,
-                display_depth=display_depth,
-            )
-            if colors is not None and len(colors) == len(arr):
-                save_kwargs["colors"] = colors
-
-            np.savez_compressed(out_path, **save_kwargs)
-            has_colors = "colors" in save_kwargs
-            print(f"✓ Point cloud saved: {out_path} ({arr.shape[0]} points, rgb={'yes' if has_colors else 'no'})")
-            if hasattr(self, "status_text"):
-                self.status_text.value = f"Point cloud saved: {out_path.name}"
-                self.page.update()
-        except Exception as ex:
-            print(f"Failed to save point cloud: {ex}")
-
-    def _export_full_pointcloud(
-        self, e=None, subsample: int = 1, to_meters: bool = True
-    ):
-        """Export the full depth frame as a compressed .npz containing points (X,Y,Z) in meters when available.
-
-        This exports all non-zero depth pixels (optionally subsampled) from the current frozen depth frame (if frozen)
-        or the latest depth frame from the image processor.
-        """
-        import time
-        from pathlib import Path
-
-        import numpy as np
-
-        # Choose depth frame: prefer frozen depth frame if video is frozen
-        depth = None
-        if (
-            getattr(self, "video_frozen", False)
-            and getattr(self, "frozen_depth_frame", None) is not None
-        ):
-            depth = self.frozen_depth_frame.copy()
-        else:
-            depth = (
-                getattr(self.image_processor, "depth_frame", None)
-                if getattr(self, "image_processor", None)
-                else None
-            )
-
-        if depth is None:
-            print("No depth frame available to export")
-            if hasattr(self, "status_text"):
-                self.status_text.value = "No depth frame available to export"
-                self.page.update()
-            return
-
-        h, w = depth.shape[:2]
-
-        # Get all non-zero depth pixels
-        ys, xs = np.nonzero(depth)
-        if subsample > 1:
-            ys = ys[::subsample]
-            xs = xs[::subsample]
-
-        depths = depth[ys, xs]
-
-        points_list = []
-        use_realsense = getattr(
-            self.image_processor, "use_realsense", False
-        ) and getattr(self.image_processor, "rs_camera", None)
-        intr = None
-        rs_mod = None
-        if to_meters and use_realsense:
-            try:
-                import pyrealsense2 as rs_mod
-
-                profile = self.image_processor.rs_camera.profile
-                depth_stream = profile.get_stream(
-                    rs_mod.stream.depth
-                ).as_video_stream_profile()
-                intr = depth_stream.get_intrinsics()
-            except Exception as e:
-                intr = None
-                print(f"Failed to get RealSense intrinsics: {e}")
-
-        # Build points list (deproject if intrinsics available)
-        for u, v, z in zip(xs, ys, depths):
-            if z == 0:
-                continue
-            if to_meters and use_realsense and intr is not None:
-                try:
-                    pt = rs_mod.rs2_deproject_pixel_to_point(
-                        intr, [int(u), int(v)], float(z) / 1000.0
-                    )
-                    points_list.append((float(pt[0]), float(pt[1]), float(pt[2])))
-                except Exception:
-                    points_list.append((int(u), int(v), int(z)))
-            else:
-                points_list.append((int(u), int(v), int(z)))
-
-        arr = np.array(points_list)
-        out_dir = Path("logs/pointclouds")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        out_path = out_dir / f"pointcloud_full_{timestamp}.npz"
-        try:
-            # Extract RGB colors from aligned color frame (same 848x480 grid as depth)
-            save_kwargs = {"points": arr}
-            aligned_color = None
-            if getattr(self, "video_frozen", False):
-                aligned_color = getattr(self, "frozen_aligned_color", None)
-            else:
-                aligned_color = getattr(self.image_processor, "_last_aligned_color", None) if getattr(self, "image_processor", None) else None
-
-            if aligned_color is not None:
-                # xs, ys are in depth coordinates; filter to valid (z > 0) same as points_list
-                valid = depths > 0
-                xs_valid = xs[valid]
-                ys_valid = ys[valid]
-                colors_bgr = aligned_color[ys_valid, xs_valid]
-                colors_rgb = colors_bgr[:, ::-1].copy()
-                if len(colors_rgb) == len(arr):
-                    save_kwargs["colors"] = colors_rgb
-
-            np.savez_compressed(out_path, **save_kwargs)
-            has_colors = "colors" in save_kwargs
-            print(f"✓ Full point cloud saved: {out_path} ({arr.shape[0]} points, rgb={'yes' if has_colors else 'no'})")
-            if hasattr(self, "status_text"):
-                self.status_text.value = f"Full point cloud saved: {out_path.name}"
-                self.page.update()
-        except Exception as ex:
-            print(f"Failed to save full point cloud: {ex}")
-
-    def _export_selected_object_ply(self, e=None, subsample: int = 4):
-        """Export selected object's point cloud to PLY (XYZ in meters when available)."""
+    def _export_selected_object_ply(self: FletMainWindow, e=None, subsample: int = 4):
+        """Export selected object's point cloud to PLY with RGB colors."""
         import time
         from pathlib import Path
 
@@ -430,6 +289,17 @@ class PointCloudMixin:
 
         arr = np.array(pts, dtype=float)
 
+        # Extract RGB colors
+        display_depth = getattr(self, "frozen_display_depth", None)
+        aligned_color = getattr(self, "frozen_aligned_color", None)
+        depth = getattr(self, "frozen_depth_frame", None)
+        colors = self._extract_object_colors(
+            self.selected_object, subsample=subsample,
+            aligned_color=aligned_color, depth=depth,
+            display_depth=display_depth,
+        )
+        has_colors = colors is not None and len(colors) == len(arr)
+
         out_dir = Path("logs/pointclouds")
         out_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -440,11 +310,17 @@ class PointCloudMixin:
                 f.write("ply\nformat ascii 1.0\n")
                 f.write(f"element vertex {arr.shape[0]}\n")
                 f.write("property float x\nproperty float y\nproperty float z\n")
+                if has_colors:
+                    f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
                 f.write("end_header\n")
-                for x, y, z in arr:
-                    f.write(f"{x:.6f} {y:.6f} {z:.6f}\n")
+                if has_colors:
+                    for (x, y, z), (r, g, b) in zip(arr, colors):
+                        f.write(f"{x:.6f} {y:.6f} {z:.6f} {int(r)} {int(g)} {int(b)}\n")
+                else:
+                    for x, y, z in arr:
+                        f.write(f"{x:.6f} {y:.6f} {z:.6f}\n")
 
-            print(f"✓ PLY saved: {out_path} ({arr.shape[0]} points)")
+            print(f"✓ PLY saved: {out_path} ({arr.shape[0]} points, rgb={'yes' if has_colors else 'no'})")
             # Record last exported path for preview
             try:
                 self.last_exported_ply = str(out_path)
@@ -459,8 +335,218 @@ class PointCloudMixin:
             print(f"Failed to save PLY: {ex}")
             return None
 
-    def _preview_selected_object_ply(self, e=None):
-        """Preview the last exported PLY file using Cloudview.py as a subprocess."""
+    def _export_selected_object_mesh(
+        self: FletMainWindow, e=None, subsample: int = 2, method: str = "poisson"
+    ):
+        """Export selected object as a reconstructed 3D mesh PLY file."""
+        import time
+        from pathlib import Path
+
+        import numpy as np
+
+        if self.selected_object is None:
+            print("No object selected to export")
+            return None
+
+        pts = self.get_object_depth_points(
+            self.selected_object, subsample=subsample, to_meters=True
+        )
+        if not pts:
+            print("No points available to export")
+            return None
+
+        arr = self._ensure_meters(np.array(pts, dtype=float))
+
+        try:
+            import open3d as o3d
+            from aaa_vision.point_cloud import PointCloudProcessor
+        except ImportError as ex:
+            print(f"Open3D required for mesh reconstruction: {ex}")
+            return None
+
+        # Build Open3D point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(arr)
+
+        # Attach RGB colors if available
+        display_depth = getattr(self, "frozen_display_depth", None)
+        aligned_color = getattr(self, "frozen_aligned_color", None)
+        depth = getattr(self, "frozen_depth_frame", None)
+        colors = self._extract_object_colors(
+            self.selected_object, subsample=subsample,
+            aligned_color=aligned_color, depth=depth,
+            display_depth=display_depth,
+        )
+        if colors is not None and len(colors) == len(arr):
+            pcd.colors = o3d.utility.Vector3dVector(colors.astype(float) / 255.0)
+
+        # Preprocess: outlier removal + normal estimation
+        processor = PointCloudProcessor()
+        pcd = processor.preprocess(pcd, voxel_size=0.003, estimate_normals=True)
+
+        if len(pcd.points) < 20:
+            print(f"Too few points after preprocessing ({len(pcd.points)}) for mesh reconstruction")
+            return None
+
+        # Reconstruct mesh (suppress C++ stderr noise from Poisson solver)
+        print(f"Reconstructing mesh ({method}) from {len(pcd.points)} points...")
+        import os
+        stderr_fd = os.dup(2)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 2)
+        try:
+            mesh = processor.reconstruct_mesh(pcd, method=method)
+        finally:
+            os.dup2(stderr_fd, 2)
+            os.close(devnull)
+            os.close(stderr_fd)
+
+        if len(mesh.vertices) == 0:
+            print("Mesh reconstruction produced no vertices")
+            return None
+
+        out_dir = Path("logs/meshes")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"mesh_obj{self.selected_object + 1}_{timestamp}.ply"
+
+        try:
+            o3d.io.write_triangle_mesh(str(out_path), mesh)
+            n_verts = len(mesh.vertices)
+            n_tris = len(mesh.triangles)
+            print(f"Mesh saved: {out_path} ({n_verts} vertices, {n_tris} triangles)")
+            self.last_exported_ply = str(out_path)
+            if hasattr(self, "status_text"):
+                self.status_text.value = f"Mesh saved: {out_path.name} ({n_verts}v, {n_tris}t)"
+                self.page.update()
+            return str(out_path)
+        except Exception as ex:
+            print(f"Failed to save mesh: {ex}")
+            return None
+
+    def _export_completed_object_mesh(
+        self: FletMainWindow, e=None, subsample: int = 2
+    ):
+        """Export selected object as a shape-completed 3D mesh.
+
+        Uses ObjectAnalyzer to classify the shape, then generates a full
+        primitive mesh (sphere/cylinder/box) or mirrors the observed surface
+        for irregular objects.
+        """
+        import time
+        from pathlib import Path
+
+        import numpy as np
+
+        if self.selected_object is None:
+            print("No object selected to export")
+            return None
+
+        pts = self.get_object_depth_points(
+            self.selected_object, subsample=subsample, to_meters=True
+        )
+        if not pts:
+            print("No points available to export")
+            return None
+
+        arr = self._ensure_meters(np.array(pts, dtype=float))
+
+        try:
+            import open3d as o3d
+            from aaa_vision.object_analyzer import ObjectAnalyzer
+            from aaa_vision.point_cloud import PointCloudProcessor
+        except ImportError as ex:
+            print(f"Open3D/aaa_vision required for shape completion: {ex}")
+            return None
+
+        # Build Open3D point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(arr)
+
+        # Attach RGB colors
+        display_depth = getattr(self, "frozen_display_depth", None)
+        aligned_color = getattr(self, "frozen_aligned_color", None)
+        depth = getattr(self, "frozen_depth_frame", None)
+        colors = self._extract_object_colors(
+            self.selected_object, subsample=subsample,
+            aligned_color=aligned_color, depth=depth,
+            display_depth=display_depth,
+        )
+        if colors is not None and len(colors) == len(arr):
+            pcd.colors = o3d.utility.Vector3dVector(colors.astype(float) / 255.0)
+
+        # Preprocess
+        processor = PointCloudProcessor()
+        pcd = processor.preprocess(pcd, voxel_size=0.003, estimate_normals=True)
+
+        if len(pcd.points) < 20:
+            print(f"Too few points ({len(pcd.points)}) for shape completion")
+            return None
+
+        # Run shape analysis
+        print("Analyzing object shape...")
+        analyzer = ObjectAnalyzer(processor)
+        analysis = analyzer.analyze(pcd)
+
+        shape = analysis.shape
+        print(
+            f"Shape: {shape.shape_type} (confidence={shape.confidence:.2f}), "
+            f"dims={shape.dimensions}"
+        )
+
+        # Generate completed mesh (suppress C++ stderr noise from Poisson solver)
+        print(f"Generating complete {shape.shape_type} mesh...")
+        import os
+        stderr_fd = os.dup(2)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 2)
+        try:
+            mesh = processor.complete_mesh(
+                pcd,
+                shape_type=shape.shape_type,
+                dimensions=shape.dimensions,
+                centroid=analysis.centroid,
+                oriented_bbox=shape.oriented_bbox,
+            )
+        finally:
+            os.dup2(stderr_fd, 2)
+            os.close(devnull)
+            os.close(stderr_fd)
+
+        if len(mesh.vertices) == 0:
+            print("Shape completion produced no vertices")
+            return None
+
+        out_dir = Path("logs/meshes")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        out_path = (
+            out_dir
+            / f"completed_{shape.shape_type}_obj{self.selected_object + 1}_{timestamp}.ply"
+        )
+
+        try:
+            o3d.io.write_triangle_mesh(str(out_path), mesh)
+            n_verts = len(mesh.vertices)
+            n_tris = len(mesh.triangles)
+            print(
+                f"Completed mesh saved: {out_path} "
+                f"({n_verts} vertices, {n_tris} triangles)"
+            )
+            self.last_exported_ply = str(out_path)
+            if hasattr(self, "status_text"):
+                self.status_text.value = (
+                    f"Completed {shape.shape_type}: {out_path.name} "
+                    f"({n_verts}v, {n_tris}t)"
+                )
+                self.page.update()
+            return str(out_path)
+        except Exception as ex:
+            print(f"Failed to save completed mesh: {ex}")
+            return None
+
+    def _preview_selected_object_ply(self: FletMainWindow, e=None):
+        """Preview the last exported PLY file using view_pointcloud.py as a subprocess."""
         import os
         import subprocess
         import sys
@@ -477,18 +563,22 @@ class PointCloudMixin:
             print("No PLY available to preview")
             return
 
-        # Resolve Cloudview script path
+        # Resolve viewer script path
         cwd = Path.cwd()
-        cloudview_candidate = cwd / "Cloudview.py"
+        cloudview_candidate = cwd / "scripts" / "view_pointcloud.py"
         if not cloudview_candidate.exists():
-            # Try to locate Cloudview anywhere in repo
+            cloudview_candidate = cwd / "Cloudview.py"
+        if not cloudview_candidate.exists():
+            # Try to locate viewer anywhere in repo
             import glob
 
-            matches = glob.glob("**/Cloudview.py", recursive=True)
+            matches = glob.glob("**/view_pointcloud.py", recursive=True)
+            if not matches:
+                matches = glob.glob("**/Cloudview.py", recursive=True)
             if matches:
                 cloudview_candidate = Path(matches[0])
             else:
-                print("Cloudview.py not found in repo - cannot preview")
+                print("view_pointcloud.py not found in repo - cannot preview")
                 return
 
         try:

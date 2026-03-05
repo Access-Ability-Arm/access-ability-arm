@@ -1,5 +1,5 @@
 """
-Simple point cloud viewer for exported .npz files created by the GUI.
+Point cloud viewer for exported PLY and NPZ files created by the GUI.
 
 Behavior:
 - If a filename is provided on the command line, it loads that file.
@@ -8,7 +8,7 @@ Behavior:
   available it falls back to a Matplotlib 3D scatter (slower, less interactive).
 
 Usage:
-    python Cloudview.py [path/to/pointcloud.npz]
+    python view_pointcloud.py [path/to/pointcloud.ply]
 
 """
 
@@ -24,10 +24,55 @@ def find_latest_pointcloud(search_dir: str = "logs/pointclouds") -> str:
     p = Path(search_dir)
     if not p.exists():
         raise FileNotFoundError(f"Directory not found: {search_dir}")
-    files = sorted(p.glob("*.npz"), key=lambda f: f.stat().st_mtime, reverse=True)
+    # Prefer PLY, fall back to NPZ
+    files = sorted(
+        list(p.glob("*.ply")) + list(p.glob("*.npz")),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
     if not files:
-        raise FileNotFoundError(f"No .npz pointcloud files found in: {search_dir}")
+        raise FileNotFoundError(f"No point cloud files found in: {search_dir}")
     return str(files[0])
+
+
+def load_ply_points(path: str):
+    """Load point cloud from ASCII PLY file.
+
+    Returns:
+        Tuple of (points Nx3 float, colors Nx3 float 0-1 or None)
+    """
+    with open(path) as f:
+        # Parse header
+        line = f.readline().strip()
+        if line != "ply":
+            raise ValueError(f"Not a PLY file: {path}")
+
+        n_vertices = 0
+        has_color = False
+        in_header = True
+        while in_header:
+            line = f.readline().strip()
+            if line.startswith("element vertex"):
+                n_vertices = int(line.split()[-1])
+            elif line in ("property uchar red", "property uchar red"):
+                has_color = True
+            elif line == "end_header":
+                in_header = False
+
+        # Parse vertex data
+        points = []
+        colors = [] if has_color else None
+        for _ in range(n_vertices):
+            parts = f.readline().split()
+            points.append([float(parts[0]), float(parts[1]), float(parts[2])])
+            if has_color and len(parts) >= 6:
+                colors.append([int(parts[3]) / 255.0, int(parts[4]) / 255.0, int(parts[5]) / 255.0])
+
+    pts = np.array(points, dtype=float)
+    clr = np.array(colors, dtype=float) if colors else None
+    if clr is not None:
+        print(f"  RGB colors loaded ({len(clr)} entries)")
+    return pts, clr
 
 
 def load_points(path: str):
@@ -83,10 +128,76 @@ def load_points(path: str):
     return pts, colors
 
 
+def _try_load_mesh(path: str):
+    """Try to load a PLY file as a triangle mesh. Returns mesh or None."""
+    if not path or not path.endswith(".ply"):
+        return None
+    try:
+        import open3d as o3d
+        mesh = o3d.io.read_triangle_mesh(path)
+        if len(mesh.triangles) > 0:
+            mesh.compute_vertex_normals()
+            return mesh
+    except Exception:
+        pass
+    return None
+
+
 def view_with_open3d(points: np.ndarray, path: str = None, colors: np.ndarray = None):
     from pathlib import Path
 
     import open3d as o3d
+
+    # Check if this is a mesh PLY file
+    mesh = _try_load_mesh(path)
+    if mesh is not None:
+        n_verts = len(mesh.vertices)
+        n_tris = len(mesh.triangles)
+        print(f"  Loaded as triangle mesh: {n_verts} vertices, {n_tris} triangles")
+
+        window_name = f"Mesh - {Path(path).name}" if path else "Mesh"
+        vis = o3d.visualization.VisualizerWithKeyCallback()
+        vis.create_window(window_name=window_name)
+        vis.add_geometry(mesh)
+        # Add wireframe toggle
+        show_wireframe = [False]
+        pcd_from_mesh = [None]
+
+        def _toggle_wireframe(vis_obj=None):
+            show_wireframe[0] = not show_wireframe[0]
+            ro = vis.get_render_option()
+            if show_wireframe[0]:
+                ro.mesh_show_wireframe = True
+                print("[Viewer] Wireframe ON")
+            else:
+                ro.mesh_show_wireframe = False
+                print("[Viewer] Wireframe OFF")
+            return False
+
+        def _toggle_points(vis_obj=None):
+            if pcd_from_mesh[0] is None:
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = mesh.vertices
+                if mesh.has_vertex_colors():
+                    pcd.colors = mesh.vertex_colors
+                pcd_from_mesh[0] = pcd
+                vis.add_geometry(pcd)
+                print("[Viewer] Point overlay ON")
+            else:
+                vis.remove_geometry(pcd_from_mesh[0], reset_bounding_box=False)
+                pcd_from_mesh[0] = None
+                print("[Viewer] Point overlay OFF")
+            return False
+
+        vis.register_key_callback(ord("W"), _toggle_wireframe)
+        vis.register_key_callback(ord("P"), _toggle_points)
+        print("Mesh shortcuts: W=wireframe, P=point overlay")
+
+        vis.poll_events()
+        vis.update_renderer()
+        vis.run()
+        vis.destroy_window()
+        return
 
     # If points are (x,y,depth_mm) with integer depth, just use them as (x,y,z)
     pts = points.astype(float)
@@ -482,7 +593,7 @@ def plt_cm_viridis(arr):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", nargs="?", help="Path to .npz pointcloud file")
+    parser.add_argument("path", nargs="?", help="Path to .ply or .npz point cloud file")
     parser.add_argument(
         "--no-open3d", action="store_true", help="Force matplotlib viewer"
     )
@@ -500,7 +611,24 @@ def main():
         else:
             path = find_latest_pointcloud()
         print(f"Loading: {path}")
-        points, colors = load_points(path)
+
+        # If it's a PLY file, check if it's a mesh (has triangles) or point cloud
+        if path.endswith(".ply"):
+            # Try as mesh first (has triangles)
+            if not args.no_open3d:
+                try:
+                    import open3d as o3d
+                    mesh = o3d.io.read_triangle_mesh(path)
+                    if len(mesh.triangles) > 0:
+                        mesh.compute_vertex_normals()
+                        view_with_open3d(np.zeros((1, 3)), path=path)
+                        return
+                except Exception:
+                    pass
+            # Load as point cloud PLY
+            points, colors = load_ply_points(path)
+        else:
+            points, colors = load_points(path)
         print(f"Loaded {points.shape[0]} points (shape={points.shape})")
         print(
             f"  X range: [{points[:, 0].min():.4f}, {points[:, 0].max():.4f}]"

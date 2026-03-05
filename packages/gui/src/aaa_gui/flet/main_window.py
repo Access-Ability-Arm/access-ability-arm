@@ -6,6 +6,7 @@ Modern cross-platform GUI using Flet framework
 import sys
 import threading
 import time
+from enum import Enum
 
 from aaa_core.config.settings import app_config
 from aaa_core.hardware.button_controller import ButtonController
@@ -34,6 +35,22 @@ from ._mixin_object_detection import ObjectDetectionMixin
 from ._mixin_point_cloud import PointCloudMixin
 from ._mixin_video_display import VideoDisplayMixin
 
+# Import screen builders
+from ._screen_live_view import build_screen_live_view
+from ._screen_object_selection import build_screen_object_selection
+from ._screen_grasp_preview import build_screen_grasp_preview
+from ._screen_manual_control import build_screen_manual_control
+from ._screen_settings import build_screen_settings, build_settings_dimmer
+
+
+class Screen(Enum):
+    """Application screens for the state machine."""
+    LIVE_VIEW = "live_view"
+    OBJECT_SELECTION = "object_selection"
+    GRASP_PREVIEW = "grasp_preview"
+    MANUAL_CONTROL = "manual_control"
+    SETTINGS = "settings"
+
 
 class FletMainWindow(
     PointCloudMixin,
@@ -45,7 +62,7 @@ class FletMainWindow(
     """Main application window using Flet.
 
     Composes behavior from mixins:
-    - PointCloudMixin: Point cloud extraction, export (NPZ/PLY), preview
+    - PointCloudMixin: Point cloud extraction, PLY export, preview
     - ObjectDetectionMixin: Object selection, 3D analysis, gripper overlay
     - ArmControlMixin: Arm movement, gripper, connection management
     - CameraMixin: Camera switching, daemon, exposure control
@@ -64,7 +81,7 @@ class FletMainWindow(
         self.page = page
         self.page.title = "Access Ability Arm"
         self.page.theme_mode = ft.ThemeMode.LIGHT
-        self.page.padding = 5
+        self.page.padding = 0
         self.page.window.width = app_config.window_width
         self.page.window.height = app_config.window_height
         self.page.window.resizable = True
@@ -117,6 +134,12 @@ class FletMainWindow(
         self._overlay_points = None  # Temporary overlay points to show on frozen frame
         self.object_buttons = []  # Store overlay buttons for frozen objects
         self.selected_object = None  # Currently selected object index
+        self._hovered_object = None  # Currently hovered object card index
+        self._camera_hovered_object = None  # Object hovered via camera label
+
+        # Screen state machine
+        self.current_screen = Screen.LIVE_VIEW
+        self._screen_containers = {}
 
         # Track if UI is built to avoid page.update() during initialization
         self._ui_built = False
@@ -292,19 +315,45 @@ class FletMainWindow(
         else:
             self._realsense_daemon_warning = False
 
+    # ------------------------------------------------------------------ #
+    #  Object action buttons (kept for compatibility with mixins)         #
+    # ------------------------------------------------------------------ #
+
+    def _create_object_action_buttons(self):
+        """Create action buttons that appear only when an object is selected.
+        These are now embedded in the grasp preview screen's 'More' menu,
+        but we keep them for backward compatibility with mixin references.
+        """
+        self.export_ply_btn = None
+        self.export_mesh_btn = None
+        self.complete_shape_btn = None
+        if self.show_points_btn is None:
+            self.show_points_btn = None
+        self.object_action_buttons = ft.Column(controls=[], visible=False)
+        return self.object_action_buttons
+
+    def _update_object_action_visibility(self):
+        """Show/hide object action buttons based on current selection state."""
+        # In the new UI, this is handled by screen navigation
+        pass
+
+    # ------------------------------------------------------------------ #
+    #  Build UI — Screen-based Stack layout                               #
+    # ------------------------------------------------------------------ #
+
     def _build_ui(self):
-        """Build the Flet UI layout"""
+        """Build the Flet UI layout using screen-based Stack architecture."""
 
         # Update loading message
         self.loading_text.value = "Building interface..."
         self.page.update()
         # Clear the initial loading screen
         self.page.clean()
-        # Video feed display (responsive)
+
+        # Video feed display (full-screen, responsive)
         self.video_feed = ft.Image(
             src_base64="",  # Will be updated by image processor
-            fit=ft.ImageFit.CONTAIN,
-            border_radius=10,
+            fit=ft.ImageFit.COVER,
             expand=True,
         )
 
@@ -312,45 +361,36 @@ class FletMainWindow(
         self.camera_loading_text = ft.Text(
             "Loading camera feed...",
             size=16,
-            color="#607D8B",  # Blue Grey 500
+            color="#607D8B",
             weight=ft.FontWeight.W_400,
         )
         self.loading_placeholder = ft.Container(
             content=ft.Column(
                 [
-                    ft.ProgressRing(color="#607D8B"),  # Blue Grey 500
+                    ft.ProgressRing(color="#607D8B"),
                     self.camera_loading_text,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
-            bgcolor="#ECEFF1",  # Light grey (Blue Grey 50)
-            border_radius=10,
+            bgcolor="#1A2327",
             alignment=ft.alignment.center,
-            visible=True,  # Initially visible
+            visible=True,
             expand=True,
         )
 
-        # Video container with Stack to overlay loading on video
-        # Set fixed height to prevent layout shift when camera loads
+        # Video container (base layer)
         self.video_container = ft.Container(
             content=ft.Stack(
-                [
-                    self.video_feed,
-                    self.loading_placeholder,
-                ],
+                [self.video_feed, self.loading_placeholder],
                 expand=True,
             ),
-            height=app_config.display_height,  # Fixed height from config (650px)
             expand=True,
         )
 
-        # Object selection buttons (shown when frozen)
+        # Object selection buttons row (kept for mixin compatibility)
         self.object_buttons_row = ft.Row(
-            controls=[],
-            spacing=10,
-            wrap=True,
-            visible=False,
+            controls=[], spacing=10, wrap=True, visible=False,
         )
 
         # Track if first frame has been received
@@ -358,13 +398,11 @@ class FletMainWindow(
 
         # Check if daemon is running to determine camera options
         daemon_running = self._check_daemon_running()
-        # Skip print - Flet blocks stdout
 
-        # Camera selection - build list of available cameras
+        # Build camera dropdown (needed by _start_image_processor)
         cameras = self.camera_manager.get_camera_info()
         camera_options = []
 
-        # If daemon is running, add it as the first option
         if daemon_running:
             camera_options.append(
                 ft.dropdown.Option(
@@ -373,35 +411,17 @@ class FletMainWindow(
                 )
             )
 
-        # Add other available cameras
         for cam in cameras:
-            # Hide infrared cameras - they cause crashes and aren't useful for this app
             if cam.get("color_type") == "Infrared":
-                print(
-                    f"[DEBUG] Hiding infrared camera from dropdown: [{cam['camera_index']}] {cam['camera_name']}"
-                )
                 continue
-
-            # On macOS, RealSense cameras crash when accessed via OpenCV and require
-            # sudo for USB access. Hide them from dropdown - use daemon instead.
-            # On Windows/Linux, RealSense can be accessed directly via OpenCV.
             if sys.platform == "darwin" and "RealSense" in cam["camera_name"]:
-                print(
-                    f"[DEBUG] Hiding RealSense camera from dropdown (macOS requires daemon): {cam['camera_name']}"
-                )
                 continue
-
-            # Shorten long camera names for better display
             name = cam["camera_name"]
             if len(name) > 70:
-                # Truncate but keep important parts
                 name = name[:67] + "..."
-
-            # For RealSense cameras, show actual SDK resolution (not OpenCV default)
             resolution = cam["resolution"]
             if "RealSense" in cam["camera_name"] and resolution == "640x480":
-                resolution = "1920x1080"  # RealSense SDK uses this for RGB
-
+                resolution = "1920x1080"
             display_text = (
                 f"[{cam['camera_index']}] {name} - {resolution} ({cam['color_type']})"
             )
@@ -412,21 +432,13 @@ class FletMainWindow(
                 )
             )
 
-        # Create dropdown or text based on number of options
         if len(camera_options) == 1:
-            # Single camera: show as text
             camera_display_text = f"Camera: {camera_options[0].text}"
             self.camera_dropdown = ft.Text(
-                camera_display_text,
-                size=14,
-                weight=ft.FontWeight.W_500,
-                color="#1976D2",  # Blue 700
+                camera_display_text, size=14, weight=ft.FontWeight.W_500, color="#1976D2",
             )
             self.camera_dropdown.value = camera_options[0].key
-            print(f"[DEBUG] Single camera detected: {camera_options[0].text}")
         else:
-            # Multiple cameras: show dropdown
-            # Default to daemon if available, otherwise first camera
             dropdown_value = (
                 "daemon"
                 if daemon_running
@@ -437,209 +449,119 @@ class FletMainWindow(
                 options=camera_options,
                 value=dropdown_value,
                 on_change=self._on_camera_changed,
-                width=600,  # Increased width to accommodate more info
+                width=600,
                 disabled=False,
             )
 
-        # Status display
-        self.status_text = ft.Text(
-            "Initializing...",
-            size=12,
-            color="#455A64",  # Blue Grey 700
-        )
+        # Status text (kept for mixin compatibility)
+        self.status_text = ft.Text("Initializing...", size=12, color="#455A64")
 
-        # Arm status display - check actual connection status
+        # Arm status text (kept for mixin compatibility)
         arm_connected = (
             app_config.lite6_available
             and self.arm_controller
             and self.arm_controller.is_connected()
         )
-        if arm_connected:
-            arm_status_text = f"Arm: ✓ Connected ({app_config.lite6_ip})"
-            arm_status_color = "#2E7D32"  # Green 800
-        else:
-            arm_status_text = "Arm: Not connected"
-            arm_status_color = "#F57C00"  # Orange 700
-
         self.arm_status_text = ft.Text(
-            arm_status_text,
+            f"Arm: {'✓ Connected' if arm_connected else 'Not connected'}",
             size=12,
-            color=arm_status_color,
+            color="#2E7D32" if arm_connected else "#F57C00",
         )
 
-        # Connect/Disconnect button (created here so it can be placed inline)
-        def _connect_click(e):
-            self._on_connect_arm(e)
-
+        # Connect button (kept for mixin compatibility)
         self.arm_connect_btn = ft.ElevatedButton(
-            text="Connect Arm" if not arm_connected else "Disconnect Arm",
-            on_click=_connect_click,
+            text="Disconnect Arm" if arm_connected else "Connect Arm",
+            on_click=lambda e: self._on_connect_arm(e),
             width=140,
         )
 
-        # Flip camera button
+        # Camera control buttons (kept for mixin/handler compatibility)
         self.flip_camera_btn = ft.IconButton(
             icon=ft.Icons.FLIP,
             tooltip="Flip camera horizontally (mirror)",
             on_click=lambda _: self._on_flip_camera(),
-            bgcolor="#E0E0E0",  # Grey 300
-            icon_color="#424242",  # Grey 800
+            bgcolor="#E0E0E0",
+            icon_color="#424242",
         )
-
-        # Depth visualization toggle button (only shown when depth available)
         self.depth_toggle_btn = ft.IconButton(
             icon=ft.Icons.LAYERS,
             tooltip="Toggle RGB/Depth view",
             on_click=lambda _: self._on_toggle_depth_view(),
-            bgcolor="#E0E0E0",  # Grey 300
-            icon_color="#424242",  # Grey 800
-            visible=False,  # Hidden until depth is available
-        )
-
-        # Refresh camera view button (only shown on Auto tab when frozen)
-        self.refresh_camera_btn = ft.IconButton(
-            icon=ft.Icons.REFRESH,
-            tooltip="Refresh camera view",
-            on_click=lambda _: self._on_refresh_camera(),
-            bgcolor="#E0E0E0",  # Grey 300
-            icon_color="#424242",  # Grey 800
-            visible=False,  # Hidden by default (Manual tab is default)
-        )
-
-        # RealSense exposure slider (hidden by default, shown when RealSense detected)
-        self.exposure_value_text = ft.Text("Exposure: 800", size=12, color="#666")
-        self.exposure_slider = ft.Slider(
-            min=100,
-            max=4000,
-            value=800,
-            divisions=78,
-            label="Exposure: {value}",
-            on_change=self._on_exposure_change,
-            visible=False,  # Hidden until RealSense detected
-            width=300,
-        )
-
-        # Auto-exposure state
-        self.auto_exposure_enabled = False
-        self.auto_exposure_thread = None
-
-        # Auto-exposure button
-        self.auto_exposure_btn = ft.IconButton(
-            icon=ft.Icons.AUTO_MODE,
-            tooltip="Auto-adjust exposure based on image brightness",
-            on_click=lambda _: self._auto_adjust_exposure(),
             bgcolor="#E0E0E0",
             icon_color="#424242",
             visible=False,
         )
+        self.refresh_camera_btn = ft.IconButton(
+            icon=ft.Icons.REFRESH,
+            tooltip="Refresh camera view",
+            on_click=lambda _: self._on_refresh_camera(),
+            bgcolor="#E0E0E0",
+            icon_color="#424242",
+            visible=False,
+        )
+
+        # Exposure controls (kept for mixin compatibility)
+        self.exposure_value_text = ft.Text("Exposure: 800", size=12, color="#666")
+        self.exposure_slider = ft.Slider(
+            min=100, max=4000, value=800, divisions=78,
+            label="Exposure: {value}", on_change=self._on_exposure_change,
+            visible=False, width=300,
+        )
+        self.auto_exposure_enabled = False
+        self.auto_exposure_thread = None
+        self.auto_exposure_btn = ft.IconButton(
+            icon=ft.Icons.AUTO_MODE,
+            tooltip="Auto-adjust exposure",
+            on_click=lambda _: self._auto_adjust_exposure(),
+            bgcolor="#E0E0E0", icon_color="#424242", visible=False,
+        )
         self.exposure_controls = ft.Row(
-            [
-                ft.Icon(ft.Icons.BRIGHTNESS_6, size=16, color="#666"),
-                self.exposure_slider,
-                self.exposure_value_text,
-                self.auto_exposure_btn,
-            ],
-            visible=False,  # Hidden until RealSense detected
-            spacing=10,
+            [self.exposure_slider, self.exposure_value_text, self.auto_exposure_btn],
+            visible=False, spacing=10,
         )
 
-        # Show Points button (created here so reference can be enabled/disabled later)
-        self.show_points_btn = ft.ElevatedButton(
-            text="Show Points",
-            icon=ft.Icons.VISIBILITY,
-            on_click=lambda e: self._on_show_points(e),
-            bgcolor="#795548",  # Brown 500
-            color="#FFFFFF",
-            width=135,
-            height=38,
-            disabled=True,
+        # Speed label (kept for mixin compatibility)
+        self.speed_label = ft.Text(
+            f"Speed: {self.movement_speed_percent}%", size=14, weight=ft.FontWeight.BOLD,
         )
 
-        # Control panel with robotic arm buttons
-        control_panel = self._build_control_panel()
+        # Show Points button (kept for mixin compatibility)
+        self.show_points_btn = None
 
-        # RealSense daemon warning banner (shown if RealSense detected but daemon not running)
-        realsense_warning_banner = ft.Container(
-            content=ft.Row(
-                [
-                    ft.Icon(ft.Icons.WARNING, color="#FFFFFF", size=20),
-                    ft.Text(
-                        "RealSense detected but daemon not running. Run 'make daemon-start' then 'make run' for depth sensing.",
-                        color="#FFFFFF",
-                        size=13,
-                        weight=ft.FontWeight.W_500,
-                    ),
-                ],
-                spacing=10,
-            ),
-            bgcolor="#E65100",  # Orange 900
-            padding=10,
-            border_radius=5,
-            visible=getattr(self, "_realsense_daemon_warning", False),
-        )
+        # Create object action buttons (kept for mixin compatibility)
+        self._create_object_action_buttons()
 
-        # Main layout
+        # --- Build screen containers ---
+        self._screen_containers[Screen.LIVE_VIEW] = build_screen_live_view(self)
+        self._screen_containers[Screen.OBJECT_SELECTION] = build_screen_object_selection(self)
+        self._screen_containers[Screen.GRASP_PREVIEW] = build_screen_grasp_preview(self)
+        self._screen_containers[Screen.MANUAL_CONTROL] = build_screen_manual_control(self)
 
+        # Settings has a dimmer + panel
+        self._settings_dimmer = build_settings_dimmer(self)
+        self._settings_dimmer.visible = False
+        self._screen_containers[Screen.SETTINGS] = build_screen_settings(self)
+
+        # Set initial visibility
+        for screen, container in self._screen_containers.items():
+            container.visible = (screen == Screen.LIVE_VIEW)
+
+        # --- Assemble the full-screen Stack ---
         self.page.add(
-            ft.Column(
+            ft.Stack(
                 [
-                    # RealSense warning banner (if applicable)
-                    realsense_warning_banner,
-                    # Main content area
-                    ft.Row(
-                        [
-                            # Left: Video feed (responsive, takes available space)
-                            ft.Container(
-                                content=ft.Column(
-                                    [
-                                        # Video container with loading overlay
-                                        self.video_container,
-                                        # Camera controls and status
-                                        ft.Column(
-                                            [
-                                                ft.Row(
-                                                    [
-                                                        self.camera_dropdown,
-                                                        self.flip_camera_btn,
-                                                        self.depth_toggle_btn,
-                                                        self.refresh_camera_btn,
-                                                        self.arm_connect_btn,
-                                                        # RealSense exposure controls (shown only for RealSense, inline with buttons)
-                                                        self.exposure_controls,
-                                                    ],
-                                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                                                ),
-                                                # Status row
-                                                ft.Row(
-                                                    [
-                                                        self.status_text,
-                                                        ft.Text(" | ", size=12),
-                                                        self.arm_status_text,
-                                                    ],
-                                                    spacing=5,
-                                                ),
-                                            ],
-                                            spacing=5,
-                                        ),
-                                    ],
-                                    spacing=10,
-                                    expand=True,
-                                    alignment=ft.MainAxisAlignment.START,  # Align to top
-                                ),
-                                padding=0,
-                                expand=2,  # Takes 2/3 of available space
-                                # border=ft.border.all(2, "#FF0000"),  # Red debug border
-                            ),
-                            # Right: Control panel (fixed width)
-                            control_panel,
-                        ],
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        spacing=20,
-                        expand=True,
-                    ),
+                    # Base layer: video
+                    self.video_container,
+                    # Screen overlays
+                    self._screen_containers[Screen.LIVE_VIEW],
+                    self._screen_containers[Screen.OBJECT_SELECTION],
+                    self._screen_containers[Screen.GRASP_PREVIEW],
+                    self._screen_containers[Screen.MANUAL_CONTROL],
+                    # Settings overlay (dimmer + panel)
+                    self._settings_dimmer,
+                    self._screen_containers[Screen.SETTINGS],
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                scroll=ft.ScrollMode.AUTO,
+                expand=True,
             )
         )
 
@@ -649,214 +571,412 @@ class FletMainWindow(
         # Mark UI as built to allow page.update() in callbacks
         self._ui_built = True
 
-    def _build_control_panel(self) -> ft.Container:
-        """Build the robotic arm control panel with Manual/Auto tabs"""
+    # ------------------------------------------------------------------ #
+    #  Screen Navigation                                                  #
+    # ------------------------------------------------------------------ #
 
-        def create_direction_controls(direction: str, icon: str) -> ft.Container:
-            """Create positive/negative button pair for a direction"""
-            return ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Text(direction.upper(), weight=ft.FontWeight.BOLD, size=16),
-                        ft.Row(
-                            [
-                                ft.IconButton(
-                                    icon=ft.Icons.REMOVE,
-                                    tooltip=f"{direction} negative",
-                                    on_click=lambda e, d=direction: (
-                                        self._on_button_press(d, "neg")
-                                    ),
-                                    bgcolor="#EF9A9A",  # Red 200
-                                    icon_color="#B71C1C",  # Red 900
-                                    icon_size=30,
-                                    width=50,
-                                    height=50,
-                                ),
-                                ft.Icon(icon, size=40),
-                                ft.IconButton(
-                                    icon=ft.Icons.ADD,
-                                    tooltip=f"{direction} positive",
-                                    on_click=lambda e, d=direction: (
-                                        self._on_button_press(d, "pos")
-                                    ),
-                                    bgcolor="#A5D6A7",  # Green 200
-                                    icon_color="#1B5E20",  # Green 900
-                                    icon_size=30,
-                                    width=50,
-                                    height=50,
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                        ),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=5,
+    def _navigate_to(self, screen: Screen):
+        """Navigate to a screen by toggling visibility."""
+        prev = self.current_screen
+        self.current_screen = screen
+
+        # Hide all screens
+        for s, container in self._screen_containers.items():
+            container.visible = (s == screen)
+
+        # Settings dimmer
+        self._settings_dimmer.visible = (screen == Screen.SETTINGS)
+
+        # If leaving settings, show the previous screen underneath
+        if screen != Screen.SETTINGS and prev == Screen.SETTINGS:
+            # Settings was overlay — restore whichever screen was underneath
+            pass
+
+        # Handle detection mode changes
+        if screen == Screen.LIVE_VIEW:
+            if self.image_processor:
+                self.image_processor.set_detection_mode("camera")
+            if self.video_frozen:
+                self._unfreeze_video()
+        elif screen == Screen.MANUAL_CONTROL:
+            if self.image_processor:
+                self.image_processor.set_detection_mode("camera")
+
+        self._update_status()
+        self.page.update()
+
+    def _navigate_to_settings(self):
+        """Show settings as an overlay (doesn't hide the current screen)."""
+        self._settings_dimmer.visible = True
+        self._screen_containers[Screen.SETTINGS].visible = True
+        # Update settings panel state
+        self._sync_settings_panel()
+        self.page.update()
+
+    def _close_settings(self):
+        """Close the settings overlay."""
+        self._settings_dimmer.visible = False
+        self._screen_containers[Screen.SETTINGS].visible = False
+        self.page.update()
+
+    def _navigate_to_manual_control(self):
+        """Navigate to manual control screen."""
+        self._navigate_to(Screen.MANUAL_CONTROL)
+
+    def _back_from_manual_control(self):
+        """Go back from manual control to live view."""
+        self._navigate_to(Screen.LIVE_VIEW)
+
+    def _on_find_objects_and_navigate(self):
+        """Find objects then navigate to object selection screen."""
+        self._on_find_objects()
+        # Navigate after a brief delay to let detection start
+        def navigate_after_freeze():
+            # Wait for video to freeze (1 second capture + small buffer)
+            time.sleep(1.5)
+            self._navigate_to(Screen.OBJECT_SELECTION)
+            # Populate cards after navigation
+            self._populate_object_cards()
+            self.page.update()
+        threading.Thread(target=navigate_after_freeze, daemon=True).start()
+
+    def _back_from_object_selection(self):
+        """Go back from object selection to live view, unfreezing video."""
+        self._unfreeze_video()
+        self._navigate_to(Screen.LIVE_VIEW)
+
+    def _on_object_card_tapped(self, object_index: int):
+        """Handle tapping an object card — select it and go to grasp preview."""
+        self._on_object_selected(object_index)
+        self._update_grasp_info_card()
+        self._navigate_to(Screen.GRASP_PREVIEW)
+
+    def _back_from_grasp_preview(self):
+        """Go back from grasp preview to object selection."""
+        self.selected_object = None
+        self.object_analysis = None
+        self._analysis_in_progress = False
+        self._update_frozen_frame_highlight()
+        self._navigate_to(Screen.OBJECT_SELECTION)
+
+    def _retry_grasp(self):
+        """Re-scan: unfreeze, recapture, and go back to object selection."""
+        self._unfreeze_video()
+        self._on_find_objects()
+        def navigate_after_freeze():
+            time.sleep(1.5)
+            self._navigate_to(Screen.OBJECT_SELECTION)
+            self._populate_object_cards()
+            self.page.update()
+        threading.Thread(target=navigate_after_freeze, daemon=True).start()
+
+    # ------------------------------------------------------------------ #
+    #  Object Card Population (for Screen 2)                              #
+    # ------------------------------------------------------------------ #
+
+    def _populate_object_cards(self):
+        """Create styled card containers in the object_card_row for Screen 2.
+
+        Prototype spec (2-select-a-cards.html):
+        - Cards: min-w-[160px], border-2 rounded-2xl p-4, bg-white
+        - Number badge: w-8 h-8 (32px) rounded-full, colored bg, text-lg font-bold
+        - Title: text-lg font-semibold, text color matches badge
+        - Subtitle: text-sm text-gray-400
+        """
+        from . import _design_tokens as T
+
+        if not self.frozen_detections:
+            return
+
+        self.object_card_row.controls.clear()
+        classes = self.frozen_detections["classes"]
+
+        for i, class_name in enumerate(classes):
+            color = T.CARD_COLORS[i % len(T.CARD_COLORS)]
+
+            # Number badge: w-8 h-8 rounded-full
+            badge = ft.Container(
+                content=ft.Text(
+                    str(i + 1), size=T.TEXT_LG, color=T.WHITE, weight=ft.FontWeight.W_700,
                 ),
-                padding=10,
-                border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
-                border_radius=10,
+                bgcolor=color,
+                border_radius=T.RADIUS_FULL,
+                width=32,
+                height=32,
+                alignment=ft.alignment.center,
             )
 
-        # Grip state toggle
-        grip_toggle = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("GRIP STATE", weight=ft.FontWeight.BOLD, size=16),
-                    ft.Switch(
-                        label="Open/Close",
-                        label_style=ft.TextStyle(size=14),
-                        on_change=lambda e: self._on_grip_state_changed(
-                            e.control.value
+            card = ft.Container(
+                content=ft.Row(
+                    [
+                        badge,
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    class_name.capitalize(),
+                                    size=T.TEXT_LG,
+                                    color=T.GRAY_700,
+                                    weight=ft.FontWeight.W_600,
+                                ),
+                                ft.Text(
+                                    "Tap to select",
+                                    size=T.TEXT_SM,
+                                    color=T.GRAY_400,
+                                ),
+                            ],
+                            spacing=2,
                         ),
-                        scale=1.0,
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=10,
-            ),
-            padding=10,
-            border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
-            border_radius=10,
-        )
-
-        # Speed slider
-        self.speed_label = ft.Text(
-            f"Speed: {self.movement_speed_percent}%",
-            size=14,
-            weight=ft.FontWeight.BOLD,
-        )
-
-        speed_slider = ft.Slider(
-            min=1,
-            max=100,
-            value=self.movement_speed_percent,
-            divisions=99,
-            label="{value}%",
-            on_change=self._on_speed_changed,
-        )
-
-        speed_control = ft.Container(
-            content=ft.Column(
-                [
-                    self.speed_label,
-                    speed_slider,
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=5,
-            ),
-            padding=10,
-            border=ft.border.all(2, "#CFD8DC"),  # Blue Grey 100
-            border_radius=10,
-        )
-
-        # Manual controls tab content
-        manual_tab_content = ft.Container(
-            content=ft.Column(
-                [
-                    speed_control,
-                    create_direction_controls("x", ft.Icons.SWAP_HORIZ),
-                    create_direction_controls("y", ft.Icons.SWAP_VERT),
-                    create_direction_controls("z", ft.Icons.HEIGHT),
-                    create_direction_controls("grip", ft.Icons.BACK_HAND),
-                    grip_toggle,
-                ],
-                spacing=10,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                scroll=ft.ScrollMode.AUTO,
-            ),
-            padding=10,
-        )
-
-        # Auto controls tab content
-        auto_tab_content = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text(
-                        "Automatic Controls",
-                        size=16,
-                        weight=ft.FontWeight.BOLD,
-                    ),
-                    # Find Objects button
-                    ft.ElevatedButton(
-                        text="Find Objects",
-                        icon=ft.Icons.SEARCH,
-                        on_click=lambda e: self._on_find_objects(),
-                        bgcolor="#2196F3",  # Blue 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    # Object selection buttons (shown when frozen)
-                    self.object_buttons_row,
-                    # Export point cloud for selected object
-                    ft.ElevatedButton(
-                        text="Export PointCloud",
-                        icon=ft.Icons.CLOUD_UPLOAD,
-                        on_click=lambda e: self._export_selected_object_pointcloud(e),
-                        bgcolor="#3F51B5",  # Indigo 500
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    # Export full depth frame as NPZ (whole point cloud)
-                    ft.ElevatedButton(
-                        text="Export Full PC",
-                        icon=ft.Icons.CLOUD_DOWNLOAD,
-                        on_click=lambda e: self._export_full_pointcloud(e),
-                        bgcolor="#283593",  # Indigo 800
-                        color="#FFFFFF",
-                        width=135,
-                        height=38,
-                    ),
-                    # Show sampled mask points overlay for selected object
-                    (
-                        self.show_points_btn
-                        if self.show_points_btn is not None
-                        else ft.ElevatedButton(
-                            text="Show Points",
-                            icon=ft.Icons.VISIBILITY,
-                            on_click=lambda e: self._on_show_points(e),
-                            bgcolor="#795548",  # Brown 500
-                            color="#FFFFFF",
-                            width=135,
-                            height=38,
-                            disabled=True,
-                        )
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=15,
-            ),
-            padding=20,
-        )
-
-        # Create tabs
-        control_tabs = ft.Tabs(
-            selected_index=0,
-            animation_duration=300,
-            on_change=self._on_tab_changed,
-            tabs=[
-                ft.Tab(
-                    text="Manual",
-                    icon=ft.Icons.TOUCH_APP,
-                    content=manual_tab_content,
+                    ],
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
-                ft.Tab(
-                    text="Auto",
-                    icon=ft.Icons.AUTO_MODE,
-                    content=auto_tab_content,
-                ),
-            ],
-            height=750,  # Fixed height for tab content (includes tab bar + speed slider)
-        )
+                bgcolor=T.WHITE,
+                border=ft.border.all(2, T.GRAY_200),
+                border_radius=T.RADIUS_2XL,
+                width=T.CARD_MIN_W,
+                height=T.CARD_MIN_H,
+                alignment=ft.alignment.center_left,
+                padding=ft.padding.all(T.CARD_PADDING),
+                on_click=lambda _, idx=i: self._on_object_card_tapped(idx),
+                on_hover=lambda e, idx=i, c=color: self._on_object_card_hover(e, idx, c),
+                ink=True,
+            )
+            self.object_card_row.controls.append(card)
 
-        return ft.Container(
-            content=control_tabs,
-            width=220,
-            padding=5,
-            bgcolor="#ECEFF1",  # Blue Grey 50
-            border_radius=10,
-        )
+        self.page.update()
+
+    def _on_object_card_hover(self, e, object_index: int, card_color: str):
+        """Handle hover enter/leave on an object card — highlight in camera view."""
+        from . import _design_tokens as T
+
+        # Clear camera-hover state so the two sources don't conflict
+        self._camera_hovered_object = None
+
+        card = e.control
+        if e.data == "true":
+            # Hover enter
+            self._hovered_object = object_index
+            card.border = ft.border.all(3, card_color)
+            card.bgcolor = ft.Colors.with_opacity(0.08, card_color)
+        else:
+            # Hover leave
+            self._hovered_object = None
+            card.border = ft.border.all(2, T.GRAY_200)
+            card.bgcolor = T.WHITE
+        card.update()
+        # Update camera overlay to highlight hovered object
+        self._update_frozen_frame_highlight()
+        self._update_video_feed(self.frozen_frame)
+
+    def _on_camera_label_hover(self, e):
+        """Handle hover on the camera area — highlight card for nearest object label."""
+        from . import _design_tokens as T
+        import math
+
+        if not self.frozen_detections or not hasattr(self, "object_card_row"):
+            return
+
+        centers = self.frozen_detections.get("centers", [])
+        if not centers:
+            return
+
+        # Map display coordinates to image coordinates (1920x1080).
+        # The video uses ImageFit.COVER in the camera area container.
+        page_w = self.page.width or 1920
+        # Estimate camera area height: page height minus card panel (~172px)
+        card_panel_h = 172
+        cam_h = (self.page.height or 1080) - card_panel_h
+        cam_w = page_w
+
+        # COVER fit: scale to fill, crop overflow
+        scale = max(cam_w / 1920, cam_h / 1080)
+        offset_x = (cam_w - 1920 * scale) / 2
+        offset_y = (cam_h - 1080 * scale) / 2
+
+        img_x = (e.local_x - offset_x) / scale
+        img_y = (e.local_y - offset_y) / scale
+
+        # Find nearest object center within threshold
+        hit_radius = 80  # pixels in image coords
+        nearest_idx = None
+        nearest_dist = float("inf")
+        for i, (cx, cy) in enumerate(centers):
+            dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
+            if dist < hit_radius and dist < nearest_dist:
+                nearest_dist = dist
+                nearest_idx = i
+
+        # Skip if hover state hasn't changed
+        prev = getattr(self, "_camera_hovered_object", None)
+        if nearest_idx == prev:
+            return
+        self._camera_hovered_object = nearest_idx
+
+        # Reset previous card highlight
+        if prev is not None and prev < len(self.object_card_row.controls):
+            card = self.object_card_row.controls[prev]
+            card.border = ft.border.all(2, T.GRAY_200)
+            card.bgcolor = T.WHITE
+            card.update()
+
+        # Highlight new card
+        if nearest_idx is not None and nearest_idx < len(self.object_card_row.controls):
+            color = T.CARD_COLORS[nearest_idx % len(T.CARD_COLORS)]
+            card = self.object_card_row.controls[nearest_idx]
+            card.border = ft.border.all(3, color)
+            card.bgcolor = ft.Colors.with_opacity(0.08, color)
+            card.update()
+
+        # Update camera overlay too
+        self._hovered_object = nearest_idx
+        self._update_frozen_frame_highlight()
+        self._update_video_feed(self.frozen_frame)
+
+    def _on_camera_label_tap(self, e):
+        """Handle tap on the camera area — select nearest object."""
+        import math
+
+        if not self.frozen_detections:
+            return
+
+        centers = self.frozen_detections.get("centers", [])
+        if not centers:
+            return
+
+        page_w = self.page.width or 1920
+        card_panel_h = 172
+        cam_h = (self.page.height or 1080) - card_panel_h
+        cam_w = page_w
+
+        scale = max(cam_w / 1920, cam_h / 1080)
+        offset_x = (cam_w - 1920 * scale) / 2
+        offset_y = (cam_h - 1080 * scale) / 2
+
+        img_x = (e.local_x - offset_x) / scale
+        img_y = (e.local_y - offset_y) / scale
+
+        hit_radius = 80
+        nearest_idx = None
+        nearest_dist = float("inf")
+        for i, (cx, cy) in enumerate(centers):
+            dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
+            if dist < hit_radius and dist < nearest_dist:
+                nearest_dist = dist
+                nearest_idx = i
+
+        if nearest_idx is not None:
+            self._on_object_card_tapped(nearest_idx)
+
+    # ------------------------------------------------------------------ #
+    #  Grasp Info Card Update (for Screen 3)                              #
+    # ------------------------------------------------------------------ #
+
+    def _update_grasp_info_card(self):
+        """Update the grasp preview info card with current object data."""
+        from . import _design_tokens as T
+
+        if self.selected_object is None or not self.frozen_detections:
+            return
+
+        classes = self.frozen_detections["classes"]
+        class_name = classes[self.selected_object]
+        self.grasp_object_name.value = class_name.capitalize()
+
+        # Update badge color and number
+        color = T.CARD_COLORS[self.selected_object % len(T.CARD_COLORS)]
+        self.grasp_badge_container.bgcolor = color
+        self.grasp_badge_container.content.value = f"#{self.selected_object + 1}"
+
+        if self.object_analysis:
+            analysis = self.object_analysis
+            # Update confidence
+            conf = analysis.grasp_confidence
+            self.grasp_confidence_bar.value = conf
+            self.grasp_confidence_text.value = f"Confidence: {conf:.0%}"
+            # Color the bar
+            if conf >= 0.7:
+                self.grasp_confidence_bar.color = "#4CAF50"
+                self.grasp_status_text.value = "Ready to grasp"
+                self.grasp_status_text.color = "#4CAF50"
+            elif conf >= 0.4:
+                self.grasp_confidence_bar.color = "#FF9800"
+                self.grasp_status_text.value = "Grasp possible"
+                self.grasp_status_text.color = "#FF9800"
+            else:
+                self.grasp_confidence_bar.color = "#F44336"
+                self.grasp_status_text.value = "Uncertain grasp"
+                self.grasp_status_text.color = "#F44336"
+
+            if not analysis.graspable:
+                self.grasp_status_text.value = "Not graspable"
+                self.grasp_status_text.color = "#F44336"
+
+            # Dimensions
+            width_mm = analysis.grasp_width * 1000
+            self.grasp_dimensions_text.value = f"Grasp width: {width_mm:.0f}mm"
+        else:
+            self.grasp_status_text.value = "Analyzing..."
+            self.grasp_status_text.color = "#FF9800"
+            self.grasp_confidence_bar.value = 0
+            self.grasp_confidence_text.value = "Confidence: --"
+            self.grasp_dimensions_text.value = "Dimensions: --"
+
+        self.page.update()
+
+    # ------------------------------------------------------------------ #
+    #  Speed Segment Control                                              #
+    # ------------------------------------------------------------------ #
+
+    def _on_speed_segment_changed(self, e):
+        """Handle speed segment button change (Slow/Med/Fast)."""
+        selected = e.control.selected
+        if not selected:
+            return
+        value = list(selected)[0]
+        speed_map = {"slow": 20, "med": 50, "fast": 100}
+        self.movement_speed_percent = speed_map.get(value, 20)
+        self.speed_label.value = f"Speed: {self.movement_speed_percent}%"
+        print(f"Movement speed set to: {self.movement_speed_percent}%")
+
+    # ------------------------------------------------------------------ #
+    #  Settings Panel Sync                                                #
+    # ------------------------------------------------------------------ #
+
+    def _sync_settings_panel(self):
+        """Sync settings panel widgets with current state."""
+        if hasattr(self, "settings_mirror_switch"):
+            self.settings_mirror_switch.value = (
+                self.image_processor.flip_horizontal if self.image_processor else False
+            )
+        if hasattr(self, "settings_depth_switch"):
+            self.settings_depth_switch.value = (
+                getattr(self.image_processor, "show_depth_visualization", False)
+                if self.image_processor else False
+            )
+        # Arm status
+        if hasattr(self, "settings_arm_status"):
+            arm_connected = (
+                app_config.lite6_available
+                and self.arm_controller
+                and self.arm_controller.is_connected()
+            )
+            if arm_connected:
+                self.settings_arm_status.value = f"Connected ({app_config.lite6_ip})"
+                self.settings_arm_status.color = "#4CAF50"
+                self.settings_arm_btn.text = "Disconnect Arm"
+            else:
+                self.settings_arm_status.value = "Not connected"
+                self.settings_arm_status.color = "#FF9800"
+                self.settings_arm_btn.text = "Connect Arm"
+
+    def _on_settings_camera_changed(self, e):
+        """Handle camera change from the settings panel dropdown."""
+        # Delegate to the same handler
+        self._on_camera_changed(e)
+
+    # ------------------------------------------------------------------ #
+    #  Image processor start (unchanged logic)                            #
+    # ------------------------------------------------------------------ #
 
     def _start_image_processor(self):
         """Initialize and start image processing"""
@@ -873,16 +993,8 @@ class FletMainWindow(
                     display_height=app_config.display_height,
                     callback=self._update_video_feed,
                 )
-                # RealSense detected - using auto-exposure (manual controls hidden)
                 self.using_realsense = True
-                # Exposure controls hidden - relying on RealSense auto-exposure
-
-                # Uncomment below to enable manual exposure controls:
-                # self.exposure_controls.visible = True
-                # self.exposure_slider.visible = True
-                # self.auto_exposure_btn.visible = True
             except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
-                # Daemon socket exists but daemon isn't responding - fall back to regular camera
                 print(f"[WARN] Daemon connection failed: {e}")
                 print("[INFO] Falling back to direct camera access (RGB only)")
                 daemon_running = False
@@ -892,12 +1004,11 @@ class FletMainWindow(
             self.image_processor = ImageProcessor(
                 display_width=app_config.display_width,
                 display_height=app_config.display_height,
-                callback=self._update_video_feed,  # Use callback for Flet
+                callback=self._update_video_feed,
             )
         print("[DEBUG MainWindow] ImageProcessor created")
 
         # Set initial camera name for flip detection and trigger camera initialization
-        # (only for regular ImageProcessor, not DaemonImageProcessor)
         is_daemon_processor = (
             isinstance(self.image_processor, DaemonImageProcessor)
             if DAEMON_AVAILABLE
@@ -908,7 +1019,6 @@ class FletMainWindow(
             print(
                 "[DEBUG MainWindow] Setting initial camera name for flip detection..."
             )
-            # Use the dropdown value if set (handles auto-selection and default)
             selected_cam_index = None
             if self.camera_dropdown.value and self.camera_dropdown.value != "daemon":
                 selected_cam_index = int(self.camera_dropdown.value)
@@ -921,7 +1031,6 @@ class FletMainWindow(
                     print(f"[DEBUG MainWindow] Found camera: {cam['camera_name']}")
                     self.image_processor.current_camera_name = cam["camera_name"]
                     self.image_processor._update_flip_for_camera(cam["camera_name"])
-                    # Trigger camera change to actually start the camera
                     self.image_processor.camera_changed(
                         selected_cam_index, cam["camera_name"]
                     )
@@ -935,48 +1044,47 @@ class FletMainWindow(
             f"[DEBUG MainWindow] Flip horizontal: {self.image_processor.flip_horizontal}"
         )
         if self.image_processor.flip_horizontal:
-            self.flip_camera_btn.bgcolor = "#4CAF50"  # Green 500 when enabled
-            self.flip_camera_btn.icon_color = "#FFFFFF"  # White icon
+            self.flip_camera_btn.bgcolor = "#4CAF50"
+            self.flip_camera_btn.icon_color = "#FFFFFF"
         else:
-            self.flip_camera_btn.bgcolor = "#E0E0E0"  # Grey 300 when disabled
-            self.flip_camera_btn.icon_color = "#424242"  # Grey 800
+            self.flip_camera_btn.bgcolor = "#E0E0E0"
+            self.flip_camera_btn.icon_color = "#424242"
 
         # Start processing thread
         print("[DEBUG MainWindow] Starting ImageProcessor thread...")
         self.image_processor.start()
         print("[DEBUG MainWindow] ImageProcessor thread started")
 
-        # Set initial detection mode to "camera" (Manual tab is default)
-        # This saves CPU/GPU by not running detection until Auto tab is selected
+        # Set initial detection mode to "camera" (Live View default)
         self.image_processor.set_detection_mode("camera")
-        print("[DEBUG MainWindow] Set initial detection mode to 'camera' (Manual tab)")
+        print("[DEBUG MainWindow] Set initial detection mode to 'camera' (Live View)")
 
         # Update status
         print("[DEBUG MainWindow] Updating status...")
         self._update_status()
         print("[DEBUG MainWindow] _start_image_processor complete")
 
-    def _update_status(self):
-        """Update status display"""
-        # Determine RealSense status:
-        # - "✓ With Depth" = using RealSense SDK (has depth data)
-        # - "✓ RGB Only" = using RealSense via OpenCV (no depth data)
-        # - "✗ Not detected" = no RealSense camera in use
-        has_depth = self.image_processor.use_realsense
-        if has_depth:
-            realsense_status = "✓ With Depth"
-        elif (
-            hasattr(self.image_processor, "current_camera_name")
-            and self.image_processor.current_camera_name
-            and "RealSense" in self.image_processor.current_camera_name
-        ):
-            realsense_status = "✓ RGB Only"
-        else:
-            realsense_status = "✗ Not detected"
+    # ------------------------------------------------------------------ #
+    #  Status Updates                                                     #
+    # ------------------------------------------------------------------ #
 
-        # Show/hide depth toggle button based on depth availability
+    def _update_status(self):
+        """Update status displays — both the old status_text and the new status pill."""
+        if not self.image_processor:
+            return
+
+        has_depth = self.image_processor.use_realsense
         self.depth_toggle_btn.visible = has_depth
 
+        mode = self.image_processor.detection_mode
+        mode_display = {
+            "face": "Face Tracking",
+            "objects": "Object Detection",
+            "combined": "Combined",
+            "camera": "Camera Only",
+        }.get(mode, mode.upper())
+
+        # Update legacy status text
         seg_model = (
             app_config.segmentation_model.upper()
             if app_config.segmentation_model
@@ -985,27 +1093,42 @@ class FletMainWindow(
         seg_status = (
             seg_model
             if self.image_processor.has_object_detection
-            else "✗ Not available"
+            else "Not available"
+        )
+        realsense_status = "With Depth" if has_depth else "RGB Only"
+        self.status_text.value = (
+            f"RealSense: {realsense_status} | Detection: {seg_status} | Mode: {mode_display}"
         )
 
-        mode = self.image_processor.detection_mode
+        # Update new status pill on live view
+        if hasattr(self, "status_pill_text"):
+            self.status_pill_text.value = mode_display
+            # Green dot for active detection, grey for camera only
+            if hasattr(self, "status_pill_dot"):
+                self.status_pill_dot.bgcolor = (
+                    "#4CAF50" if mode != "camera" else "#78909C"
+                )
 
-        # Format mode name for display
-        mode_display = {
-            "face": "Face Tracking",
-            "objects": "Object Detection",
-            "combined": "Combined (Face + Objects)",
-            "camera": "Camera Only",
-        }.get(mode, mode.upper())
+        # Update arm badge on live view
+        if hasattr(self, "arm_badge_icon"):
+            arm_connected = (
+                app_config.lite6_available
+                and self.arm_controller
+                and self.arm_controller.is_connected()
+            )
+            if arm_connected:
+                self.arm_badge_icon.name = ft.Icons.LINK
+                self.arm_badge_icon.color = "#4CAF50"
+            else:
+                self.arm_badge_icon.name = ft.Icons.LINK_OFF
+                self.arm_badge_icon.color = "#FF9800"
 
-        status_msg = (
-            f"RealSense: {realsense_status} | "
-            f"Detection: {seg_status} | "
-            f"Mode: {mode_display}"
-        )
+        if self._ui_built:
+            self.page.update()
 
-        self.status_text.value = status_msg
-        self.page.update()
+    # ------------------------------------------------------------------ #
+    #  Keyboard and Window events                                         #
+    # ------------------------------------------------------------------ #
 
     def _toggle_detection_mode(self):
         """Toggle between face tracking and object detection"""
@@ -1018,46 +1141,27 @@ class FletMainWindow(
         if self.image_processor:
             self.image_processor.toggle_detection_logging()
 
-    def _on_tab_changed(self, e):
-        """Handle tab change - switch detection mode based on tab"""
-        if e.control.selected_index == 0:  # Manual tab (index 0)
-            # Unfreeze video if frozen
-            if self.video_frozen:
-                print("Switching to Manual mode - resuming real-time camera")
-                self._unfreeze_video()
-            # Switch to camera-only mode (no detection) to save CPU/GPU
-            if self.image_processor:
-                self.image_processor.set_detection_mode("camera")
-                self._update_status()
-                print("Manual mode: Detection disabled (camera only)")
-            # Hide refresh button on Manual tab
-            self.refresh_camera_btn.visible = False
-            self.page.update()
-        elif e.control.selected_index == 1:  # Auto tab (index 1)
-            # Switch to object detection mode
-            if self.image_processor:
-                self.image_processor.set_detection_mode("objects")
-                self._update_status()
-                print("Auto mode: Object detection enabled")
-            # Show refresh button on Auto tab
-            self.refresh_camera_btn.visible = True
-            self.page.update()
-
     def _on_keyboard_event(self, e: ft.KeyboardEvent):
         """Handle keyboard shortcuts"""
         if e.key == "T" and e.shift is False and e.ctrl is False and e.alt is False:
             self._toggle_detection_mode()
         elif e.key == "L" and e.shift is False and e.ctrl is False and e.alt is False:
             self._toggle_detection_logging()
+        elif e.key == "Escape":
+            # Escape goes back from any screen to live view
+            if self.current_screen == Screen.SETTINGS:
+                self._close_settings()
+            elif self.current_screen != Screen.LIVE_VIEW:
+                self._navigate_to(Screen.LIVE_VIEW)
+                if self.video_frozen:
+                    self._unfreeze_video()
 
     def _on_window_event(self, e):
         """Handle window events (resized, moved, close, etc.)"""
         from aaa_core.config.settings import save_window_geometry
 
-        # Debug: log all window events
         print(f"[DEBUG] Window event: {e.data}", flush=True)
 
-        # Handle window close - clean up resources and destroy window
         if e.data == "close":
             print("[DEBUG] Window close event received, cleaning up...", flush=True)
             self.cleanup()
@@ -1065,7 +1169,6 @@ class FletMainWindow(
             self.page.window.destroy()
             return
 
-        # Save geometry on resized or moved events
         if e.data in ("resized", "moved"):
             if (
                 self.page.window.width
@@ -1080,19 +1183,16 @@ class FletMainWindow(
                     top=int(self.page.window.top),
                 )
 
+    # ------------------------------------------------------------------ #
+    #  Arm commands (kept for mixin compatibility)                        #
+    # ------------------------------------------------------------------ #
+
     def _on_execute(self):
         """Handle Execute button - confirms grasp plan and begins arm motion"""
         print("Execute: Beginning grasp motion...")
         if not self.arm_controller or not self.arm_controller.arm:
             print("Arm not connected - cannot execute grasp")
             return
-
-        # TODO: Implement grasp execution logic
-        # - Move to pre-grasp position
-        # - Approach target object
-        # - Close gripper
-        # - Lift object
-        # - Move to drop position
         print("Grasp execution not yet implemented")
 
     def _on_stop(self):
@@ -1101,8 +1201,6 @@ class FletMainWindow(
         if not self.arm_controller or not self.arm_controller.arm:
             print("Arm not connected")
             return
-
-        # Emergency stop - halt all motion immediately
         self.arm_controller.emergency_stop()
         print("Arm stopped")
 
@@ -1112,8 +1210,6 @@ class FletMainWindow(
         if not self.arm_controller or not self.arm_controller.arm:
             print("Arm not connected - cannot move to home")
             return
-
-        # Move to home position
         self.arm_controller.home()
         print("Moving to home position")
 

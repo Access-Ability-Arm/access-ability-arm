@@ -4,10 +4,16 @@ Provides camera switching (regular/daemon), flip, depth view toggle,
 and RealSense exposure controls including auto-exposure adjustment.
 """
 
+from __future__ import annotations
+
 import sys
 import time
+from typing import TYPE_CHECKING
 
 from aaa_core.config.settings import app_config
+
+if TYPE_CHECKING:
+    from .main_window import FletMainWindow
 from aaa_core.workers.image_processor import ImageProcessor
 
 try:
@@ -22,7 +28,7 @@ except ImportError:
 class CameraMixin:
     """Mixin that provides camera and exposure control methods for MainWindow."""
 
-    def _check_daemon_running(self):
+    def _check_daemon_running(self: FletMainWindow):
         """
         Check if camera daemon is running and responding
 
@@ -70,7 +76,7 @@ class CameraMixin:
             print(f"[DEBUG] _check_daemon_running: Error checking daemon - {e}")
             return False
 
-    def _on_camera_changed(self, e):
+    def _on_camera_changed(self: FletMainWindow, e):
         """Handle camera selection change"""
         if not e.control.value:
             return
@@ -109,7 +115,7 @@ class CameraMixin:
                 if self.video_frozen:
                     self._unfreeze_video()
 
-    def _switch_to_daemon(self):
+    def _switch_to_daemon(self: FletMainWindow):
         """Switch from regular camera to daemon (RealSense with depth)"""
         if not DAEMON_AVAILABLE:
             print("[ERROR] Daemon components not available")
@@ -137,7 +143,7 @@ class CameraMixin:
             self._unfreeze_video()
         print("Switched to RealSense daemon (with depth)")
 
-    def _switch_to_regular_camera(self, camera_index: int, camera_name: str):
+    def _switch_to_regular_camera(self: FletMainWindow, camera_index: int, camera_name: str):
         """Switch from daemon to regular camera"""
         # Stop current image processor
         if self.image_processor:
@@ -167,13 +173,13 @@ class CameraMixin:
             self._unfreeze_video()
         print(f"Switched to regular camera: {camera_name}")
 
-    def _on_refresh_camera(self):
+    def _on_refresh_camera(self: FletMainWindow):
         """Handle refresh camera button - capture new frame"""
         if self.video_frozen:
             self._unfreeze_video()
         print("Camera view refreshed")
 
-    def _unfreeze_video(self):
+    def _unfreeze_video(self: FletMainWindow):
         """Unfreeze video to show live camera feed"""
         self.video_frozen = False
         self.frozen_frame = None
@@ -185,7 +191,7 @@ class CameraMixin:
         self._clear_object_buttons()
         print("Video unfrozen - showing live camera feed")
 
-    def _on_flip_camera(self):
+    def _on_flip_camera(self: FletMainWindow):
         """Toggle horizontal flip for camera"""
         if self.image_processor:
             self.image_processor.toggle_flip()
@@ -198,7 +204,7 @@ class CameraMixin:
                 self.flip_camera_btn.icon_color = "#424242"  # Grey 800
             self.page.update()
 
-    def _on_toggle_depth_view(self):
+    def _on_toggle_depth_view(self: FletMainWindow):
         """Toggle between RGB and depth visualization"""
         if self.image_processor:
             is_depth = self.image_processor.toggle_depth_visualization()
@@ -213,7 +219,7 @@ class CameraMixin:
                 self.depth_toggle_btn.tooltip = "Showing RGB view (click for Depth)"
             self.page.update()
 
-    def _on_exposure_change(self, e):
+    def _on_exposure_change(self: FletMainWindow, e):
         """Handle RealSense exposure slider change"""
         if not self.using_realsense or not self.image_processor:
             return
@@ -227,7 +233,7 @@ class CameraMixin:
 
         self.page.update()
 
-    def _auto_adjust_exposure(self):
+    def _auto_adjust_exposure(self: FletMainWindow):
         """Run auto-exposure adjustment once"""
         if not self.using_realsense or not self.image_processor:
             return
@@ -235,7 +241,7 @@ class CameraMixin:
         # Run once
         self._run_auto_exposure_once()
 
-    def _run_auto_exposure_once(self):
+    def _run_auto_exposure_once(self: FletMainWindow):
         """Run auto-exposure adjustment once without enabling continuous mode"""
         if not self.using_realsense or not self.image_processor:
             return
@@ -277,7 +283,7 @@ class CameraMixin:
         except Exception as e:
             print(f"Startup auto-exposure failed: {e}")
 
-    def _continuous_auto_exposure(self):
+    def _continuous_auto_exposure(self: FletMainWindow):
         """Continuously adjust exposure until disabled"""
         while self.auto_exposure_enabled:
             try:
