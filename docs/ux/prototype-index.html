@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Ability Arm - GUI Redesign Prototypes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div class="max-w-4xl mx-auto px-6 py-12">
+        <div class="mb-10">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Access Ability Arm - GUI Redesign</h1>
+            <p class="text-gray-500 text-lg">Interactive prototypes for collaborative review. Each screen has 2-3 design variants.</p>
+            <p class="text-gray-400 text-sm mt-2">Each page is standalone — use <a href="https://ruttl.com" class="text-blue-600 underline">Ruttl</a> or <a href="https://annotateweb.com" class="text-blue-600 underline">AnnotateWeb</a> to add comments directly on any variant.</p>
+        </div>
+
+        <!-- Screen 1: Live View -->
+        <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-blue-100 text-blue-700 text-sm font-bold px-3 py-1 rounded-full">Screen 1</span>
+                <h2 class="text-xl font-semibold text-gray-800">Live Camera View</h2>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">The main screen users see when the app opens. How should the camera feed and primary actions be presented?</p>
+            <div class="grid grid-cols-3 gap-3">
+                <a href="screens/1-live-a-minimal.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">A) Minimal</div>
+                    <div class="text-sm text-gray-500">Full-bleed camera, floating CTA button, no chrome</div>
+                </a>
+                <a href="screens/1-live-b-dashboard.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">B) Dashboard</div>
+                    <div class="text-sm text-gray-500">Camera + slim sidebar with status and actions</div>
+                </a>
+                <a href="screens/1-live-c-split.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">C) Split Panel</div>
+                    <div class="text-sm text-gray-500">Camera (70%) + control panel (30%), like current but cleaner</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Screen 2: Object Selection -->
+        <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-green-100 text-green-700 text-sm font-bold px-3 py-1 rounded-full">Screen 2</span>
+                <h2 class="text-xl font-semibold text-gray-800">Object Selection</h2>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">After detection, how should users pick which object to grab?</p>
+            <div class="grid grid-cols-2 gap-3">
+                <a href="screens/2-select-a-cards.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">A) Card Gallery</div>
+                    <div class="text-sm text-gray-500">Frozen frame on top, scrollable object cards below</div>
+                </a>
+                <a href="screens/2-select-b-overlay.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">B) Overlay Badges</div>
+                    <div class="text-sm text-gray-500">Large numbered badges pinned directly on objects</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Screen 3: Grasp Preview -->
+        <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-amber-100 text-amber-700 text-sm font-bold px-3 py-1 rounded-full">Screen 3</span>
+                <h2 class="text-xl font-semibold text-gray-800">Grasp Preview</h2>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">How should grasp analysis results and the "Grab This" confirmation be shown?</p>
+            <div class="grid grid-cols-2 gap-3">
+                <a href="screens/3-grasp-a-dialog.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">A) Confirmation Dialog</div>
+                    <div class="text-sm text-gray-500">Centered card with metrics, clear Grab/Retry buttons</div>
+                </a>
+                <a href="screens/3-grasp-b-inline.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">B) Inline Overlay</div>
+                    <div class="text-sm text-gray-500">Info overlay on camera + floating action bar</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Screen 4: Manual Control -->
+        <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-purple-100 text-purple-700 text-sm font-bold px-3 py-1 rounded-full">Screen 4</span>
+                <h2 class="text-xl font-semibold text-gray-800">Manual Arm Control</h2>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">How should directional controls be laid out for motor-impaired users?</p>
+            <div class="grid grid-cols-3 gap-3">
+                <a href="screens/4-manual-a-dpad.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">A) D-Pad</div>
+                    <div class="text-sm text-gray-500">Game-controller inspired, 100px buttons</div>
+                </a>
+                <a href="screens/4-manual-b-quadrant.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">B) Quadrant</div>
+                    <div class="text-sm text-gray-500">Maximum-size tap zones, impossible to miss</div>
+                </a>
+                <a href="screens/4-manual-c-gesture.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">C) Gesture Edges</div>
+                    <div class="text-sm text-gray-500">Camera-first, translucent edge zones</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Screen 5: Settings -->
+        <div class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-gray-200 text-gray-700 text-sm font-bold px-3 py-1 rounded-full">Screen 5</span>
+                <h2 class="text-xl font-semibold text-gray-800">Settings</h2>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">Camera, arm connection, exposure, and advanced features.</p>
+            <div class="grid grid-cols-2 gap-3">
+                <a href="screens/5-settings-a-slideover.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">A) Slide-over Panel</div>
+                    <div class="text-sm text-gray-500">Right-side panel over dimmed camera</div>
+                </a>
+                <a href="screens/5-settings-b-fullscreen.html" class="block p-4 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 rounded-xl transition-all">
+                    <div class="font-semibold text-gray-800 mb-1">B) Full-screen</div>
+                    <div class="text-sm text-gray-500">iOS Settings-inspired, maximum touch targets</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Links -->
+        <div class="mt-8 text-center text-sm text-gray-400">
+            <a href="prototype.html" class="text-blue-500 hover:underline">View all-in-one prototype</a>
+            &middot;
+            <a href="heuristic-evaluation.md" class="text-blue-500 hover:underline">Read heuristic evaluation</a>
+        </div>
+    </div>
+
+</body>
+</html>

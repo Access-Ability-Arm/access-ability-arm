@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Control - A) D-Pad | Access Ability Arm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'aaa': {
+                            50: '#f0f7ff',
+                            100: '#e0efff',
+                            200: '#baddff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a5f',
+                        },
+                        'arm-green': '#22c55e',
+                        'arm-red': '#ef4444',
+                        'arm-amber': '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; }
+
+        .camera-feed {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .camera-feed::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(255,255,255,0.015) 2px,
+                rgba(255,255,255,0.015) 4px
+            );
+        }
+
+        .touch-target {
+            min-width: 80px;
+            min-height: 80px;
+            font-size: 18px;
+            border-radius: 16px;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+        .touch-target:active {
+            transform: scale(0.96);
+        }
+
+        /* D-pad styles */
+        .dpad-btn {
+            width: 100px;
+            height: 100px;
+            border-radius: 20px;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+        .dpad-btn:active {
+            transform: scale(0.93);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Navigation Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <a href="../prototype-index.html" class="text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        All Screens
+                    </a>
+                    <h1 class="text-lg font-bold text-gray-900">Screen 4: Manual Control</h1>
+                </div>
+                <div class="flex gap-2">
+                    <span class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white">A) D-Pad</span>
+                    <a href="4-manual-b-quadrant.html" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">B) Quadrant</a>
+                    <a href="4-manual-c-gesture.html" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">C) Gesture</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prototype viewport -->
+    <div class="max-w-6xl mx-auto mt-6 mb-12 px-4">
+
+        <!-- Variant A: D-Pad -->
+        <div class="bg-white rounded-2xl overflow-hidden shadow-lg" style="height: 700px;">
+            <div class="flex h-full">
+                <!-- Camera feed (left) -->
+                <div class="camera-feed relative" style="width: 55%;">
+                    <div class="text-white/30 text-lg absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">Live Camera Feed</div>
+
+                    <!-- Back to Find Objects -->
+                    <button class="absolute top-4 left-4 bg-black/40 backdrop-blur-sm px-4 py-2.5 rounded-xl text-white font-medium flex items-center gap-2 hover:bg-black/60 transition-all z-10">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back
+                    </button>
+
+                    <!-- Emergency Stop -->
+                    <button class="absolute bottom-4 left-4 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-bold text-lg flex items-center gap-2 shadow-xl z-10 active:scale-95 transition-all">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+                        STOP
+                    </button>
+                </div>
+
+                <!-- D-Pad controls (right) -->
+                <div class="bg-gray-50 border-l border-gray-200 flex flex-col items-center justify-center gap-6 p-6" style="width: 45%;">
+
+                    <!-- Speed presets -->
+                    <div class="flex gap-3 mb-2">
+                        <button class="px-5 py-3 rounded-xl text-sm font-semibold bg-blue-100 text-blue-700">Slow</button>
+                        <button class="px-5 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white shadow-md">Medium</button>
+                        <button class="px-5 py-3 rounded-xl text-sm font-semibold bg-blue-100 text-blue-700">Fast</button>
+                    </div>
+
+                    <!-- Left/Right + Forward/Back D-Pad -->
+                    <div>
+                        <p class="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Left/Right & Forward/Back</p>
+                        <div class="relative" style="width: 260px; height: 260px;">
+                            <!-- Up (Forward) -->
+                            <button class="dpad-btn absolute bg-blue-100 hover:bg-blue-200 text-blue-700" style="top: 0; left: 80px;">
+                                <div class="text-center">
+                                    <svg class="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+                                    <span class="text-sm">Forward</span>
+                                </div>
+                            </button>
+                            <!-- Left -->
+                            <button class="dpad-btn absolute bg-blue-100 hover:bg-blue-200 text-blue-700" style="top: 80px; left: 0;">
+                                <div class="text-center">
+                                    <svg class="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                                    <span class="text-sm">Left</span>
+                                </div>
+                            </button>
+                            <!-- Center indicator -->
+                            <div class="absolute bg-gray-200 rounded-xl flex items-center justify-center" style="top: 80px; left: 80px; width: 100px; height: 100px;">
+                                <span class="text-gray-400 text-sm font-medium">X / Y</span>
+                            </div>
+                            <!-- Right -->
+                            <button class="dpad-btn absolute bg-blue-100 hover:bg-blue-200 text-blue-700" style="top: 80px; left: 160px;">
+                                <div class="text-center">
+                                    <svg class="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                                    <span class="text-sm">Right</span>
+                                </div>
+                            </button>
+                            <!-- Down (Back) -->
+                            <button class="dpad-btn absolute bg-blue-100 hover:bg-blue-200 text-blue-700" style="top: 160px; left: 80px;">
+                                <div class="text-center">
+                                    <svg class="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+                                    <span class="text-sm">Back</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Up/Down + Grip -->
+                    <div class="flex gap-8 items-center">
+                        <!-- Z axis (vertical) -->
+                        <div class="text-center">
+                            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Height</p>
+                            <div class="flex flex-col gap-3">
+                                <button class="dpad-btn bg-green-100 hover:bg-green-200 text-green-700" style="width: 100px; height: 70px;">
+                                    <div class="text-center">
+                                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+                                        <span class="text-sm">Up</span>
+                                    </div>
+                                </button>
+                                <button class="dpad-btn bg-green-100 hover:bg-green-200 text-green-700" style="width: 100px; height: 70px;">
+                                    <div class="text-center">
+                                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+                                        <span class="text-sm">Down</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Gripper -->
+                        <div class="text-center">
+                            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Gripper</p>
+                            <div class="flex flex-col gap-3">
+                                <button class="dpad-btn bg-amber-100 hover:bg-amber-200 text-amber-700" style="width: 100px; height: 70px;">
+                                    <div class="text-center">
+                                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                                        <span class="text-sm">Open</span>
+                                    </div>
+                                </button>
+                                <button class="dpad-btn bg-amber-100 hover:bg-amber-200 text-amber-700" style="width: 100px; height: 70px;">
+                                    <div class="text-center">
+                                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                                        <span class="text-sm">Close</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Design notes -->
+        <div class="mt-4 p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
+            <strong>Design notes:</strong>
+            <strong>A)</strong> Classic D-pad layout. Familiar game-controller metaphor. Clear spatial mapping. All targets 100px.
+            <strong>B)</strong> Maximum-size touch zones -- each direction takes up a full grid cell. Impossible to miss. Best for severe motor impairment.
+            <strong>C)</strong> Camera-first with translucent edge zones for direction. Maintains spatial context. Compact bottom bar for height/grip. Most immersive but requires understanding edge-tap paradigm.
+        </div>
+
+    </div>
+
+</body>
+</html>

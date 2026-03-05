@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Object Selection - A) Card Gallery | Access Ability Arm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'aaa': {
+                            50: '#f0f7ff',
+                            100: '#e0efff',
+                            200: '#baddff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a5f',
+                        },
+                        'arm-green': '#22c55e',
+                        'arm-red': '#ef4444',
+                        'arm-amber': '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; }
+
+        .camera-feed {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .camera-feed::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(255,255,255,0.015) 2px,
+                rgba(255,255,255,0.015) 4px
+            );
+        }
+
+        .detected-object {
+            position: absolute;
+            border: 3px solid;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .detected-object:hover {
+            transform: scale(1.02);
+        }
+
+        .touch-target {
+            min-width: 80px;
+            min-height: 80px;
+            font-size: 18px;
+            border-radius: 16px;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+        .touch-target:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Navigation Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <a href="../prototype-index.html" class="text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        All Screens
+                    </a>
+                    <h1 class="text-lg font-bold text-gray-900">Screen 2: Object Selection</h1>
+                </div>
+                <div class="flex gap-2">
+                    <span class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white">A) Card Gallery</span>
+                    <a href="2-select-b-overlay.html" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">B) Overlay Badges</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prototype viewport -->
+    <div class="max-w-6xl mx-auto mt-6 mb-12 px-4">
+
+        <!-- Variant A: Card Gallery -->
+        <div class="bg-white rounded-2xl overflow-hidden shadow-lg" style="height: 700px;">
+            <div class="flex flex-col h-full">
+                <!-- Frozen camera frame (top 60%) -->
+                <div class="camera-feed relative flex-1 min-h-0">
+                    <!-- Step indicator -->
+                    <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm px-6 py-3 rounded-full z-10">
+                        <span class="text-white text-lg font-medium">Tap an object to select it</span>
+                    </div>
+
+                    <!-- Back button -->
+                    <button class="absolute top-4 left-4 bg-black/40 backdrop-blur-sm px-4 py-2.5 rounded-xl text-white font-medium flex items-center gap-2 hover:bg-black/60 transition-all z-10">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back
+                    </button>
+
+                    <!-- Simulated detected objects with colored borders -->
+                    <div class="detected-object" style="top: 25%; left: 20%; width: 80px; height: 110px; border-color: #f472b6;">
+                        <span class="absolute -top-3 -left-1 bg-pink-400 text-white text-sm font-bold px-2 py-0.5 rounded-full">1</span>
+                    </div>
+                    <div class="detected-object" style="top: 35%; left: 50%; width: 60px; height: 60px; border-color: #60a5fa;">
+                        <span class="absolute -top-3 -left-1 bg-blue-400 text-white text-sm font-bold px-2 py-0.5 rounded-full">2</span>
+                    </div>
+                    <div class="detected-object" style="top: 40%; right: 25%; width: 70px; height: 90px; border-color: #34d399;">
+                        <span class="absolute -top-3 -left-1 bg-emerald-400 text-white text-sm font-bold px-2 py-0.5 rounded-full">3</span>
+                    </div>
+                </div>
+
+                <!-- Object cards (bottom) -->
+                <div class="bg-gray-50 border-t border-gray-200 p-5">
+                    <div class="flex gap-4 overflow-x-auto pb-2">
+                        <!-- Object card 1 -->
+                        <button class="flex-shrink-0 bg-white border-2 border-gray-200 hover:border-pink-400 rounded-2xl p-4 transition-all hover:shadow-lg" style="min-width: 160px; min-height: 100px;">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="w-8 h-8 bg-pink-400 text-white rounded-full flex items-center justify-center font-bold text-lg">1</span>
+                                <span class="text-lg font-semibold text-gray-800">Cup</span>
+                            </div>
+                            <span class="text-sm text-gray-400">Small, graspable</span>
+                        </button>
+
+                        <!-- Object card 2 -->
+                        <button class="flex-shrink-0 bg-white border-2 border-blue-400 rounded-2xl p-4 shadow-lg shadow-blue-100 ring-2 ring-blue-200" style="min-width: 160px; min-height: 100px;">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="w-8 h-8 bg-blue-400 text-white rounded-full flex items-center justify-center font-bold text-lg">2</span>
+                                <span class="text-lg font-semibold text-gray-800">Bottle</span>
+                            </div>
+                            <span class="text-sm text-blue-600 font-medium">Selected</span>
+                        </button>
+
+                        <!-- Object card 3 -->
+                        <button class="flex-shrink-0 bg-white border-2 border-gray-200 hover:border-emerald-400 rounded-2xl p-4 transition-all hover:shadow-lg" style="min-width: 160px; min-height: 100px;">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="w-8 h-8 bg-emerald-400 text-white rounded-full flex items-center justify-center font-bold text-lg">3</span>
+                                <span class="text-lg font-semibold text-gray-800">Remote</span>
+                            </div>
+                            <span class="text-sm text-gray-400">Medium, graspable</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Design notes -->
+        <div class="mt-4 p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
+            <strong>Design notes:</strong>
+            <strong>A)</strong> Card gallery provides a clear, structured selection area with descriptive info. Better for many objects.
+            <strong>B)</strong> Overlay badges are more spatial/intuitive -- you tap what you see. Faster for 2-3 objects. Combines selection with immediate action buttons.
+        </div>
+
+    </div>
+
+</body>
+</html>

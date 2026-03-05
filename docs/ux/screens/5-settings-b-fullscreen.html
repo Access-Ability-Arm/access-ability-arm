@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - B) Full-screen | Access Ability Arm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'aaa': {
+                            50: '#f0f7ff',
+                            100: '#e0efff',
+                            200: '#baddff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a5f',
+                        },
+                        'arm-green': '#22c55e',
+                        'arm-red': '#ef4444',
+                        'arm-amber': '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; }
+
+        .camera-feed {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .camera-feed::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(255,255,255,0.015) 2px,
+                rgba(255,255,255,0.015) 4px
+            );
+        }
+
+        .touch-target {
+            min-width: 80px;
+            min-height: 80px;
+            font-size: 18px;
+            border-radius: 16px;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+        .touch-target:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Navigation Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <a href="../prototype-index.html" class="text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        All Screens
+                    </a>
+                    <h1 class="text-lg font-bold text-gray-900">Screen 5: Settings</h1>
+                </div>
+                <div class="flex gap-2">
+                    <a href="5-settings-a-slideover.html" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">A) Slide-over</a>
+                    <span class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white">B) Full-screen</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prototype viewport -->
+    <div class="max-w-6xl mx-auto mt-6 mb-12 px-4">
+
+        <!-- Variant B: Full-screen modal -->
+        <div class="bg-white rounded-2xl overflow-hidden shadow-lg" style="height: 700px;">
+            <div class="h-full bg-gray-50 overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+                    <h3 class="text-2xl font-bold text-gray-900">Settings</h3>
+                    <button class="touch-target bg-gray-100 hover:bg-gray-200 rounded-2xl flex items-center justify-center gap-2 px-6 transition-colors" style="height: 56px;">
+                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <span class="font-medium text-gray-600">Close</span>
+                    </button>
+                </div>
+
+                <div class="p-8 max-w-2xl mx-auto space-y-8">
+                    <!-- Camera -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Camera</h4>
+                        <div class="bg-white rounded-2xl shadow-sm divide-y divide-gray-100">
+                            <div class="p-5 flex items-center justify-between">
+                                <div>
+                                    <div class="font-medium text-gray-800 text-lg">Camera Source</div>
+                                    <div class="text-gray-500">RealSense D435 (with depth)</div>
+                                </div>
+                                <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            </div>
+                            <div class="p-5 flex items-center justify-between">
+                                <span class="font-medium text-gray-800 text-lg">Mirror Camera</span>
+                                <div class="w-14 h-8 bg-green-500 rounded-full relative cursor-pointer">
+                                    <div class="w-6 h-6 bg-white rounded-full absolute top-1 right-1 shadow-sm"></div>
+                                </div>
+                            </div>
+                            <div class="p-5 flex items-center justify-between">
+                                <span class="font-medium text-gray-800 text-lg">Show Depth View</span>
+                                <div class="w-14 h-8 bg-gray-300 rounded-full relative cursor-pointer">
+                                    <div class="w-6 h-6 bg-white rounded-full absolute top-1 left-1 shadow-sm"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Arm -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Robotic Arm</h4>
+                        <div class="bg-white rounded-2xl shadow-sm divide-y divide-gray-100">
+                            <div class="p-5">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div>
+                                        <div class="font-medium text-gray-800 text-lg">Connection Status</div>
+                                        <div class="text-green-600 font-medium mt-1">Connected - 192.168.1.xxx</div>
+                                    </div>
+                                    <button class="touch-target bg-red-100 text-red-600 rounded-2xl px-6 font-medium hover:bg-red-200 transition-colors" style="height: 56px;">
+                                        Disconnect
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-5">
+                                <div class="font-medium text-gray-800 text-lg mb-4">Default Speed</div>
+                                <div class="flex gap-3">
+                                    <button class="flex-1 touch-target bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-2xl font-medium text-lg transition-colors">Slow</button>
+                                    <button class="flex-1 touch-target bg-blue-600 text-white rounded-2xl font-semibold text-lg shadow-md">Medium</button>
+                                    <button class="flex-1 touch-target bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-2xl font-medium text-lg transition-colors">Fast</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Display -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Display</h4>
+                        <div class="bg-white rounded-2xl shadow-sm divide-y divide-gray-100">
+                            <div class="p-5 flex items-center justify-between">
+                                <span class="font-medium text-gray-800 text-lg">High Contrast Mode</span>
+                                <div class="w-14 h-8 bg-gray-300 rounded-full relative cursor-pointer">
+                                    <div class="w-6 h-6 bg-white rounded-full absolute top-1 left-1 shadow-sm"></div>
+                                </div>
+                            </div>
+                            <div class="p-5 flex items-center justify-between">
+                                <span class="font-medium text-gray-800 text-lg">Large Text</span>
+                                <div class="w-14 h-8 bg-gray-300 rounded-full relative cursor-pointer">
+                                    <div class="w-6 h-6 bg-white rounded-full absolute top-1 left-1 shadow-sm"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced (collapsed) -->
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Advanced</h4>
+                        <div class="bg-white rounded-2xl shadow-sm divide-y divide-gray-100">
+                            <div class="p-5">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="font-medium text-gray-800 text-lg">Camera Exposure</span>
+                                    <span class="text-gray-500">800</span>
+                                </div>
+                                <input type="range" class="w-full h-3" min="100" max="4000" value="800" style="height: 12px;">
+                                <button class="mt-3 text-blue-600 font-medium text-base">Auto-adjust Exposure</button>
+                            </div>
+                            <button class="w-full p-5 text-left hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-gray-800 text-lg">3D Export Tools</div>
+                                        <div class="text-gray-400">Point cloud, mesh, shape completion</div>
+                                    </div>
+                                    <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Design notes -->
+        <div class="mt-4 p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
+            <strong>Design notes:</strong>
+            <strong>A)</strong> Slide-over keeps camera partially visible for context. Compact. Good for quick adjustments.
+            <strong>B)</strong> Full-screen gives maximum space for large touch targets. iOS Settings-inspired. Better for ALS patients who need larger controls. All targets meet 80px+ minimum.
+        </div>
+
+    </div>
+
+</body>
+</html>
