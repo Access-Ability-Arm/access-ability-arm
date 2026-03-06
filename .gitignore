@@ -54,6 +54,7 @@ logs/app/
 logs/app.log
 logs/pointclouds/*
 !logs/pointclouds/.gitkeep
+logs/meshes/
 
 # Claude Code
 .claude/
