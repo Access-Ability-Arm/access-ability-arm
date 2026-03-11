@@ -39,6 +39,7 @@ class VideoDisplayMixin:
                         self._enhance_frozen_labels(img_array.copy())
                     )
                     self._create_object_buttons()
+                    self._populate_object_cards()
                     print("Find Objects: Frame captured and frozen")
                 # Display the frozen frame
                 img_array = self.frozen_frame

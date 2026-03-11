@@ -635,9 +635,6 @@ class FletMainWindow(
             # Wait for video to freeze (1 second capture + small buffer)
             time.sleep(1.5)
             self._navigate_to(Screen.OBJECT_SELECTION)
-            # Populate cards after navigation
-            self._populate_object_cards()
-            self.page.update()
         threading.Thread(target=navigate_after_freeze, daemon=True).start()
 
     def _back_from_object_selection(self):
@@ -666,8 +663,6 @@ class FletMainWindow(
         def navigate_after_freeze():
             time.sleep(1.5)
             self._navigate_to(Screen.OBJECT_SELECTION)
-            self._populate_object_cards()
-            self.page.update()
         threading.Thread(target=navigate_after_freeze, daemon=True).start()
 
     # ------------------------------------------------------------------ #
