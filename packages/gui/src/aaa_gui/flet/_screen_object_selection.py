@@ -73,6 +73,16 @@ def build_screen_object_selection(window: FletMainWindow) -> ft.Container:
         scroll=ft.ScrollMode.AUTO,
     )
 
+    # --- Loading indicator shown while RF-DETR detection is running ---
+    window.cards_loading_indicator = ft.Row(
+        [
+            ft.ProgressRing(width=18, height=18, stroke_width=2, color=T.BLUE_400),
+            ft.Text("Detecting objects...", size=T.TEXT_SM, color=T.GRAY_400),
+        ],
+        spacing=10,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
     # --- Bottom card panel (light background, matching prototype bg-gray-50) ---
     card_gallery_panel = ft.Container(
         content=ft.Column(
@@ -84,6 +94,7 @@ def build_screen_object_selection(window: FletMainWindow) -> ft.Container:
                     weight=ft.FontWeight.W_600,
                     style=ft.TextStyle(letter_spacing=1.5),
                 ),
+                window.cards_loading_indicator,
                 window.object_card_row,
             ],
             spacing=12,

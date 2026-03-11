@@ -592,6 +592,11 @@ class FletMainWindow(
             # Settings was overlay — restore whichever screen was underneath
             pass
 
+        # Reset object panel to loading state on each visit
+        if screen == Screen.OBJECT_SELECTION and hasattr(self, "cards_loading_indicator"):
+            self.object_card_row.controls.clear()
+            self.cards_loading_indicator.visible = True
+
         # Handle detection mode changes
         if screen == Screen.LIVE_VIEW:
             if self.image_processor:
@@ -684,6 +689,7 @@ class FletMainWindow(
             return
 
         self.object_card_row.controls.clear()
+        self.cards_loading_indicator.visible = False
         classes = self.frozen_detections["classes"]
 
         for i, class_name in enumerate(classes):
