@@ -122,7 +122,7 @@ def build_screen_live_view(window: FletMainWindow) -> ft.Container:
             spacing=6,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
-        bgcolor=ft.Colors.with_opacity(T.OVERLAY_LIGHT_10, T.WHITE),
+        bgcolor=ft.Colors.with_opacity(0.40, T.BLACK),
         border_radius=T.RADIUS_FULL,
         padding=ft.padding.symmetric(horizontal=20, vertical=12),
         on_click=lambda _: window._navigate_to_manual_control(),
