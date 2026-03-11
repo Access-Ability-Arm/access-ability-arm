@@ -288,7 +288,7 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
                 # Top edge — anchored top, horizontally centered
                 ft.Container(
                     content=top_zone,
-                    top=64, left=0, right=0,
+                    top=0, left=0, right=0,
                     alignment=ft.alignment.center,
                 ),
                 # Bottom edge — above bottom bar, horizontally centered
