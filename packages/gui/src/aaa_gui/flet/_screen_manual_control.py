@@ -22,7 +22,6 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
     - Edge zones: bg-blue-500/30, hover bg-blue-500/60
       - Left/Right: w-24 h-48 (96x192px), rounded-r-3xl / rounded-l-3xl (24px)
       - Top/Bottom: h-20 w-48 (80x192px), rounded-b-3xl / rounded-t-3xl (24px)
-    - Center crosshair: w-16 h-16 (64px), border-2 border-white/40, center dot w-2 h-2
     - Back button: bg-black/40, rounded-xl, px-4 py-2.5
     - Bottom bar: bg-black/70, p-4
       - Height buttons: 90x60px, bg-green-500/80, rounded-2xl
@@ -126,18 +125,6 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         on_click=lambda _: window._on_button_press("y", "neg"),
         on_hover=_edge_hover,
         ink=True,
-    )
-
-    # --- Center crosshair: 64x64 circle, border-2 border-white/40, center dot ---
-    crosshair = ft.Container(
-        content=ft.Container(
-            width=8, height=8, border_radius=T.RADIUS_FULL, bgcolor=T.WHITE,
-        ),
-        width=64,
-        height=64,
-        border_radius=T.RADIUS_FULL,
-        border=ft.border.all(2, ft.Colors.with_opacity(0.40, T.WHITE)),
-        alignment=ft.alignment.center,
     )
 
     # --- Back button (top-left) ---
@@ -286,12 +273,6 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
             [
                 # Click-to-center tap target (first = behind everything)
                 tap_layer,
-                # Center crosshair (decorative, behind edge zones so it doesn't block)
-                ft.Container(
-                    content=crosshair,
-                    top=0, bottom=0, left=0, right=0,
-                    alignment=ft.alignment.center,
-                ),
                 # Left edge — anchored left, vertically centered
                 ft.Container(
                     content=left_zone,
