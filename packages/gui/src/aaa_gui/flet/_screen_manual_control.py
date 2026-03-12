@@ -41,8 +41,8 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
     # Labels stored on window so _on_mode_toggle can update them.
     window.left_zone_label = ft.Text("Left", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
     window.right_zone_label = ft.Text("Right", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
-    window.top_zone_label = ft.Text("Forward", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
-    window.back_zone_label = ft.Text("Back", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+    window.top_zone_label = ft.Text("Up", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+    window.back_zone_label = ft.Text("Down", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
 
     # Left: X- (move left)  /  Yaw- in rotate mode
     window.left_zone_container = ft.Container(
@@ -217,12 +217,12 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         )
 
     up_btn = _make_bottom_btn(
-        "Up", ft.Icons.ARROW_UPWARD,
+        "Forward", ft.Icons.ARROW_UPWARD,
         T.GREEN_500,
         lambda _: window._on_button_press("z", "pos"),
     )
     down_btn = _make_bottom_btn(
-        "Down", ft.Icons.ARROW_DOWNWARD,
+        "Back", ft.Icons.ARROW_DOWNWARD,
         T.GREEN_500,
         lambda _: window._on_button_press("z", "neg"),
     )

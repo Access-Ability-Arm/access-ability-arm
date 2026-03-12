@@ -339,7 +339,7 @@ class ArmControlMixin:
             btn_icon = ft.Icons.CONTROL_CAMERA
             btn_label = "Move"
             left_lbl, right_lbl = "Left", "Right"
-            top_lbl, back_lbl = "Forward", "Back"
+            top_lbl, back_lbl = "Up", "Down"
 
         # Update zone labels
         for attr, text in (
