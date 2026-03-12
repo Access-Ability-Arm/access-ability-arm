@@ -30,8 +30,8 @@ _FALLBACK_DEPTH_MM = 500.0
 _CAM_TO_TOOL = {"cam_x": (1, -1), "cam_y": (2, -1)}
 
 # Scroll wheel: mm per scroll tick (translate mode Z) and deg per tick (rotate mode roll)
-_SCROLL_STEP_MM = 10.0
-_SCROLL_STEP_DEG = 3.0
+_SCROLL_STEP_MM = 4.0
+_SCROLL_STEP_DEG = 2.0
 
 # Rotation step per edge-zone button press (degrees)
 _ROTATE_STEP_DEG = 5.0
@@ -294,11 +294,8 @@ class ArmControlMixin:
         if not self.arm_controller.arm.connected:
             return
         speed_scale = self.movement_speed_percent / 100.0
-        # Scroll up (negative delta_y) = move forward = positive tool-X step.
-        step = float(np.clip(
-            -e.scroll_delta_y * _SCROLL_STEP_MM * speed_scale,
-            -_MAX_STEP_MM, _MAX_STEP_MM,
-        ))
+        tick = float(np.sign(e.scroll_delta_y))  # normalise to -1, 0, +1
+        step = -tick * _SCROLL_STEP_MM * speed_scale
         movement_speed = app_config.movement_speed * speed_scale
         print(f"Scroll zoom: delta_y={e.scroll_delta_y:.1f} step={step:.1f}mm")
         self.arm_controller.move_relative_tool(dz=step, speed=movement_speed)
@@ -310,10 +307,8 @@ class ArmControlMixin:
         if not self.arm_controller.arm.connected:
             return
         speed_scale = self.movement_speed_percent / 100.0
-        step = float(np.clip(
-            e.scroll_delta_y * _SCROLL_STEP_DEG * speed_scale,
-            -15.0, 15.0,
-        ))
+        tick = float(np.sign(e.scroll_delta_y))  # normalise to -1, 0, +1
+        step = tick * _SCROLL_STEP_DEG * speed_scale
         movement_speed = app_config.movement_speed * speed_scale
         print(f"Scroll roll: delta_y={e.scroll_delta_y:.1f} step={step:.1f}deg")
         self.arm_controller.move_relative_tool(dyaw=step, speed=movement_speed)  # roll → tool Z → SDK yaw (Rz)
