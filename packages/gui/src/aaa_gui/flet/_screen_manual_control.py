@@ -221,11 +221,14 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         T.GREEN_500,
         lambda _: window._on_button_press("z", "pos"),
     )
+    window.z_pos_btn = up_btn
+
     down_btn = _make_bottom_btn(
         "Back", ft.Icons.ARROW_DOWNWARD,
         T.GREEN_500,
         lambda _: window._on_button_press("z", "neg"),
     )
+    window.z_neg_btn = down_btn
     open_grip_btn = _make_bottom_btn(
         "Open", ft.Icons.OPEN_WITH,
         T.AMBER_500,

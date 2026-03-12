@@ -42,6 +42,8 @@ _TRANSLATE_TO_ROTATE = {
     ("x", "pos"): ("yaw",   "pos"),
     ("y", "pos"): ("pitch",  "pos"),
     ("y", "neg"): ("pitch",  "neg"),
+    ("z", "pos"): ("roll",   "pos"),  # Forward → Roll Right
+    ("z", "neg"): ("roll",   "neg"),  # Back → Roll Left
 }
 
 
@@ -358,6 +360,23 @@ class ArmControlMixin:
             zone = getattr(self, attr, None)
             if zone:
                 zone.bgcolor = ft.Colors.with_opacity(T.EDGE_ZONE_DEFAULT, zone_color)
+
+        # Update Forward/Back ↔ Roll R/L buttons
+        if rotating:
+            fwd_icon, fwd_lbl = ft.Icons.ROTATE_RIGHT, "Roll R"
+            back_icon, back_lbl = ft.Icons.ROTATE_LEFT, "Roll L"
+        else:
+            fwd_icon, fwd_lbl = ft.Icons.ARROW_UPWARD, "Forward"
+            back_icon, back_lbl = ft.Icons.ARROW_DOWNWARD, "Back"
+
+        for attr, icon_name, label in (
+            ("z_pos_btn", fwd_icon, fwd_lbl),
+            ("z_neg_btn", back_icon, back_lbl),
+        ):
+            btn = getattr(self, attr, None)
+            if btn:
+                btn.content.controls[0].name = icon_name
+                btn.content.controls[1].value = label
 
         # Update mode button
         if hasattr(self, "mode_toggle_btn"):
