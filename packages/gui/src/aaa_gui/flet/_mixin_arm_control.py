@@ -24,10 +24,25 @@ _MAX_STEP_MM = 50.0
 # Fallback depth (mm) when no depth data available
 _FALLBACK_DEPTH_MM = 500.0
 
-# Camera-to-robot axis mapping: cam_x -> robot axis index and sign,
-# cam_y -> robot axis index and sign.  (0=X, 1=Y, 2=Z)
-# Default: camera-right -> robot -Y, camera-down -> robot -Z
-_CAM_TO_ROBOT = {"cam_x": (1, -1), "cam_y": (2, -1)}
+# Camera-to-tool axis mapping: cam_x -> tool axis index and sign,
+# cam_y -> tool axis index and sign.  (0=tool-X, 1=tool-Y, 2=tool-Z)
+# Default: camera-right -> tool -Y, camera-down -> tool -Z
+_CAM_TO_TOOL = {"cam_x": (1, -1), "cam_y": (2, -1)}
+
+# Scroll wheel: mm per scroll tick (translate mode Z) and deg per tick (rotate mode roll)
+_SCROLL_STEP_MM = 10.0
+_SCROLL_STEP_DEG = 3.0
+
+# Rotation step per edge-zone button press (degrees)
+_ROTATE_STEP_DEG = 5.0
+
+# Edge zone → rotation axis remapping (translate axis → rotate axis)
+_TRANSLATE_TO_ROTATE = {
+    ("x", "neg"): ("yaw",   "neg"),
+    ("x", "pos"): ("yaw",   "pos"),
+    ("y", "pos"): ("pitch",  "pos"),
+    ("y", "neg"): ("pitch",  "neg"),
+}
 
 
 class ArmControlMixin:
@@ -38,7 +53,12 @@ class ArmControlMixin:
     """
 
     def _on_button_press(self: FletMainWindow, direction: str, button_type: str):
-        """Handle robotic arm button press"""
+        """Handle robotic arm button press (mode-aware: translate or rotate)."""
+        # In rotate mode remap edge-zone axes to pitch/yaw
+        if getattr(self, "control_mode", "translate") == "rotate":
+            direction, button_type = _TRANSLATE_TO_ROTATE.get(
+                (direction, button_type), (direction, button_type)
+            )
         button_name = f"{direction}_{button_type}"
         print(f"Button {button_name} pressed")
 
@@ -79,7 +99,7 @@ class ArmControlMixin:
 
     def _handle_arm_command(self: FletMainWindow, button_name: str, duration: float):
         """
-        Handle arm movement command based on button press
+        Handle arm movement command based on button press.
 
         Args:
             button_name: Name of button pressed (e.g., "x_pos", "y_neg")
@@ -92,61 +112,62 @@ class ArmControlMixin:
             print("Arm not connected - cannot move")
             return
 
-        # Get current position
-        pos = self.arm_controller.get_position()
-        if not pos or len(pos) < 6:
-            print("Could not get current arm position")
+        # Gripper controls are handled separately (no tool-frame move needed)
+        if button_name in ("grip_pos", "grip_neg"):
+            current_grip = self.arm_controller.arm.get_gripper_position() or 400
+            grip_step = 100 * (self.movement_speed_percent / 100.0)
+            if button_name == "grip_pos":
+                new_grip = min(800, current_grip + grip_step)
+            else:
+                new_grip = max(0, current_grip - grip_step)
+            self.arm_controller.set_gripper(int(new_grip), wait=False)
             return
 
-        x, y, z, roll, pitch, yaw = pos[0], pos[1], pos[2], pos[3], pos[4], pos[5]
-
         # Determine step size based on button hold duration
-        # Short tap: small step, long hold: large step
         base_step = (
             app_config.tap_step_size
             if duration < app_config.button_hold_threshold
             else app_config.hold_step_size
         )
+        speed_scale = self.movement_speed_percent / 100.0
+        step = base_step * speed_scale
+        rot_step = _ROTATE_STEP_DEG * speed_scale
 
-        # Apply speed percentage to step size
-        step = base_step * (self.movement_speed_percent / 100.0)
-
-        # Apply movement based on button
+        # Compute tool-frame deltas
+        dx = dy = dz = droll = dpitch = dyaw = 0.0
         if button_name == "x_pos":
-            x += step
+            dx = -step
         elif button_name == "x_neg":
-            x -= step
+            dx = step
         elif button_name == "y_pos":
-            y += step
+            dy = step
         elif button_name == "y_neg":
-            y -= step
+            dy = -step
         elif button_name == "z_pos":
-            z += step
+            dz = step
         elif button_name == "z_neg":
-            z -= step
-        elif button_name == "grip_pos":
-            # Grip controls - apply speed percentage
-            current_grip = self.arm_controller.arm.get_gripper_position() or 400
-            grip_step = 100 * (self.movement_speed_percent / 100.0)
-            new_grip = min(800, current_grip + grip_step)
-            self.arm_controller.set_gripper(int(new_grip), wait=False)
-            return
-        elif button_name == "grip_neg":
-            current_grip = self.arm_controller.arm.get_gripper_position() or 400
-            grip_step = 100 * (self.movement_speed_percent / 100.0)
-            new_grip = max(0, current_grip - grip_step)
-            self.arm_controller.set_gripper(int(new_grip), wait=False)
-            return
+            dz = -step
+        elif button_name == "pitch_pos":
+            droll = -rot_step   # pitch → tool X → SDK roll (Rx)
+        elif button_name == "pitch_neg":
+            droll = rot_step
+        elif button_name == "yaw_pos":
+            dpitch = -rot_step  # yaw → tool Y → SDK pitch (Ry)
+        elif button_name == "yaw_neg":
+            dpitch = rot_step
+        elif button_name == "roll_pos":
+            dyaw = rot_step     # roll → tool Z → SDK yaw (Rz)
+        elif button_name == "roll_neg":
+            dyaw = -rot_step
 
-        # Send move command with speed percentage applied
-        movement_speed = app_config.movement_speed * (
-            self.movement_speed_percent / 100.0
-        )
+        movement_speed = app_config.movement_speed * speed_scale
         print(
-            f"Moving to: ({x:.1f}, {y:.1f}, {z:.1f}) at {self.movement_speed_percent}% speed"
+            f"Tool-relative move: ({dx:.1f}, {dy:.1f}, {dz:.1f}) "
+            f"rot=({droll:.1f}, {dpitch:.1f}, {dyaw:.1f}) "
+            f"at {self.movement_speed_percent}% speed"
         )
-        self.arm_controller.move_to(
-            x, y, z, roll, pitch, yaw, speed=movement_speed, wait=False
+        self.arm_controller.move_relative_tool(
+            dx, dy, dz, droll, dpitch, dyaw, speed=movement_speed, wait=False
         )
 
     def _on_arm_connection_status(self: FletMainWindow, connected: bool, message: str):
@@ -254,11 +275,110 @@ class ArmControlMixin:
         threading.Thread(target=connect_thread, daemon=True).start()
 
     # ------------------------------------------------------------------ #
+    #  Scroll-wheel and mode toggle                                        #
+    # ------------------------------------------------------------------ #
+
+    def _on_scroll_action(self: FletMainWindow, e):
+        """Route scroll wheel to Z-zoom (translate mode) or roll (rotate mode)."""
+        if getattr(self, "control_mode", "translate") == "rotate":
+            self._on_scroll_roll(e)
+        else:
+            self._on_scroll_zoom(e)
+
+    def _on_scroll_zoom(self: FletMainWindow, e):
+        """Move arm along camera-forward axis (tool X) via scroll wheel."""
+        if not self.arm_controller or not self.arm_controller.arm:
+            return
+        if not self.arm_controller.arm.connected:
+            return
+        speed_scale = self.movement_speed_percent / 100.0
+        # Scroll up (negative delta_y) = move forward = positive tool-X step.
+        step = float(np.clip(
+            -e.scroll_delta_y * _SCROLL_STEP_MM * speed_scale,
+            -_MAX_STEP_MM, _MAX_STEP_MM,
+        ))
+        movement_speed = app_config.movement_speed * speed_scale
+        print(f"Scroll zoom: delta_y={e.scroll_delta_y:.1f} step={step:.1f}mm")
+        self.arm_controller.move_relative_tool(dz=step, speed=movement_speed)
+
+    def _on_scroll_roll(self: FletMainWindow, e):
+        """Roll the arm via scroll wheel (rotate mode)."""
+        if not self.arm_controller or not self.arm_controller.arm:
+            return
+        if not self.arm_controller.arm.connected:
+            return
+        speed_scale = self.movement_speed_percent / 100.0
+        step = float(np.clip(
+            e.scroll_delta_y * _SCROLL_STEP_DEG * speed_scale,
+            -15.0, 15.0,
+        ))
+        movement_speed = app_config.movement_speed * speed_scale
+        print(f"Scroll roll: delta_y={e.scroll_delta_y:.1f} step={step:.1f}deg")
+        self.arm_controller.move_relative_tool(dyaw=step, speed=movement_speed)  # roll → tool Z → SDK yaw (Rz)
+
+    def _on_mode_toggle(self: FletMainWindow):
+        """Toggle between translate (pan/zoom) and rotate (pitch/yaw/roll) modes."""
+        import flet as ft
+        from . import _design_tokens as T
+
+        rotating = getattr(self, "control_mode", "translate") == "translate"
+        self.control_mode = "rotate" if rotating else "translate"
+
+        if rotating:
+            # Switching TO rotate mode
+            zone_color = T.AMBER_500
+            btn_color = ft.Colors.with_opacity(0.60, T.AMBER_500)
+            btn_icon = ft.Icons.ROTATE_RIGHT
+            btn_label = "Rotate"
+            left_lbl, right_lbl = "Yaw L", "Yaw R"
+            top_lbl, back_lbl = "Pitch +", "Pitch -"
+        else:
+            # Switching TO translate mode
+            zone_color = T.BLUE_500
+            btn_color = ft.Colors.with_opacity(0.60, T.BLUE_500)
+            btn_icon = ft.Icons.CONTROL_CAMERA
+            btn_label = "Move"
+            left_lbl, right_lbl = "Left", "Right"
+            top_lbl, back_lbl = "Forward", "Back"
+
+        # Update zone labels
+        for attr, text in (
+            ("left_zone_label", left_lbl),
+            ("right_zone_label", right_lbl),
+            ("top_zone_label", top_lbl),
+            ("back_zone_label", back_lbl),
+        ):
+            widget = getattr(self, attr, None)
+            if widget:
+                widget.value = text
+
+        # Update zone colours
+        for attr in ("left_zone_container", "right_zone_container",
+                     "top_zone_container", "back_zone_container"):
+            zone = getattr(self, attr, None)
+            if zone:
+                zone.bgcolor = ft.Colors.with_opacity(T.EDGE_ZONE_DEFAULT, zone_color)
+
+        # Update mode button
+        if hasattr(self, "mode_toggle_btn"):
+            self.mode_toggle_btn.bgcolor = btn_color
+        if hasattr(self, "mode_toggle_icon"):
+            self.mode_toggle_icon.name = btn_icon
+        if hasattr(self, "mode_toggle_text"):
+            self.mode_toggle_text.value = btn_label
+
+        print(f"Control mode → {self.control_mode}")
+        if self._ui_built:
+            self.page.update()
+
+    # ------------------------------------------------------------------ #
     #  Click-to-Center                                                     #
     # ------------------------------------------------------------------ #
 
     def _on_click_to_center(self: FletMainWindow, e: ft.TapEvent):
-        """Move arm so the clicked point becomes image center."""
+        """Move arm so the clicked point becomes image center (translate mode only)."""
+        if getattr(self, "control_mode", "translate") == "rotate":
+            return  # click disabled in rotate mode
         if not self.arm_controller or not self.arm_controller.arm:
             print("Click-to-center: arm not connected")
             return
@@ -319,25 +439,18 @@ class ArmControlMixin:
         if abs(cam_dx_mm) < 0.5 and abs(cam_dy_mm) < 0.5:
             return  # clicked near center, nothing to do
 
-        # --- Get current position ---
-        pos = self.arm_controller.get_position()
-        if not pos or len(pos) < 6:
-            print("Click-to-center: could not get arm position")
-            return
-
-        coords = list(pos[:6])  # [x, y, z, roll, pitch, yaw]
-
-        # Apply camera-to-robot mapping
-        axis_x, sign_x = _CAM_TO_ROBOT["cam_x"]
-        axis_y, sign_y = _CAM_TO_ROBOT["cam_y"]
-        coords[axis_x] += sign_x * cam_dx_mm
-        coords[axis_y] += sign_y * cam_dy_mm
+        # --- Apply camera-to-tool axis mapping ---
+        deltas = [0.0, 0.0, 0.0]  # tool dx, dy, dz
+        axis_x, sign_x = _CAM_TO_TOOL["cam_x"]
+        axis_y, sign_y = _CAM_TO_TOOL["cam_y"]
+        deltas[axis_x] += sign_x * cam_dx_mm
+        deltas[axis_y] += sign_y * cam_dy_mm
 
         movement_speed = app_config.movement_speed * speed_scale
         print(
             f"Click-to-center: pixel({pixel_x:.0f},{pixel_y:.0f}) "
             f"depth={depth_mm:.0f}mm offset=({cam_dx_mm:.1f},{cam_dy_mm:.1f})mm"
         )
-        self.arm_controller.move_to(
-            *coords, speed=movement_speed, wait=False,
+        self.arm_controller.move_relative_tool(
+            *deltas, speed=movement_speed, wait=False,
         )

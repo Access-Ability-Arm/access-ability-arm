@@ -30,19 +30,26 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
       - Stop: bg-red-600, rounded-2xl, px-6 py-4, font-bold
     """
 
-    # --- Edge zone hover handler ---
+    # --- Edge zone hover handler (mode-aware colour) ---
     def _edge_hover(e):
         opacity = T.EDGE_ZONE_HOVER if e.data == "true" else T.EDGE_ZONE_DEFAULT
-        e.control.bgcolor = ft.Colors.with_opacity(opacity, T.BLUE_500)
+        base = T.AMBER_500 if getattr(window, "control_mode", "translate") == "rotate" else T.BLUE_500
+        e.control.bgcolor = ft.Colors.with_opacity(opacity, base)
         e.control.update()
 
     # --- Edge zones ---
-    # Left: X- (move left)
-    left_zone = ft.Container(
+    # Labels stored on window so _on_mode_toggle can update them.
+    window.left_zone_label = ft.Text("Left", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+    window.right_zone_label = ft.Text("Right", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+    window.top_zone_label = ft.Text("Forward", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+    window.back_zone_label = ft.Text("Back", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500)
+
+    # Left: X- (move left)  /  Yaw- in rotate mode
+    window.left_zone_container = ft.Container(
         content=ft.Column(
             [
                 ft.Icon(ft.Icons.CHEVRON_LEFT, size=40, color=T.WHITE),
-                ft.Text("Left", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500),
+                window.left_zone_label,
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
@@ -59,13 +66,14 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         on_hover=_edge_hover,
         ink=True,
     )
+    left_zone = window.left_zone_container
 
-    # Right: X+ (move right)
-    right_zone = ft.Container(
+    # Right: X+ (move right)  /  Yaw+ in rotate mode
+    window.right_zone_container = ft.Container(
         content=ft.Column(
             [
                 ft.Icon(ft.Icons.CHEVRON_RIGHT, size=40, color=T.WHITE),
-                ft.Text("Right", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500),
+                window.right_zone_label,
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
@@ -82,13 +90,14 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         on_hover=_edge_hover,
         ink=True,
     )
+    right_zone = window.right_zone_container
 
-    # Top: Y+ (forward)
-    top_zone = ft.Container(
+    # Top: Y+ (forward)  /  Pitch+ in rotate mode
+    window.top_zone_container = ft.Container(
         content=ft.Row(
             [
                 ft.Icon(ft.Icons.EXPAND_LESS, size=40, color=T.WHITE),
-                ft.Text("Forward", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500),
+                window.top_zone_label,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=4,
@@ -104,13 +113,14 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         on_hover=_edge_hover,
         ink=True,
     )
+    top_zone = window.top_zone_container
 
-    # Bottom: Y- (back) — above the bottom bar
-    back_zone = ft.Container(
+    # Bottom: Y- (back)  /  Pitch- in rotate mode — above the bottom bar
+    window.back_zone_container = ft.Container(
         content=ft.Row(
             [
                 ft.Icon(ft.Icons.EXPAND_MORE, size=40, color=T.WHITE),
-                ft.Text("Back", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500),
+                window.back_zone_label,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=4,
@@ -124,6 +134,33 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         alignment=ft.alignment.center,
         on_click=lambda _: window._on_button_press("y", "neg"),
         on_hover=_edge_hover,
+        ink=True,
+    )
+    back_zone = window.back_zone_container
+
+    # --- Mode toggle button (top-right): Move ↔ Rotate ---
+    def _mode_hover(e):
+        is_rotate = getattr(window, "control_mode", "translate") == "rotate"
+        base = T.AMBER_500 if is_rotate else T.BLUE_500
+        e.control.bgcolor = ft.Colors.with_opacity(
+            0.80 if e.data == "true" else 0.60, base
+        )
+        e.control.update()
+
+    window.mode_toggle_icon = ft.Icon(ft.Icons.CONTROL_CAMERA, size=20, color=T.WHITE)
+    window.mode_toggle_text = ft.Text(
+        "Move", size=T.TEXT_BASE, color=T.WHITE, weight=ft.FontWeight.W_500,
+    )
+    window.mode_toggle_btn = ft.Container(
+        content=ft.Row(
+            [window.mode_toggle_icon, window.mode_toggle_text],
+            spacing=8,
+        ),
+        bgcolor=ft.Colors.with_opacity(0.60, T.BLUE_500),
+        border_radius=T.RADIUS_XL,
+        padding=ft.padding.symmetric(horizontal=16, vertical=10),
+        on_click=lambda _: window._on_mode_toggle(),
+        on_hover=_mode_hover,
         ink=True,
     )
 
@@ -262,10 +299,11 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         padding=ft.padding.all(16),
     )
 
-    # Transparent tap layer for click-to-center (behind all controls)
+    # Transparent tap layer for click-to-center and scroll (behind all controls)
     tap_layer = ft.GestureDetector(
         content=ft.Container(expand=True),
         on_tap_up=lambda e: window._on_click_to_center(e),
+        on_scroll=lambda e: window._on_scroll_action(e),
     )
 
     return ft.Container(
@@ -299,6 +337,8 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
                 ),
                 # Top-left: navigation back
                 ft.Container(content=nav_back_btn, top=16, left=16),
+                # Top-right: mode toggle (Move / Rotate)
+                ft.Container(content=window.mode_toggle_btn, top=16, right=16),
                 # Bottom: control bar (intentionally full-width)
                 ft.Container(content=bottom_bar, bottom=0, left=0, right=0),
             ],

@@ -113,6 +113,9 @@ class FletMainWindow(
         # Movement speed percentage (1-100%)
         self.movement_speed_percent = 20  # Default 20%
 
+        # Control mode: "translate" (pan/zoom) or "rotate" (pitch/yaw/roll)
+        self.control_mode = "translate"
+
         # RealSense exposure control
         self.exposure_slider = None
         self.exposure_value_text = None

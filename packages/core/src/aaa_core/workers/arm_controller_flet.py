@@ -153,6 +153,45 @@ class ArmControllerFlet:
                 logger.error(error_msg, exc_info=True)
                 return False
 
+    def move_relative_tool(
+            self,
+            dx: float = 0, dy: float = 0, dz: float = 0,
+            droll: float = 0, dpitch: float = 0, dyaw: float = 0,
+            speed: float = 10,
+            wait: bool = False) -> bool:
+        """
+        Move arm by relative offset in tool (TCP) coordinate frame.
+
+        Args:
+            dx, dy, dz: Translation deltas in mm (tool frame)
+            droll, dpitch, dyaw: Rotation deltas in degrees (tool frame)
+            speed: Movement speed (mm/s)
+            wait: Whether to wait for movement to complete
+
+        Returns:
+            True if command sent successfully, False otherwise
+        """
+        with self._lock:
+            if not self.arm or not self.arm.connected:
+                logger.warning("Cannot move: arm not connected")
+                return False
+
+            try:
+                success = self.arm.move_relative_tool(
+                    dx, dy, dz, droll, dpitch, dyaw, speed=speed, wait=wait
+                )
+                if not success:
+                    logger.warning(
+                        f"Relative tool move failed: ({dx}, {dy}, {dz})"
+                    )
+                return success
+
+            except Exception as e:
+                error_msg = f"Error in relative tool move: {str(e)}"
+                self._emit_error(error_msg)
+                logger.error(error_msg, exc_info=True)
+                return False
+
     def get_position(self) -> Optional[Tuple[float, ...]]:
         """
         Get current arm position.

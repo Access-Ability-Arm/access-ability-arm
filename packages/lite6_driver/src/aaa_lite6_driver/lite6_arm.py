@@ -144,6 +144,56 @@ class Lite6Arm:
             print(f"[Lite6] Move error: {e}")
             return False
 
+    def move_relative_tool(
+        self,
+        dx: float = 0,
+        dy: float = 0,
+        dz: float = 0,
+        droll: float = 0,
+        dpitch: float = 0,
+        dyaw: float = 0,
+        speed: float = 100,
+        wait: bool = False,
+    ) -> bool:
+        """
+        Move arm by a relative offset in the tool (TCP) coordinate frame.
+
+        Args:
+            dx, dy, dz: Translation deltas in mm (tool frame)
+            droll, dpitch, dyaw: Rotation deltas in degrees (tool frame)
+            speed: Movement speed (mm/s)
+            wait: Wait for movement to complete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.connected or not self.arm:
+            print("[Lite6] Not connected")
+            return False
+
+        try:
+            code = self.arm.set_tool_position(
+                x=dx, y=dy, z=dz,
+                roll=droll, pitch=dpitch, yaw=dyaw,
+                speed=speed,
+                is_radian=False,
+                wait=wait,
+            )
+            if code == 0:
+                print(
+                    f"[Lite6] Tool-relative move: "
+                    f"dx={dx:.1f} dy={dy:.1f} dz={dz:.1f} "
+                    f"dr={droll:.1f} dp={dpitch:.1f} dyw={dyaw:.1f}"
+                )
+                return True
+            else:
+                print(f"[Lite6] Relative tool move failed with code: {code}")
+                return False
+
+        except Exception as e:
+            print(f"[Lite6] Relative tool move error: {e}")
+            return False
+
     def get_position(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         """
         Get current arm position
