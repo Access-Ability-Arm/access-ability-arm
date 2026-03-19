@@ -344,6 +344,23 @@ class Lite6Arm:
             print(f"[Lite6] Home error: {e}")
             return False
 
+    def stop_motion(self) -> bool:
+        """Stop current motion and clear queued commands.
+
+        Uses set_state(4) to halt and flush the motion buffer,
+        then set_state(0) to return to ready state. Less aggressive
+        than emergency_stop() — does not require re-enabling motion.
+        """
+        if not self.connected or not self.arm:
+            return False
+        try:
+            self.arm.set_state(4)  # Stop + clear queue
+            self.arm.set_state(0)  # Return to ready
+            return True
+        except Exception as e:
+            print(f"[Lite6] Stop motion error: {e}")
+            return False
+
     def emergency_stop(self):
         """Emergency stop - immediately halt all motion"""
         if self.arm:

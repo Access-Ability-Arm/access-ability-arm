@@ -36,6 +36,9 @@ _SCROLL_STEP_DEG = 2.0
 # Rotation step per edge-zone button press (degrees)
 _ROTATE_STEP_DEG = 5.0
 
+# Interval between repeated move commands during press-and-hold (seconds)
+_CONTINUOUS_INTERVAL_S = 0.08
+
 # Edge zone → rotation axis remapping (translate axis → rotate axis)
 _TRANSLATE_TO_ROTATE = {
     ("x", "neg"): ("yaw",   "neg"),
@@ -74,6 +77,49 @@ class ArmControlMixin:
             self._handle_arm_command(button_name, duration)
 
         threading.Timer(0.1, on_release).start()
+
+    def _start_continuous_move(self: FletMainWindow, direction: str, button_type: str):
+        """Begin continuous movement on long-press start."""
+        self._stop_continuous_move()
+
+        # Remap axes for rotate mode (same logic as _on_button_press)
+        if getattr(self, "control_mode", "translate") == "rotate":
+            direction, button_type = _TRANSLATE_TO_ROTATE.get(
+                (direction, button_type), (direction, button_type)
+            )
+
+        button_name = f"{direction}_{button_type}"
+        self._hold_stop_event = threading.Event()
+        self._hold_thread = threading.Thread(
+            target=self._continuous_move_loop,
+            args=(button_name,),
+            daemon=True,
+        )
+        self._hold_thread.start()
+
+    def _stop_continuous_move(self: FletMainWindow):
+        """Stop continuous movement on long-press end."""
+        stop_evt = getattr(self, "_hold_stop_event", None)
+        if stop_evt is not None:
+            stop_evt.set()
+
+        hold_thread = getattr(self, "_hold_thread", None)
+        if hold_thread is not None and hold_thread.is_alive():
+            hold_thread.join(timeout=0.2)
+
+        self._hold_stop_event = None
+        self._hold_thread = None
+
+        # Flush any queued xArm commands immediately
+        if self.arm_controller:
+            self.arm_controller.stop_motion()
+
+    def _continuous_move_loop(self: FletMainWindow, button_name: str):
+        """Background thread: send repeated small moves until stopped."""
+        stop_evt = self._hold_stop_event
+        while not stop_evt.is_set():
+            self._handle_arm_command(button_name, duration=0.0)
+            stop_evt.wait(_CONTINUOUS_INTERVAL_S)
 
     def _on_speed_changed(self: FletMainWindow, e):
         """Handle speed slider change"""

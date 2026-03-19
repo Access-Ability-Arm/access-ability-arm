@@ -1203,6 +1203,7 @@ class FletMainWindow(
     def _on_stop(self):
         """Handle Stop button - immediately halts all arm movement"""
         print("Stop: Halting all arm movement...")
+        self._stop_continuous_move()
         if not self.arm_controller or not self.arm_controller.arm:
             print("Arm not connected")
             return

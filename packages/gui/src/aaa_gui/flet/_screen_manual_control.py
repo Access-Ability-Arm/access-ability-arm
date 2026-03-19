@@ -62,11 +62,15 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         width=T.EDGE_ZONE_LR_W,
         height=T.EDGE_ZONE_LR_H,
         alignment=ft.alignment.center,
-        on_click=lambda _: window._on_button_press("x", "neg"),
         on_hover=_edge_hover,
         ink=True,
     )
-    left_zone = window.left_zone_container
+    left_zone = ft.GestureDetector(
+        content=window.left_zone_container,
+        on_tap=lambda _: window._on_button_press("x", "neg"),
+        on_long_press_start=lambda _: window._start_continuous_move("x", "neg"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
 
     # Right: X+ (move right)  /  Yaw+ in rotate mode
     window.right_zone_container = ft.Container(
@@ -86,11 +90,15 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         width=T.EDGE_ZONE_LR_W,
         height=T.EDGE_ZONE_LR_H,
         alignment=ft.alignment.center,
-        on_click=lambda _: window._on_button_press("x", "pos"),
         on_hover=_edge_hover,
         ink=True,
     )
-    right_zone = window.right_zone_container
+    right_zone = ft.GestureDetector(
+        content=window.right_zone_container,
+        on_tap=lambda _: window._on_button_press("x", "pos"),
+        on_long_press_start=lambda _: window._start_continuous_move("x", "pos"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
 
     # Top: Y+ (forward)  /  Pitch+ in rotate mode
     window.top_zone_container = ft.Container(
@@ -109,11 +117,15 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         width=T.EDGE_ZONE_TB_W,
         height=T.EDGE_ZONE_TB_H,
         alignment=ft.alignment.center,
-        on_click=lambda _: window._on_button_press("y", "pos"),
         on_hover=_edge_hover,
         ink=True,
     )
-    top_zone = window.top_zone_container
+    top_zone = ft.GestureDetector(
+        content=window.top_zone_container,
+        on_tap=lambda _: window._on_button_press("y", "pos"),
+        on_long_press_start=lambda _: window._start_continuous_move("y", "pos"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
 
     # Bottom: Y- (back)  /  Pitch- in rotate mode — above the bottom bar
     window.back_zone_container = ft.Container(
@@ -132,11 +144,15 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         width=T.EDGE_ZONE_TB_W,
         height=T.EDGE_ZONE_TB_H,
         alignment=ft.alignment.center,
-        on_click=lambda _: window._on_button_press("y", "neg"),
         on_hover=_edge_hover,
         ink=True,
     )
-    back_zone = window.back_zone_container
+    back_zone = ft.GestureDetector(
+        content=window.back_zone_container,
+        on_tap=lambda _: window._on_button_press("y", "neg"),
+        on_long_press_start=lambda _: window._start_continuous_move("y", "neg"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
 
     # --- Mode toggle button (top-right): Move ↔ Rotate ---
     def _mode_hover(e):
@@ -216,19 +232,31 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
             ink=True,
         )
 
-    up_btn = _make_bottom_btn(
+    up_btn_inner = _make_bottom_btn(
         "Forward", ft.Icons.ARROW_UPWARD,
         T.GREEN_500,
-        lambda _: window._on_button_press("z", "pos"),
+        None,
     )
-    window.z_pos_btn = up_btn
+    window.z_pos_btn = up_btn_inner
+    up_btn = ft.GestureDetector(
+        content=up_btn_inner,
+        on_tap=lambda _: window._on_button_press("z", "pos"),
+        on_long_press_start=lambda _: window._start_continuous_move("z", "pos"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
 
-    down_btn = _make_bottom_btn(
+    down_btn_inner = _make_bottom_btn(
         "Back", ft.Icons.ARROW_DOWNWARD,
         T.GREEN_500,
-        lambda _: window._on_button_press("z", "neg"),
+        None,
     )
-    window.z_neg_btn = down_btn
+    window.z_neg_btn = down_btn_inner
+    down_btn = ft.GestureDetector(
+        content=down_btn_inner,
+        on_tap=lambda _: window._on_button_press("z", "neg"),
+        on_long_press_start=lambda _: window._start_continuous_move("z", "neg"),
+        on_long_press_end=lambda _: window._stop_continuous_move(),
+    )
     open_grip_btn = _make_bottom_btn(
         "Open", ft.Icons.OPEN_WITH,
         T.AMBER_500,

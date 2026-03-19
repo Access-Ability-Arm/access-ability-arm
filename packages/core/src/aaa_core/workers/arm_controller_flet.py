@@ -268,6 +268,21 @@ class ArmControllerFlet:
                 logger.error(error_msg, exc_info=True)
                 return False
 
+    def stop_motion(self) -> bool:
+        """Stop current motion and clear queued commands.
+
+        Less aggressive than emergency_stop(). Clears the motion
+        buffer so no queued moves execute after release.
+        """
+        with self._lock:
+            if not self.arm or not self.arm.connected:
+                return False
+            try:
+                return self.arm.stop_motion()
+            except Exception as e:
+                logger.error(f"Error stopping motion: {e}", exc_info=True)
+                return False
+
     def emergency_stop(self) -> bool:
         """
         Emergency stop - immediately halt all movement.
