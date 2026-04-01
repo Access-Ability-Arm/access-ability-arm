@@ -364,7 +364,7 @@ class FletMainWindow(
         # Loading placeholder (shown until first frame arrives)
         self.camera_loading_text = ft.Text(
             "Loading camera feed...",
-            size=16,
+            size=20,
             color="#607D8B",
             weight=ft.FontWeight.W_400,
         )
@@ -439,7 +439,7 @@ class FletMainWindow(
         if len(camera_options) == 1:
             camera_display_text = f"Camera: {camera_options[0].text}"
             self.camera_dropdown = ft.Text(
-                camera_display_text, size=14, weight=ft.FontWeight.W_500, color="#1976D2",
+                camera_display_text, size=18, weight=ft.FontWeight.W_500, color="#1976D2",
             )
             self.camera_dropdown.value = camera_options[0].key
         else:
@@ -655,6 +655,9 @@ class FletMainWindow(
     def _on_object_card_tapped(self, object_index: int):
         """Handle tapping an object card — select it and go to grasp preview."""
         self._on_object_selected(object_index)
+        # Default to analyzing state; _update_grasp_info_card will switch
+        # to decision if analysis is already available.
+        self._toggle_grip_buttons("analyzing")
         self._update_grasp_info_card()
         self._navigate_to(Screen.GRASP_PREVIEW)
 
@@ -911,7 +914,7 @@ class FletMainWindow(
             # Update confidence
             conf = analysis.grasp_confidence
             self.grasp_confidence_bar.value = conf
-            self.grasp_confidence_text.value = f"Confidence: {conf:.0%}"
+            self.grasp_confidence_text.value = f"Grasp confidence: {conf:.0%}"
             # Color the bar
             if conf >= 0.7:
                 self.grasp_confidence_bar.color = "#4CAF50"
@@ -930,16 +933,32 @@ class FletMainWindow(
                 self.grasp_status_text.value = "Not graspable"
                 self.grasp_status_text.color = "#F44336"
 
+            # Shape confidence
+            shape_conf = analysis.shape.confidence
+            shape_label = analysis.shape.shape_type.capitalize()
+            self.grasp_shape_confidence_text.value = (
+                f"Shape: {shape_label} ({shape_conf:.0%})"
+            )
+
             # Dimensions
             width_mm = analysis.grasp_width * 1000
-            shape_label = analysis.shape.shape_type.capitalize()
-            self.grasp_dimensions_text.value = f"{shape_label} | Width: {width_mm:.0f}mm"
+            dims_text = self._format_shape_dimensions(analysis.shape)
+            self.grasp_dimensions_text.value = f"{dims_text} | Width: {width_mm:.0f}mm"
+
+            # Show decision buttons now that analysis is ready
+            # (but don't override nudge mode if user is actively modifying)
+            if not self.grip_nudge_row.visible:
+                self._toggle_grip_buttons("decision")
         else:
             self.grasp_status_text.value = "Analyzing..."
             self.grasp_status_text.color = "#FF9800"
             self.grasp_confidence_bar.value = 0
-            self.grasp_confidence_text.value = "Confidence: --"
+            self.grasp_confidence_text.value = "Grasp confidence: --"
+            self.grasp_shape_confidence_text.value = "Shape: --"
             self.grasp_dimensions_text.value = "Dimensions: --"
+
+            # Show analyzing spinner
+            self._toggle_grip_buttons("analyzing")
 
         self.page.update()
 
@@ -1214,6 +1233,50 @@ class FletMainWindow(
             print("Arm not connected - cannot execute grasp")
             return
         print("Grasp execution not yet implemented")
+
+    # ------------------------------------------------------------------ #
+    #  Grip Decision Buttons + Nudge Controls                             #
+    # ------------------------------------------------------------------ #
+
+    def _toggle_grip_buttons(self, state: str):
+        """Switch visibility between analyzing / decision / nudge rows.
+
+        Args:
+            state: One of "analyzing", "decision", or "nudge".
+        """
+        self.grip_analyzing_row.visible = (state == "analyzing")
+        self.grip_decision_row.visible = (state == "decision")
+        self.grip_nudge_row.visible = (state == "nudge")
+        self.page.update()
+
+    def _on_accept_grip(self):
+        """Accept the current grip proposal — delegates to _on_execute."""
+        self._on_execute()
+
+    def _on_reject_grip(self):
+        """Reject the current grip — re-scan and go to object selection."""
+        self._retry_grasp()
+
+    def _on_modify_grip(self):
+        """Enter nudge mode to adjust the grasp point."""
+        self._toggle_grip_buttons("nudge")
+
+    def _nudge_grasp_point(self, dx: float, dy: float, dz: float):
+        """Shift the grasp point by (dx, dy, dz) meters in camera coords.
+
+        Camera coordinate system: X=right, Y=down, Z=into scene.
+        """
+        if self.object_analysis is None:
+            return
+        self.object_analysis.grasp_point[0] += dx
+        self.object_analysis.grasp_point[1] += dy
+        self.object_analysis.grasp_point[2] += dz
+        self._update_frozen_frame_highlight()
+        self._update_grasp_info_card()
+
+    def _on_done_modifying(self):
+        """Exit nudge mode, return to decision buttons."""
+        self._toggle_grip_buttons("decision")
 
     def _on_stop(self):
         """Handle Stop button - immediately halts all arm movement"""

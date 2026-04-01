@@ -25,9 +25,7 @@ def build_screen_grasp_preview(window: FletMainWindow) -> ft.Container:
       - Confidence bar: h-2, bg-white/20 track, bg-green-400 fill, rounded-full
       - Text sizes: title text-lg, status text-sm, metrics text-sm
     - Action bar (bottom): gradient from-black/80 to-transparent, pt-20 pb-6
-      - "Grab This": bg-green-500, rounded-2xl, px-10 py-5, text-xl, font-semibold
-      - "Try Again": bg-white/20, rounded-2xl, px-8 py-5, text-xl
-      - "More": bg-white/10, rounded-xl, px-4 py-3, text-sm, text-white/60
+      - Three-state action bar: analyzing, decision, nudge
     """
 
     # --- Back button (top-left) ---
@@ -76,10 +74,13 @@ def build_screen_grasp_preview(window: FletMainWindow) -> ft.Container:
         bgcolor=ft.Colors.with_opacity(0.20, T.WHITE),
     )
     window.grasp_confidence_text = ft.Text(
-        "Confidence: --", size=T.TEXT_SM, color=T.GRAY_400,
+        "Grasp confidence: --", size=T.TEXT_SM, color=T.GRAY_400,
     )
     window.grasp_dimensions_text = ft.Text(
         "Dimensions: --", size=T.TEXT_SM, color=T.GRAY_400,
+    )
+    window.grasp_shape_confidence_text = ft.Text(
+        "Shape: --", size=T.TEXT_SM, color=T.GRAY_400,
     )
 
     info_card = ft.Container(
@@ -93,6 +94,7 @@ def build_screen_grasp_preview(window: FletMainWindow) -> ft.Container:
                 ft.Container(height=4),
                 window.grasp_confidence_bar,
                 window.grasp_confidence_text,
+                window.grasp_shape_confidence_text,
                 window.grasp_dimensions_text,
             ],
             spacing=6,
@@ -103,45 +105,7 @@ def build_screen_grasp_preview(window: FletMainWindow) -> ft.Container:
         width=240,
     )
 
-    # --- Action bar (bottom) ---
-    # Prototype uses a gradient: from-black/80 to-transparent, pt-20 pb-6
-    # Flet doesn't support gradient on Container bg, so we use a solid high-opacity bg
-
-    # "Grab This" (primary, green)
-    grab_btn = ft.Container(
-        content=ft.Row(
-            [
-                ft.Icon(ft.Icons.BACK_HAND, size=24, color=T.WHITE),
-                ft.Text("Grab This", size=T.TEXT_XL, color=T.WHITE, weight=ft.FontWeight.W_600),
-            ],
-            spacing=12,
-            alignment=ft.MainAxisAlignment.CENTER,
-        ),
-        bgcolor=T.GREEN_500,
-        border_radius=T.RADIUS_2XL,
-        padding=ft.padding.symmetric(horizontal=40, vertical=20),
-        on_click=lambda _: window._on_execute(),
-        ink=True,
-    )
-
-    # "Try Again" (secondary, white/20)
-    retry_btn = ft.Container(
-        content=ft.Row(
-            [
-                ft.Icon(ft.Icons.REFRESH, size=24, color=T.WHITE),
-                ft.Text("Try Again", size=T.TEXT_XL, color=T.WHITE, weight=ft.FontWeight.W_500),
-            ],
-            spacing=8,
-            alignment=ft.MainAxisAlignment.CENTER,
-        ),
-        bgcolor=ft.Colors.with_opacity(T.OVERLAY_LIGHT_20, T.WHITE),
-        border_radius=T.RADIUS_2XL,
-        padding=ft.padding.symmetric(horizontal=32, vertical=20),
-        on_click=lambda _: window._retry_grasp(),
-        ink=True,
-    )
-
-    # "More" popup (bg-white/10, rounded-xl, text-sm)
+    # --- "More" popup (shared across rows) ---
     more_menu = ft.PopupMenuButton(
         icon=ft.Icons.MORE_HORIZ,
         icon_color=ft.Colors.with_opacity(0.60, T.WHITE),
@@ -183,13 +147,149 @@ def build_screen_grasp_preview(window: FletMainWindow) -> ft.Container:
         padding=ft.padding.symmetric(horizontal=16, vertical=12),
     )
 
-    # Action bar container — simulate gradient with high-opacity bottom bar
-    action_bar = ft.Container(
+    # =================================================================== #
+    #  Row A: Analyzing (spinner + text) — visible by default             #
+    # =================================================================== #
+    window.grip_analyzing_row = ft.Row(
+        [
+            ft.ProgressRing(width=28, height=28, stroke_width=3, color=T.WHITE),
+            ft.Text(
+                "Analyzing...",
+                size=T.TEXT_XL,
+                color=T.WHITE,
+                weight=ft.FontWeight.W_500,
+            ),
+            more_btn_container,
+        ],
+        spacing=16,
+        alignment=ft.MainAxisAlignment.CENTER,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        visible=True,
+    )
+
+    # =================================================================== #
+    #  Row B: Grip Decision (Reject / Accept / Modify) — after analysis   #
+    # =================================================================== #
+    reject_btn = ft.Container(
         content=ft.Row(
-            [retry_btn, grab_btn, more_btn_container],
-            spacing=16,
+            [
+                ft.Icon(ft.Icons.CLOSE, size=24, color=T.WHITE),
+                ft.Text("Reject", size=T.TEXT_XL, color=T.WHITE, weight=ft.FontWeight.W_600),
+            ],
+            spacing=8,
             alignment=ft.MainAxisAlignment.CENTER,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        bgcolor=T.RED_600,
+        border_radius=T.RADIUS_2XL,
+        padding=ft.padding.symmetric(horizontal=32, vertical=20),
+        on_click=lambda _: window._on_reject_grip(),
+        ink=True,
+    )
+
+    accept_btn = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.CHECK, size=24, color=T.WHITE),
+                ft.Text("Accept", size=T.TEXT_XL, color=T.WHITE, weight=ft.FontWeight.W_600),
+            ],
+            spacing=8,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        bgcolor=T.GREEN_500,
+        border_radius=T.RADIUS_2XL,
+        padding=ft.padding.symmetric(horizontal=40, vertical=20),
+        on_click=lambda _: window._on_accept_grip(),
+        ink=True,
+    )
+
+    modify_btn = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.TUNE, size=24, color=T.WHITE),
+                ft.Text("Modify", size=T.TEXT_XL, color=T.WHITE, weight=ft.FontWeight.W_600),
+            ],
+            spacing=8,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        bgcolor=T.AMBER_500,
+        border_radius=T.RADIUS_2XL,
+        padding=ft.padding.symmetric(horizontal=32, vertical=20),
+        on_click=lambda _: window._on_modify_grip(),
+        ink=True,
+    )
+
+    window.grip_decision_row = ft.Row(
+        [reject_btn, accept_btn, modify_btn, more_btn_container],
+        spacing=16,
+        alignment=ft.MainAxisAlignment.CENTER,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        visible=False,
+    )
+
+    # =================================================================== #
+    #  Row C: Nudge Controls (6 directional + Done) — in modify mode      #
+    # =================================================================== #
+    def _nudge_btn(icon, label, dx, dy, dz):
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Icon(icon, size=24, color=T.WHITE),
+                    ft.Text(label, size=T.TEXT_XS, color=T.GRAY_300),
+                ],
+                spacing=2,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            bgcolor=ft.Colors.with_opacity(T.OVERLAY_LIGHT_20, T.WHITE),
+            border_radius=T.RADIUS_XL,
+            padding=ft.padding.symmetric(horizontal=14, vertical=10),
+            on_click=lambda _: window._nudge_grasp_point(dx, dy, dz),
+            ink=True,
+        )
+
+    nudge_done_btn = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.CHECK, size=20, color=T.WHITE),
+                ft.Text("Done", size=T.TEXT_BASE, color=T.WHITE, weight=ft.FontWeight.W_600),
+            ],
+            spacing=6,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        bgcolor=T.GREEN_500,
+        border_radius=T.RADIUS_XL,
+        padding=ft.padding.symmetric(horizontal=20, vertical=10),
+        on_click=lambda _: window._on_done_modifying(),
+        ink=True,
+    )
+
+    window.grip_nudge_row = ft.Row(
+        [
+            _nudge_btn(ft.Icons.ARROW_BACK, "\u2190", -0.005, 0, 0),
+            _nudge_btn(ft.Icons.ARROW_FORWARD, "\u2192", 0.005, 0, 0),
+            _nudge_btn(ft.Icons.ARROW_UPWARD, "\u2191", 0, -0.005, 0),
+            _nudge_btn(ft.Icons.ARROW_DOWNWARD, "\u2193", 0, 0.005, 0),
+            _nudge_btn(ft.Icons.ADD_CIRCLE_OUTLINE, "Closer", 0, 0, -0.005),
+            _nudge_btn(ft.Icons.REMOVE_CIRCLE_OUTLINE, "Farther", 0, 0, 0.005),
+            nudge_done_btn,
+        ],
+        spacing=8,
+        alignment=ft.MainAxisAlignment.CENTER,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        visible=False,
+    )
+
+    # =================================================================== #
+    #  Action bar container                                                #
+    # =================================================================== #
+    action_bar = ft.Container(
+        content=ft.Column(
+            [
+                window.grip_analyzing_row,
+                window.grip_decision_row,
+                window.grip_nudge_row,
+            ],
+            spacing=0,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         bgcolor=ft.Colors.with_opacity(T.OVERLAY_DARK_80, T.BLACK),
         padding=ft.padding.only(left=24, right=24, top=24, bottom=24),
