@@ -447,20 +447,12 @@ class ArmControlMixin:
             return
 
         # --- COVER-fit coordinate mapping ---
-        container_w = self.page.width or 1920
-        container_h = self.page.height or 1080
-        img_w, img_h = 1920, 1080
+        pixel_x, pixel_y = self._display_to_image_coords(e.local_x, e.local_y)
 
-        scale = max(container_w / img_w, container_h / img_h)
-        displayed_w = img_w * scale
-        displayed_h = img_h * scale
-        offset_x = (displayed_w - container_w) / 2
-        offset_y = (displayed_h - container_h) / 2
-
-        pixel_x = (e.local_x + offset_x) / scale
-        pixel_y = (e.local_y + offset_y) / scale
-
-        # Pixel offset from image center
+        # Pixel offset from image center (derive resolution from frame)
+        frame = getattr(self.image_processor, "_last_rgb_frame", None) if self.image_processor else None
+        img_w = frame.shape[1] if frame is not None else 1920
+        img_h = frame.shape[0] if frame is not None else 1080
         dx = pixel_x - (img_w / 2)
         dy = pixel_y - (img_h / 2)
 

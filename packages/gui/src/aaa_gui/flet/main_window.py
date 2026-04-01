@@ -82,6 +82,7 @@ class FletMainWindow(
         self.page.title = "Access Ability Arm"
         self.page.theme_mode = ft.ThemeMode.LIGHT
         self.page.padding = 0
+        self.page.spacing = 0
         self.page.window.width = app_config.window_width
         self.page.window.height = app_config.window_height
         self.page.window.resizable = True
@@ -773,10 +774,66 @@ class FletMainWindow(
         self._update_frozen_frame_highlight()
         self._update_video_feed(self.frozen_frame)
 
+    def _display_to_image_coords(self, local_x, local_y):
+        """Map display coordinates to image coordinates (COVER fit).
+
+        The video feed renders with ImageFit.COVER across the full page,
+        so the COVER-fit math must use full page dimensions.  Image
+        resolution is read from the current frame rather than hardcoded.
+        """
+        container_w = self.page.width or 1920
+        container_h = self.page.height or 1080
+
+        # Derive actual image resolution from the current frame
+        img_w, img_h = 1920, 1080  # fallback
+        frame = getattr(self, "frozen_raw_frame", None)
+        if frame is None and self.image_processor is not None:
+            frame = getattr(self.image_processor, "_last_rgb_frame", None)
+        if frame is not None:
+            img_h, img_w = frame.shape[:2]
+
+        scale = max(container_w / img_w, container_h / img_h)
+        offset_x = (img_w * scale - container_w) / 2
+        offset_y = (img_h * scale - container_h) / 2
+        return (local_x + offset_x) / scale, (local_y + offset_y) / scale
+
+    def _hit_test_object(self, img_x, img_y):
+        """Find which detected object is at (img_x, img_y) in image coords.
+
+        Uses bounding-box containment first; falls back to nearest-center
+        within a radius for points just outside boxes.
+        """
+        import math
+
+        boxes = self.frozen_detections.get("boxes", [])
+        centers = self.frozen_detections.get("centers", [])
+
+        # First pass: bounding-box containment (disambiguate overlaps by
+        # nearest center).
+        hits = []
+        for i, (x, y, w, h) in enumerate(boxes):
+            if x <= img_x <= x + w and y <= img_y <= y + h:
+                cx, cy = centers[i]
+                dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
+                hits.append((dist, i))
+        if hits:
+            hits.sort()
+            return hits[0][1]
+
+        # Second pass: nearest center within generous radius
+        hit_radius = 120  # pixels in image coords
+        nearest_idx = None
+        nearest_dist = float("inf")
+        for i, (cx, cy) in enumerate(centers):
+            dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
+            if dist < hit_radius and dist < nearest_dist:
+                nearest_dist = dist
+                nearest_idx = i
+        return nearest_idx
+
     def _on_camera_label_hover(self, e):
         """Handle hover on the camera area — highlight card for nearest object label."""
         from . import _design_tokens as T
-        import math
 
         if not self.frozen_detections or not hasattr(self, "object_card_row"):
             return
@@ -785,31 +842,8 @@ class FletMainWindow(
         if not centers:
             return
 
-        # Map display coordinates to image coordinates (1920x1080).
-        # The video uses ImageFit.COVER in the camera area container.
-        page_w = self.page.width or 1920
-        # Estimate camera area height: page height minus card panel (~172px)
-        card_panel_h = 172
-        cam_h = (self.page.height or 1080) - card_panel_h
-        cam_w = page_w
-
-        # COVER fit: scale to fill, crop overflow
-        scale = max(cam_w / 1920, cam_h / 1080)
-        offset_x = (cam_w - 1920 * scale) / 2
-        offset_y = (cam_h - 1080 * scale) / 2
-
-        img_x = (e.local_x - offset_x) / scale
-        img_y = (e.local_y - offset_y) / scale
-
-        # Find nearest object center within threshold
-        hit_radius = 80  # pixels in image coords
-        nearest_idx = None
-        nearest_dist = float("inf")
-        for i, (cx, cy) in enumerate(centers):
-            dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
-            if dist < hit_radius and dist < nearest_dist:
-                nearest_dist = dist
-                nearest_idx = i
+        img_x, img_y = self._display_to_image_coords(e.local_x, e.local_y)
+        nearest_idx = self._hit_test_object(img_x, img_y)
 
         # Skip if hover state hasn't changed
         prev = getattr(self, "_camera_hovered_object", None)
@@ -839,8 +873,6 @@ class FletMainWindow(
 
     def _on_camera_label_tap(self, e):
         """Handle tap on the camera area — select nearest object."""
-        import math
-
         if not self.frozen_detections:
             return
 
@@ -848,26 +880,8 @@ class FletMainWindow(
         if not centers:
             return
 
-        page_w = self.page.width or 1920
-        card_panel_h = 172
-        cam_h = (self.page.height or 1080) - card_panel_h
-        cam_w = page_w
-
-        scale = max(cam_w / 1920, cam_h / 1080)
-        offset_x = (cam_w - 1920 * scale) / 2
-        offset_y = (cam_h - 1080 * scale) / 2
-
-        img_x = (e.local_x - offset_x) / scale
-        img_y = (e.local_y - offset_y) / scale
-
-        hit_radius = 80
-        nearest_idx = None
-        nearest_dist = float("inf")
-        for i, (cx, cy) in enumerate(centers):
-            dist = math.sqrt((img_x - cx) ** 2 + (img_y - cy) ** 2)
-            if dist < hit_radius and dist < nearest_dist:
-                nearest_dist = dist
-                nearest_idx = i
+        img_x, img_y = self._display_to_image_coords(e.local_x, e.local_y)
+        nearest_idx = self._hit_test_object(img_x, img_y)
 
         if nearest_idx is not None:
             self._on_object_card_tapped(nearest_idx)
@@ -918,7 +932,8 @@ class FletMainWindow(
 
             # Dimensions
             width_mm = analysis.grasp_width * 1000
-            self.grasp_dimensions_text.value = f"Grasp width: {width_mm:.0f}mm"
+            shape_label = analysis.shape.shape_type.capitalize()
+            self.grasp_dimensions_text.value = f"{shape_label} | Width: {width_mm:.0f}mm"
         else:
             self.grasp_status_text.value = "Analyzing..."
             self.grasp_status_text.color = "#FF9800"

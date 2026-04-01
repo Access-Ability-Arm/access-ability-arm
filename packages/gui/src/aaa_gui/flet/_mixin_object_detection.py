@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Shape badge colors: shape_type -> (bg_rgb, text_rgb)
+SHAPE_BADGE_COLORS = {
+    "cylinder": ((30, 100, 200), (255, 255, 255)),
+    "box": ((220, 160, 30), (0, 0, 0)),
+    "sphere": ((30, 160, 60), (255, 255, 255)),
+    "irregular": ((120, 120, 120), (255, 255, 255)),
+}
+
 
 class ObjectDetectionMixin:
     """Methods for object detection UI, selection, 3D analysis, and visualization."""
@@ -271,7 +279,7 @@ class ObjectDetectionMixin:
         return px_rgb, py_rgb
 
     def _draw_gripper_icon(self: FletMainWindow, img: np.ndarray, analysis) -> np.ndarray:
-        """Draw gripper overlay at projected grasp point on the image."""
+        """Draw gripper overlay with shape analysis at projected grasp point."""
         px, py = self._project_to_pixel(analysis.grasp_point)
 
         # Clamp to image bounds
@@ -282,28 +290,34 @@ class ObjectDetectionMixin:
         # Color based on graspability and confidence
         if not analysis.graspable:
             color = (0, 0, 255)  # Red (BGR)
-            label = (
+            status = (
                 "Too large for gripper"
                 if analysis.grasp_width > 0.066
                 else "Too small to grasp"
             )
         elif analysis.grasp_confidence >= 0.7:
             color = (0, 220, 0)  # Green
-            label = f"Ready to grasp ({analysis.grasp_confidence:.0%})"
+            status = "Ready to grasp"
         elif analysis.grasp_confidence >= 0.4:
             color = (0, 220, 220)  # Yellow (BGR)
-            label = f"Grasp possible ({analysis.grasp_confidence:.0%})"
+            status = "Grasp possible"
         else:
             color = (0, 140, 255)  # Orange (BGR)
-            label = f"Uncertain grasp ({analysis.grasp_confidence:.0%})"
+            status = "Uncertain grasp"
 
-        # Draw gripper fingers (two parallel rectangles)
-        finger_len = 30  # pixels
+        # --- Gripper fingers at object edges ---
+        half_w = analysis.grasp_width / 2
+        left_3d = analysis.grasp_point.copy()
+        left_3d[0] -= half_w
+        right_3d = analysis.grasp_point.copy()
+        right_3d[0] += half_w
+        lx, _ = self._project_to_pixel(left_3d)
+        rx, _ = self._project_to_pixel(right_3d)
+        gap = max(4, abs(rx - lx) // 2)
+        finger_len = 50
         finger_width = 8
-        gap = 20  # half-gap between fingers
 
-        # White outer border (3px) + colored inner fill (2px)
-        # Left finger
+        # Left finger (white outline + colored fill)
         cv2.rectangle(
             img,
             (px - gap - finger_width, py - finger_len),
@@ -343,20 +357,70 @@ class ObjectDetectionMixin:
             cv2.line(img, (px - 25, py - 25), (px + 25, py + 25), (0, 0, 255), 3)
             cv2.line(img, (px - 25, py + 25), (px + 25, py - 25), (0, 0, 255), 3)
 
-        # Label text (min 24px at 1080p)
+        # --- Approach direction arrow ---
+        try:
+            arrow_end_3d = analysis.grasp_point + analysis.grasp_approach * 0.05
+            ax, ay = self._project_to_pixel(arrow_end_3d)
+            dx, dy = ax - px, ay - py
+            length = max(1, np.sqrt(dx * dx + dy * dy))
+            ax = int(px + dx / length * 60)
+            ay = int(py + dy / length * 60)
+            ax = max(0, min(ax, w - 1))
+            ay = max(0, min(ay, h - 1))
+            cv2.arrowedLine(
+                img, (px, py), (ax, ay), (255, 255, 255), 4, tipLength=0.3
+            )
+            cv2.arrowedLine(img, (px, py), (ax, ay), color, 2, tipLength=0.3)
+        except Exception:
+            pass
+
+        # --- Shape badge above gripper ---
+        shape = analysis.shape
+        shape_label = shape.shape_type.capitalize()
+        badge_bg, badge_text = SHAPE_BADGE_COLORS.get(
+            shape.shape_type, ((120, 120, 120), (255, 255, 255))
+        )
+        est_half_w = len(shape_label) * 7
+        badge_x = max(5, px - est_half_w)
+        badge_y = max(30, py - finger_len - 55)
+        img = self._draw_text_pil(
+            img,
+            shape_label,
+            (badge_x, badge_y),
+            font_size=28,
+            text_color=badge_text,
+            bg_color=badge_bg,
+            padding=8,
+            corner_radius=6,
+        )
+
+        # --- Dimensions text below badge ---
+        dims_text = self._format_shape_dimensions(shape)
+        est_dims_half_w = len(dims_text) * 5
+        dims_x = max(5, px - est_dims_half_w)
+        dims_y = badge_y + 30
+        img = self._draw_text_pil(
+            img,
+            dims_text,
+            (dims_x, dims_y),
+            font_size=22,
+            text_color=(255, 255, 255),
+            bg_color=(40, 40, 40),
+            padding=6,
+            corner_radius=4,
+        )
+
+        # --- Status label below gripper ---
         font_scale = 0.9
         thickness = 2
         (text_w, text_h), baseline = cv2.getTextSize(
-            label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+            status, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
         )
         label_x = px - text_w // 2
         label_y = py + finger_len + 30 + text_h
-
-        # Clamp label position
         label_x = max(5, min(label_x, w - text_w - 5))
-        label_y = max(text_h + 5, min(label_y, h - 5))
+        label_y = max(text_h + 5, min(label_y, h - 40))
 
-        # Background rectangle for text
         cv2.rectangle(
             img,
             (label_x - 4, label_y - text_h - 4),
@@ -373,7 +437,7 @@ class ObjectDetectionMixin:
         )
         cv2.putText(
             img,
-            label,
+            status,
             (label_x, label_y),
             cv2.FONT_HERSHEY_SIMPLEX,
             font_scale,
@@ -382,7 +446,66 @@ class ObjectDetectionMixin:
             cv2.LINE_AA,
         )
 
+        # --- Confidence breakdown ---
+        conf_text = (
+            f"Shape: {shape.confidence:.0%} | Grasp: {analysis.grasp_confidence:.0%}"
+        )
+        (cw, ch), cbl = cv2.getTextSize(
+            conf_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 1
+        )
+        conf_x = px - cw // 2
+        conf_y = label_y + baseline + 8 + ch + 4
+        conf_x = max(5, min(conf_x, w - cw - 5))
+        conf_y = min(conf_y, h - 5)
+
+        cv2.rectangle(
+            img,
+            (conf_x - 4, conf_y - ch - 4),
+            (conf_x + cw + 4, conf_y + cbl + 4),
+            (0, 0, 0),
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            (conf_x - 4, conf_y - ch - 4),
+            (conf_x + cw + 4, conf_y + cbl + 4),
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            img,
+            conf_text,
+            (conf_x, conf_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (200, 200, 200),
+            1,
+            cv2.LINE_AA,
+        )
+
         return img
+
+    def _format_shape_dimensions(self: FletMainWindow, shape) -> str:
+        """Format shape dimensions dict into a display string."""
+        dims = shape.dimensions
+        t = shape.shape_type
+        if t == "cylinder":
+            r = dims.get("radius", 0) * 1000
+            h = dims.get("height", 0) * 1000
+            return f"r={r:.0f}mm, h={h:.0f}mm"
+        elif t == "box":
+            bw = dims.get("width", 0) * 1000
+            d = dims.get("depth", 0) * 1000
+            h = dims.get("height", 0) * 1000
+            return f"{bw:.0f} \u00d7 {d:.0f} \u00d7 {h:.0f}mm"
+        elif t == "sphere":
+            r = dims.get("radius", 0) * 1000
+            return f"r={r:.0f}mm"
+        else:
+            bw = dims.get("width", 0) * 1000
+            d = dims.get("depth", 0) * 1000
+            h = dims.get("height", 0) * 1000
+            return f"~{bw:.0f} \u00d7 {d:.0f} \u00d7 {h:.0f}mm"
 
     def _update_frozen_frame_highlight(self: FletMainWindow):
         """Redraw frozen frame with selected object highlighted"""
@@ -450,6 +573,10 @@ class ObjectDetectionMixin:
             idx = i - 1
             # Skip this label if an object is selected and this isn't it
             if self.selected_object is not None and idx != self.selected_object:
+                continue
+
+            # Hide label when analysis overlay is showing to reduce clutter
+            if idx == self.selected_object and getattr(self, "object_analysis", None) is not None:
                 continue
 
             x, y = center
