@@ -13,9 +13,10 @@ from aaa_vision.detection_manager import DetectionManager
 
 from aaa_core.config.console import error, status, success, warning
 from aaa_core.daemon.camera_client_socket import CameraClientSocket
+from aaa_core.workers._overlay_mixin import OverlayMixin
 
 
-class DaemonImageProcessor(threading.Thread):
+class DaemonImageProcessor(OverlayMixin, threading.Thread):
     """
     Image processor that reads from camera daemon via shared memory
 
@@ -65,8 +66,8 @@ class DaemonImageProcessor(threading.Thread):
             self.detection_manager.segmentation_model is not None
         )
 
-        # Depth visualization toggle (show colorized depth instead of RGB)
-        self.show_depth_visualization = False
+        # Shared overlay state (reference point, depth visualization)
+        self._init_overlay_state()
 
         # Store last RGB frame for re-detection
         self._last_rgb_frame = None
@@ -136,6 +137,12 @@ class DaemonImageProcessor(threading.Thread):
                         image_rgb, depth_frame=depth_frame
                     )
 
+                    # Draw fixed reference point depth measurement
+                    if self.show_reference_point and depth_frame is not None:
+                        processed_frame = self._draw_reference_point(
+                            processed_frame, depth_frame
+                        )
+
                     # If depth visualization is enabled, show colorized depth instead
                     if self.show_depth_visualization and depth_frame is not None:
                         processed_frame = self._colorize_depth(
@@ -198,57 +205,6 @@ class DaemonImageProcessor(threading.Thread):
         view_mode = "Depth" if self.show_depth_visualization else "RGB"
         status(f"Switched to {view_mode} view")
         return self.show_depth_visualization
-
-    def _colorize_depth(
-        self,
-        depth_frame: np.ndarray,
-        aligned_color: np.ndarray = None,
-        display_shape: tuple = None,
-        display_depth: np.ndarray = None,
-    ) -> np.ndarray:
-        """
-        Convert depth frame to colorized visualization.
-
-        If display_depth (1920x1080, aligned to color FOV) is provided, it is
-        used directly — no upscaling needed and the FOV matches the RGB view.
-
-        Args:
-            depth_frame: Raw depth frame (uint16, values in mm) at native 848x480
-            aligned_color: SDK-aligned color frame (BGR, same resolution as depth).
-                Used only as fallback when display_depth is not available.
-            display_shape: Target display shape — fallback upscale target when
-                display_depth is not available.
-            display_depth: Depth aligned to color camera FOV (uint16, mm) at 1920x1080.
-
-        Returns:
-            Colorized depth image as RGB numpy array at display resolution
-        """
-        import cv2
-
-        if display_depth is not None:
-            # Use display_depth directly — already at 1920x1080 in color FOV
-            depth_clipped = np.clip(display_depth, 0, 5000)
-            depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
-            depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
-            return cv2.cvtColor(depth_colorized, cv2.COLOR_BGR2RGB)
-
-        # Fallback: original path using native depth + upscale
-        depth_clipped = np.clip(depth_frame, 0, 5000)
-        depth_normalized = (depth_clipped / 5000 * 255).astype(np.uint8)
-        depth_colorized = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_TURBO)
-
-        if aligned_color is not None and aligned_color.shape[:2] == depth_frame.shape[:2]:
-            blended = cv2.addWeighted(aligned_color, 0.4, depth_colorized, 0.6, 0)
-        else:
-            blended = depth_colorized
-
-        result = cv2.cvtColor(blended, cv2.COLOR_BGR2RGB)
-
-        if display_shape is not None:
-            h, w = display_shape[:2]
-            result = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
-
-        return result
 
     def toggle_detection_mode(self):
         """Toggle detection mode"""
