@@ -86,34 +86,33 @@ RADIUS_2XL = 16     # panels, cards, action buttons
 RADIUS_XL = 12      # inputs, small buttons
 RADIUS_LG = 8       # default
 
-# ---------- Font Sizes ----------
-TEXT_XS = 12
-TEXT_SM = 14
-TEXT_BASE = 16
-TEXT_LG = 18
-TEXT_XL = 20
-TEXT_2XL = 24
+# ---------- Font Sizes (ALS-accessible: 18 px minimum) ----------
+TEXT_XS = 18
+TEXT_SM = 18
+TEXT_BASE = 20
+TEXT_LG = 22
+TEXT_XL = 24
+TEXT_2XL = 28
 
-# ---------- Touch Target Sizes ----------
-# From prototype measurements
-GEAR_SIZE = 48             # settings gear w/h
+# ---------- Touch Target Sizes (ALS-accessible: ≥80 px) ----------
+GEAR_SIZE = 56             # settings gear w/h
 CTA_WIDTH = None           # auto (px-10 = 40px padding each side)
 CTA_HEIGHT = None          # auto (py-5 = 20px padding each side)
 CTA_PADDING_H = 40        # horizontal padding on primary CTA
 CTA_PADDING_V = 20        # vertical padding on primary CTA
 
 CARD_MIN_W = 160           # object selection card min-width
-CARD_MIN_H = 100           # object selection card min-height
+CARD_MIN_H = 110           # object selection card min-height
 CARD_PADDING = 16          # p-4
 
 EDGE_ZONE_LR_W = 96       # left/right edge zone width
 EDGE_ZONE_LR_H = 192      # left/right edge zone height
 EDGE_ZONE_TB_W = 192      # top/bottom edge zone width
-EDGE_ZONE_TB_H = 80       # top/bottom edge zone height
+EDGE_ZONE_TB_H = 100      # top/bottom edge zone height
 
-BOTTOM_BTN_W = 90          # height/gripper button width
-BOTTOM_BTN_H = 60          # height/gripper button height
+BOTTOM_BTN_W = 100         # height/gripper button width
+BOTTOM_BTN_H = 80          # height/gripper button height
 
 # Settings panel
 SETTINGS_WIDTH_PCT = 0.45  # 45% of container
-CLOSE_BTN_SIZE = 40        # close button w/h
+CLOSE_BTN_SIZE = 48        # close button w/h

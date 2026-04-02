@@ -52,7 +52,7 @@ def build_screen_live_view(window: FletMainWindow) -> ft.Container:
 
     # --- Arm status badge (top-left) ---
     window.arm_badge_icon = ft.Icon(
-        ft.Icons.LINK_OFF, size=16, color=T.AMBER_500,
+        ft.Icons.LINK_OFF, size=20, color=T.AMBER_500,
     )
     window.arm_badge_text = ft.Text(
         "Arm", size=T.TEXT_SM, color=T.WHITE, weight=ft.FontWeight.W_500,

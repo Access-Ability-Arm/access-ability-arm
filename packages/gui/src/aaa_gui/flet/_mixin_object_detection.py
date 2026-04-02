@@ -16,14 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Shape badge colors: shape_type -> (bg_rgb, text_rgb)
-SHAPE_BADGE_COLORS = {
-    "cylinder": ((30, 100, 200), (255, 255, 255)),
-    "box": ((220, 160, 30), (0, 0, 0)),
-    "sphere": ((30, 160, 60), (255, 255, 255)),
-    "irregular": ((120, 120, 120), (255, 255, 255)),
-}
-
 
 class ObjectDetectionMixin:
     """Methods for object detection UI, selection, 3D analysis, and visualization."""
@@ -184,9 +176,9 @@ class ObjectDetectionMixin:
             scene_pcd = processor.create_from_depth(depth_for_pcd, color_for_pcd)
             scene_pcd = processor.preprocess(scene_pcd)
 
-            # Run analysis
+            # Run analysis (pass class label as shape prior)
             analyzer = ObjectAnalyzer(processor)
-            analysis = analyzer.analyze(object_pcd, scene_pcd)
+            analysis = analyzer.analyze(object_pcd, scene_pcd, class_label=class_name)
 
             # Store result (only if same object is still selected)
             if self.selected_object == object_index:
@@ -357,131 +349,71 @@ class ObjectDetectionMixin:
             cv2.line(img, (px - 25, py - 25), (px + 25, py + 25), (0, 0, 255), 3)
             cv2.line(img, (px - 25, py + 25), (px + 25, py - 25), (0, 0, 255), 3)
 
-        # --- Approach direction arrow ---
+        # --- Gripper XYZ axes frame ---
         try:
-            arrow_end_3d = analysis.grasp_point + analysis.grasp_approach * 0.05
-            ax, ay = self._project_to_pixel(arrow_end_3d)
-            dx, dy = ax - px, ay - py
-            length = max(1, np.sqrt(dx * dx + dy * dy))
-            ax = int(px + dx / length * 60)
-            ay = int(py + dy / length * 60)
-            ax = max(0, min(ax, w - 1))
-            ay = max(0, min(ay, h - 1))
-            cv2.arrowedLine(
-                img, (px, py), (ax, ay), (255, 255, 255), 4, tipLength=0.3
-            )
-            cv2.arrowedLine(img, (px, py), (ax, ay), color, 2, tipLength=0.3)
+            z_axis = analysis.grasp_approach.copy()
+            z_axis /= max(np.linalg.norm(z_axis), 1e-9)
+
+            # Build X (finger opening direction) from OBB rotation if available
+            obb = getattr(analysis.shape, "oriented_bbox", None)
+            if obb is not None and hasattr(obb, "R"):
+                R = np.asarray(obb.R)
+                # Pick OBB axis most perpendicular to approach
+                dots = [abs(np.dot(R[:, i], z_axis)) for i in range(3)]
+                perp_idx = int(np.argmin(dots))
+                x_axis = R[:, perp_idx].copy()
+            else:
+                # Fallback: derive from camera up
+                up = np.array([0.0, -1.0, 0.0])
+                if abs(np.dot(z_axis, up)) > 0.9:
+                    up = np.array([1.0, 0.0, 0.0])
+                x_axis = np.cross(z_axis, up)
+
+            # Orthogonalise: remove any z component from x, then get y
+            x_axis = x_axis - np.dot(x_axis, z_axis) * z_axis
+            x_axis /= max(np.linalg.norm(x_axis), 1e-9)
+            y_axis = np.cross(z_axis, x_axis)
+            y_axis /= max(np.linalg.norm(y_axis), 1e-9)
+
+            axis_len = 0.04  # 4 cm in 3D
+            arrow_px_len = 55  # target length in pixels
+            # (color_bgr, axis_vector, label)
+            axes = [
+                ((0, 0, 255), x_axis, "X"),   # Red
+                ((0, 200, 0), y_axis, "Y"),    # Green
+                ((255, 80, 0), z_axis, "Z"),   # Blue
+            ]
+            for axis_color, axis_vec, label in axes:
+                end_3d = analysis.grasp_point + axis_vec * axis_len
+                ex, ey = self._project_to_pixel(end_3d)
+                dx, dy = ex - px, ey - py
+                length = max(1, np.sqrt(dx * dx + dy * dy))
+                ex = int(px + dx / length * arrow_px_len)
+                ey = int(py + dy / length * arrow_px_len)
+                ex = max(0, min(ex, w - 1))
+                ey = max(0, min(ey, h - 1))
+                cv2.arrowedLine(
+                    img, (px, py), (ex, ey), (255, 255, 255), 4, tipLength=0.25
+                )
+                cv2.arrowedLine(
+                    img, (px, py), (ex, ey), axis_color, 2, tipLength=0.25
+                )
+                # Small label at arrow tip
+                cv2.putText(
+                    img, label, (ex + 4, ey - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 255), 2, cv2.LINE_AA,
+                )
+                cv2.putText(
+                    img, label, (ex + 4, ey - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    axis_color, 1, cv2.LINE_AA,
+                )
         except Exception:
             pass
 
-        # --- Shape badge above gripper ---
-        shape = analysis.shape
-        shape_label = shape.shape_type.capitalize()
-        badge_bg, badge_text = SHAPE_BADGE_COLORS.get(
-            shape.shape_type, ((120, 120, 120), (255, 255, 255))
-        )
-        est_half_w = len(shape_label) * 7
-        badge_x = max(5, px - est_half_w)
-        badge_y = max(30, py - finger_len - 55)
-        img = self._draw_text_pil(
-            img,
-            shape_label,
-            (badge_x, badge_y),
-            font_size=28,
-            text_color=badge_text,
-            bg_color=badge_bg,
-            padding=8,
-            corner_radius=6,
-        )
-
-        # --- Dimensions text below badge ---
-        dims_text = self._format_shape_dimensions(shape)
-        est_dims_half_w = len(dims_text) * 5
-        dims_x = max(5, px - est_dims_half_w)
-        dims_y = badge_y + 30
-        img = self._draw_text_pil(
-            img,
-            dims_text,
-            (dims_x, dims_y),
-            font_size=22,
-            text_color=(255, 255, 255),
-            bg_color=(40, 40, 40),
-            padding=6,
-            corner_radius=4,
-        )
-
-        # --- Status label below gripper ---
-        font_scale = 0.9
-        thickness = 2
-        (text_w, text_h), baseline = cv2.getTextSize(
-            status, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
-        )
-        label_x = px - text_w // 2
-        label_y = py + finger_len + 30 + text_h
-        label_x = max(5, min(label_x, w - text_w - 5))
-        label_y = max(text_h + 5, min(label_y, h - 40))
-
-        cv2.rectangle(
-            img,
-            (label_x - 4, label_y - text_h - 4),
-            (label_x + text_w + 4, label_y + baseline + 4),
-            (0, 0, 0),
-            -1,
-        )
-        cv2.rectangle(
-            img,
-            (label_x - 4, label_y - text_h - 4),
-            (label_x + text_w + 4, label_y + baseline + 4),
-            (255, 255, 255),
-            1,
-        )
-        cv2.putText(
-            img,
-            status,
-            (label_x, label_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale,
-            color,
-            thickness,
-            cv2.LINE_AA,
-        )
-
-        # --- Confidence breakdown ---
-        conf_text = (
-            f"Shape: {shape.confidence:.0%} | Grasp: {analysis.grasp_confidence:.0%}"
-        )
-        (cw, ch), cbl = cv2.getTextSize(
-            conf_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 1
-        )
-        conf_x = px - cw // 2
-        conf_y = label_y + baseline + 8 + ch + 4
-        conf_x = max(5, min(conf_x, w - cw - 5))
-        conf_y = min(conf_y, h - 5)
-
-        cv2.rectangle(
-            img,
-            (conf_x - 4, conf_y - ch - 4),
-            (conf_x + cw + 4, conf_y + cbl + 4),
-            (0, 0, 0),
-            -1,
-        )
-        cv2.rectangle(
-            img,
-            (conf_x - 4, conf_y - ch - 4),
-            (conf_x + cw + 4, conf_y + cbl + 4),
-            (255, 255, 255),
-            1,
-        )
-        cv2.putText(
-            img,
-            conf_text,
-            (conf_x, conf_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (200, 200, 200),
-            1,
-            cv2.LINE_AA,
-        )
+        # Shape badge, dimensions, status, and confidence breakdown are shown
+        # in the grasp info card UI instead of drawn on the image.
 
         return img
 
@@ -715,6 +647,8 @@ class ObjectDetectionMixin:
         self.object_buttons_row.controls.clear()
         self.object_buttons_row.visible = False
         self.selected_object = None
+        self.object_analysis = None
+        self._analysis_in_progress = False
         self.frozen_raw_frame = None
         # Hide object action buttons
         self._update_object_action_visibility()

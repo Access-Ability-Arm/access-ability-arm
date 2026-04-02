@@ -458,7 +458,7 @@ class FletMainWindow(
             )
 
         # Status text (kept for mixin compatibility)
-        self.status_text = ft.Text("Initializing...", size=12, color="#455A64")
+        self.status_text = ft.Text("Initializing...", size=18, color="#455A64")
 
         # Arm status text (kept for mixin compatibility)
         arm_connected = (
@@ -468,7 +468,7 @@ class FletMainWindow(
         )
         self.arm_status_text = ft.Text(
             f"Arm: {'✓ Connected' if arm_connected else 'Not connected'}",
-            size=12,
+            size=18,
             color="#2E7D32" if arm_connected else "#F57C00",
         )
 
@@ -505,7 +505,7 @@ class FletMainWindow(
         )
 
         # Exposure controls (kept for mixin compatibility)
-        self.exposure_value_text = ft.Text("Exposure: 800", size=12, color="#666")
+        self.exposure_value_text = ft.Text("Exposure: 800", size=18, color="#666")
         self.exposure_slider = ft.Slider(
             min=100, max=4000, value=800, divisions=78,
             label="Exposure: {value}", on_change=self._on_exposure_change,
@@ -526,7 +526,7 @@ class FletMainWindow(
 
         # Speed label (kept for mixin compatibility)
         self.speed_label = ft.Text(
-            f"Speed: {self.movement_speed_percent}%", size=14, weight=ft.FontWeight.BOLD,
+            f"Speed: {self.movement_speed_percent}%", size=18, weight=ft.FontWeight.BOLD,
         )
 
         # Show Points button (kept for mixin compatibility)

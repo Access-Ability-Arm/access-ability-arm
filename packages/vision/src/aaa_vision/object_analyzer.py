@@ -33,6 +33,37 @@ MIN_INLIER_RATIO = 0.4
 # Curvature computation parameters
 CURVATURE_K = 30  # k-nearest neighbors for curvature
 
+# COCO class label -> preferred shape fitting order.
+# Objects not listed fall back to curvature-based candidate selection.
+# An empty list skips primitive fitting and goes straight to "irregular".
+LABEL_SHAPE_PRIORS = {
+    # Cylindrical
+    "bottle": ["cylinder", "box"],
+    "cup": ["cylinder", "box"],
+    "wine glass": ["cylinder"],
+    "vase": ["cylinder"],
+    # Box-like
+    "book": ["box"],
+    "laptop": ["box"],
+    "suitcase": ["box"],
+    "refrigerator": ["box"],
+    "microwave": ["box"],
+    "oven": ["box"],
+    "tv": ["box"],
+    "cell phone": ["box"],
+    "remote": ["box", "cylinder"],
+    "keyboard": ["box"],
+    # Spherical
+    "apple": ["sphere"],
+    "orange": ["sphere"],
+    "sports ball": ["sphere"],
+    # Irregular — skip expensive RANSAC fits
+    "scissors": [],
+    "fork": [],
+    "knife": [],
+    "spoon": ["cylinder"],
+}
+
 
 @dataclass
 class PlaneInfo:
@@ -90,6 +121,7 @@ class ObjectAnalyzer:
         self,
         object_pcd: o3d.geometry.PointCloud,
         scene_pcd: Optional[o3d.geometry.PointCloud] = None,
+        class_label: Optional[str] = None,
     ) -> ObjectAnalysis:
         """
         Full analysis pipeline for a detected object.
@@ -97,6 +129,8 @@ class ObjectAnalyzer:
         Args:
             object_pcd: Point cloud of the segmented object
             scene_pcd: Optional full scene point cloud (for table plane detection)
+            class_label: Optional COCO class name (e.g. "bottle") used as a
+                shape prior to guide primitive fitting order.
 
         Returns:
             ObjectAnalysis with shape, grasp point, and metadata
@@ -134,7 +168,7 @@ class ObjectAnalyzer:
         curvature_profile = self._compute_curvature_profile(main_body_pcd)
 
         # Estimate shape
-        shape = self._estimate_shape(main_body_pcd, curvature_profile)
+        shape = self._estimate_shape(main_body_pcd, curvature_profile, class_label)
 
         # Detect top plane
         top_plane = self._detect_top_plane(main_body_pcd, table_plane)
@@ -391,9 +425,14 @@ class ObjectAnalyzer:
         self,
         pcd: o3d.geometry.PointCloud,
         curvature_profile: dict,
+        class_label: Optional[str] = None,
     ) -> ShapeEstimate:
         """
-        Estimate object shape using curvature pre-filter + RANSAC fitting.
+        Estimate object shape using RANSAC fitting.
+
+        If *class_label* matches a LABEL_SHAPE_PRIORS entry the candidate
+        order comes from the prior; otherwise curvature pre-filtering
+        determines the order.
         """
         points = np.asarray(pcd.points)
         obb = pcd.get_oriented_bounding_box()
@@ -407,67 +446,32 @@ class ObjectAnalyzer:
         best_dimensions = {}
         best_residual = float("inf")
 
-        # Candidate selection based on curvature
-        if flat_ratio > FLAT_RATIO_THRESHOLD:
-            # Try box first
-            conf, dims, resid = self._fit_box(pcd, obb)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "box",
-                    conf,
-                    dims,
-                    resid,
-                )
-            # Also try cylinder (boxes can have curved edges in noisy data)
-            conf, dims, resid = self._fit_cylinder(pcd, obb)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "cylinder",
-                    conf,
-                    dims,
-                    resid,
-                )
+        # Build candidate list — label prior takes precedence over curvature
+        label_key = class_label.lower() if class_label else None
+        if label_key and label_key in LABEL_SHAPE_PRIORS:
+            candidates = LABEL_SHAPE_PRIORS[label_key]
+            logger.debug("Shape prior from label '%s': %s", class_label, candidates)
+        elif flat_ratio > FLAT_RATIO_THRESHOLD:
+            candidates = ["box", "cylinder"]
         elif curved_ratio > CURVED_RATIO_THRESHOLD:
-            # Try sphere first
-            conf, dims, resid = self._fit_sphere(points)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "sphere",
-                    conf,
-                    dims,
-                    resid,
-                )
-            # Also try cylinder
-            conf, dims, resid = self._fit_cylinder(pcd, obb)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "cylinder",
-                    conf,
-                    dims,
-                    resid,
-                )
+            candidates = ["sphere", "cylinder"]
         else:
-            # Mixed - try cylinder first (most common mixed shape)
-            conf, dims, resid = self._fit_cylinder(pcd, obb)
+            candidates = ["cylinder", "sphere", "box"]
+
+        # Fit each candidate and keep the best
+        fitters = {
+            "box": lambda: self._fit_box(pcd, obb),
+            "cylinder": lambda: self._fit_cylinder(pcd, obb),
+            "sphere": lambda: self._fit_sphere(points),
+        }
+        for name in candidates:
+            fitter = fitters.get(name)
+            if fitter is None:
+                continue
+            conf, dims, resid = fitter()
             if conf > best_confidence:
                 best_shape, best_confidence, best_dimensions, best_residual = (
-                    "cylinder",
-                    conf,
-                    dims,
-                    resid,
-                )
-            conf, dims, resid = self._fit_sphere(points)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "sphere",
-                    conf,
-                    dims,
-                    resid,
-                )
-            conf, dims, resid = self._fit_box(pcd, obb)
-            if conf > best_confidence:
-                best_shape, best_confidence, best_dimensions, best_residual = (
-                    "box",
+                    name,
                     conf,
                     dims,
                     resid,
