@@ -539,33 +539,56 @@ class PointCloudProcessor:
         self, pcd: o3d.geometry.PointCloud, centroid: np.ndarray
     ) -> o3d.geometry.TriangleMesh:
         """
-        For irregular shapes, mirror observed points through the centroid,
-        merge with originals, and run Poisson reconstruction on the denser cloud.
+        For irregular shapes, generate hidden-side points by mirroring observed
+        points across a detected symmetry axis (or through the centroid as a
+        fallback), then Poisson-reconstruct the merged cloud.
+
+        Most graspable objects (cups, bottles, cans, jars) are roughly
+        axisymmetric about a vertical axis. PCA on the observed cloud reveals
+        that axis as the principal eigenvector; if the cloud is elongated
+        enough along it and roughly equally spread in the perpendicular plane,
+        we rotate observed points 180° about that axis to fill in the unseen
+        back. When the cloud doesn't look axisymmetric, fall back to the
+        original centroid inversion.
         """
         points = np.asarray(pcd.points)
         if len(points) < 10:
             return o3d.geometry.TriangleMesh()
 
-        # Mirror points through centroid
-        mirrored = 2 * centroid - points
+        axis = self._detect_symmetry_axis(points, centroid)
+        if axis is not None:
+            # 180° rotation about the axis through `centroid` with direction `axis`:
+            # P' = centroid + 2*((P-centroid)·A)*A - (P - centroid)
+            offsets = points - centroid
+            axial = (offsets @ axis)[:, None] * axis[None, :]
+            mirrored = centroid + 2.0 * axial - offsets
+            mirror_kind = "rotational"
+        else:
+            mirrored = 2 * centroid - points
+            mirror_kind = "centroid"
 
         # Combine original and mirrored
         combined = np.vstack([points, mirrored])
         combined_pcd = o3d.geometry.PointCloud()
         combined_pcd.points = o3d.utility.Vector3dVector(combined)
 
-        # Transfer colors (mirror gets same colors)
         if pcd.has_colors():
             orig_colors = np.asarray(pcd.colors)
             combined_pcd.colors = o3d.utility.Vector3dVector(
                 np.vstack([orig_colors, orig_colors])
             )
 
-        # Mirror normals (flip direction)
         if pcd.has_normals():
             orig_normals = np.asarray(pcd.normals)
+            if axis is not None:
+                # Rotate normals the same way we rotated points (around centroid origin).
+                # For 180° rotation about `axis`: n' = 2*(n·A)*A - n
+                axial_n = (orig_normals @ axis)[:, None] * axis[None, :]
+                mirrored_normals = 2.0 * axial_n - orig_normals
+            else:
+                mirrored_normals = -orig_normals
             combined_pcd.normals = o3d.utility.Vector3dVector(
-                np.vstack([orig_normals, -orig_normals])
+                np.vstack([orig_normals, mirrored_normals])
             )
         else:
             combined_pcd.estimate_normals(
@@ -577,8 +600,55 @@ class PointCloudProcessor:
                 camera_location=[0, 0, 0]
             )
 
-        # Poisson on the denser, more complete cloud
+        print(f"  Shape completion: {mirror_kind} mirror, {len(points)} → {len(combined)} points")
+
         return self.reconstruct_mesh(combined_pcd, method="poisson", depth=8)
+
+    @staticmethod
+    def _detect_symmetry_axis(
+        points: np.ndarray,
+        centroid: np.ndarray,
+        elongation_ratio: float = 1.5,
+        radial_isotropy_ratio: float = 8.0,
+    ) -> "np.ndarray | None":
+        """Return a unit axis direction if the cloud looks rotationally symmetric.
+
+        PCA on centroid-relative points. The largest principal axis is the
+        candidate symmetry axis. We accept it when:
+
+        - it is meaningfully longer than the other axes (eigval[0] / eigval[1]
+          >= elongation_ratio) — i.e. the object is elongated, not a slab
+        - the cross-section perpendicular to the axis isn't a thin sheet
+          (eigval[1] / eigval[2] <= radial_isotropy_ratio). The threshold is
+          deliberately loose because a half-observed cylinder has its
+          depth-into-scene axis severely underrepresented, even though the
+          object is genuinely axisymmetric.
+
+        Returns None when neither condition holds, telling the caller to fall
+        back to centroid inversion.
+        """
+        offsets = points - centroid
+        if len(offsets) < 6:
+            return None
+        cov = np.cov(offsets.T)
+        try:
+            eigvals, eigvecs = np.linalg.eigh(cov)
+        except np.linalg.LinAlgError:
+            return None
+        # eigh returns ascending order; flip to descending
+        order = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[order]
+        eigvecs = eigvecs[:, order]
+        if eigvals[2] < 1e-12 or eigvals[1] < 1e-12:
+            return None
+        elongation = eigvals[0] / eigvals[1]
+        radial_anisotropy = eigvals[1] / eigvals[2]
+        if elongation < elongation_ratio:
+            return None
+        if radial_anisotropy > radial_isotropy_ratio:
+            return None
+        axis = eigvecs[:, 0]
+        return axis / (np.linalg.norm(axis) + 1e-12)
 
     def cluster_objects(
         self,

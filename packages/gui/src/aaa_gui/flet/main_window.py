@@ -132,6 +132,7 @@ class FletMainWindow(
         )
         self.frozen_aligned_color = None  # Store aligned color (848x480) at freeze time
         self.frozen_display_depth = None  # Store display depth (1920x1080) at freeze time
+        self.frozen_fused_pcd = None  # TSDF-fused Open3D PointCloud (camera frame, meters)
         self.object_analysis = None  # ObjectAnalysis result for selected object
         self._analysis_in_progress = False  # Flag for background analysis thread
         self.last_exported_ply = None  # Path to the last exported PLY file

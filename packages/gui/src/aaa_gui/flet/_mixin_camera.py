@@ -188,6 +188,7 @@ class CameraMixin:
         self.frozen_depth_frame = None
         self.frozen_aligned_color = None
         self.frozen_display_depth = None
+        self.frozen_fused_pcd = None
         self._clear_object_buttons()
         print("Video unfrozen - showing live camera feed")
 

@@ -55,6 +55,54 @@ class PointCloudMixin:
             print("No frozen RGB frame available for point extraction")
             return []
 
+        # Fast path: multi-frame TSDF-fused cloud captured at freeze time.
+        # The fused cloud is already in 3D meters (color-camera frame), so it
+        # only helps when to_meters=True.
+        fused_pcd = getattr(self, "frozen_fused_pcd", None)
+        if to_meters and fused_pcd is not None and len(fused_pcd.points) > 0:
+            try:
+                from aaa_vision.depth_fusion import (
+                    get_color_intrinsics,
+                    project_pcd_to_mask,
+                )
+
+                h_rgb, w_rgb = rgb.shape[:2]
+                mask_full = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
+                cv2.drawContours(
+                    mask_full,
+                    [np.array(contour, dtype=np.int32)],
+                    -1,
+                    255,
+                    thickness=cv2.FILLED,
+                )
+
+                intr = get_color_intrinsics(self.image_processor)
+                # If TSDF was built with different image dims than mask, rescale
+                # intrinsics width/height to the mask resolution.
+                if intr["width"] != w_rgb or intr["height"] != h_rgb:
+                    sx = w_rgb / intr["width"]
+                    sy = h_rgb / intr["height"]
+                    intr = {
+                        "width": w_rgb,
+                        "height": h_rgb,
+                        "fx": intr["fx"] * sx,
+                        "fy": intr["fy"] * sy,
+                        "cx": intr["cx"] * sx,
+                        "cy": intr["cy"] * sy,
+                    }
+
+                result = project_pcd_to_mask(fused_pcd, mask_full, intr)
+                if result is not None:
+                    pts, _colors = result
+                    if subsample > 1 and len(pts) > 0:
+                        pts = pts[::subsample]
+                    print(
+                        f"  Using TSDF-fused points: {len(pts)} (object {object_index})"
+                    )
+                    return [(float(p[0]), float(p[1]), float(p[2])) for p in pts]
+            except Exception as ex:
+                print(f"Fused-cloud extraction failed, falling back: {ex}")
+
         # Prefer display_depth (1920x1080, aligned to color FOV) so mask coords
         # can index depth directly without scaling. The native depth (848x480) has
         # a wider FOV than the color camera, so linear scaling is inaccurate.

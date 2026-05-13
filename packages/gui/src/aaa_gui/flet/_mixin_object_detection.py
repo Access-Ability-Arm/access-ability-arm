@@ -670,39 +670,11 @@ class ObjectDetectionMixin:
                 self.image_processor.set_detection_mode("objects")
                 self._update_status()
 
-            # Capture video for 1 second then freeze
-            def capture_and_freeze():
-                time.sleep(1.0)
-                # Copy latest depth frame if available for later point cloud extraction
-                try:
-                    if (
-                        hasattr(self.image_processor, "depth_frame")
-                        and self.image_processor.depth_frame is not None
-                    ):
-                        self.frozen_depth_frame = (
-                            self.image_processor.depth_frame.copy()
-                        )
-                    else:
-                        self.frozen_depth_frame = None
-                except Exception as ex:
-                    self.frozen_depth_frame = None
-                    print(f"Find Objects: could not copy depth frame: {ex}")
-                # Copy aligned color frame (848x480, pixel-aligned to depth)
-                self.frozen_aligned_color = getattr(
-                    self.image_processor, "_last_aligned_color", None
-                )
-                if self.frozen_aligned_color is not None:
-                    self.frozen_aligned_color = self.frozen_aligned_color.copy()
-                # Copy display depth frame (1920x1080, aligned to color FOV)
-                self.frozen_display_depth = getattr(
-                    self.image_processor, "_last_display_depth", None
-                )
-                if self.frozen_display_depth is not None:
-                    self.frozen_display_depth = self.frozen_display_depth.copy()
-                self.video_frozen = True
-                print("Find Objects: Video frozen on detected objects")
-
-            threading.Thread(target=capture_and_freeze, daemon=True).start()
+            threading.Thread(
+                target=self._capture_and_freeze_with_fusion,
+                args=("Find Objects: Video frozen on detected objects",),
+                daemon=True,
+            ).start()
         else:
             # Second click: unfreeze and capture for 1 second, then freeze again
             print("Find Objects: Capturing new frame...")
@@ -710,39 +682,59 @@ class ObjectDetectionMixin:
             self.frozen_frame = None
             self._clear_object_buttons()
 
-            # Capture video for 1 second then freeze again
-            def capture_and_freeze():
-                time.sleep(1.0)
-                # Copy latest depth frame if available for later point cloud extraction
-                try:
-                    if (
-                        hasattr(self.image_processor, "depth_frame")
-                        and self.image_processor.depth_frame is not None
-                    ):
-                        self.frozen_depth_frame = (
-                            self.image_processor.depth_frame.copy()
-                        )
-                    else:
-                        self.frozen_depth_frame = None
-                except Exception as ex:
-                    self.frozen_depth_frame = None
-                    print(f"Find Objects: could not copy depth frame: {ex}")
-                # Copy aligned color frame (848x480, pixel-aligned to depth)
-                self.frozen_aligned_color = getattr(
-                    self.image_processor, "_last_aligned_color", None
-                )
-                if self.frozen_aligned_color is not None:
-                    self.frozen_aligned_color = self.frozen_aligned_color.copy()
-                # Copy display depth frame (1920x1080, aligned to color FOV)
-                self.frozen_display_depth = getattr(
-                    self.image_processor, "_last_display_depth", None
-                )
-                if self.frozen_display_depth is not None:
-                    self.frozen_display_depth = self.frozen_display_depth.copy()
-                self.video_frozen = True
-                print("Find Objects: Video frozen on new frame")
+            threading.Thread(
+                target=self._capture_and_freeze_with_fusion,
+                args=("Find Objects: Video frozen on new frame",),
+                daemon=True,
+            ).start()
 
-            threading.Thread(target=capture_and_freeze, daemon=True).start()
+    def _capture_and_freeze_with_fusion(
+        self: FletMainWindow,
+        done_message: str,
+        duration_sec: float = 1.0,
+    ):
+        """Collect frames for `duration_sec`, fuse with TSDF, then freeze the view.
+
+        The TSDF integration runs concurrently with the freeze countdown so the
+        freeze latency stays at ~1 s. Falls back to a single-frame snapshot if
+        fusion is unavailable (no Open3D, no depth, or non-RealSense camera).
+        """
+        from aaa_vision.depth_fusion import capture_and_fuse
+
+        fused_pcd = None
+        if getattr(self.image_processor, "use_realsense", False):
+            try:
+                fused_pcd = capture_and_fuse(
+                    self.image_processor,
+                    duration_sec=duration_sec,
+                    max_frames=20,
+                )
+            except Exception as ex:
+                print(f"Find Objects: TSDF fusion failed, falling back: {ex}")
+                fused_pcd = None
+        else:
+            # Non-RealSense path: just wait so behavior matches the old freeze
+            time.sleep(duration_sec)
+
+        # Snapshot single-frame data for the legacy fallback paths
+        try:
+            depth = getattr(self.image_processor, "depth_frame", None)
+            self.frozen_depth_frame = depth.copy() if depth is not None else None
+        except Exception as ex:
+            self.frozen_depth_frame = None
+            print(f"Find Objects: could not copy depth frame: {ex}")
+
+        aligned = getattr(self.image_processor, "_last_aligned_color", None)
+        self.frozen_aligned_color = aligned.copy() if aligned is not None else None
+
+        display_depth = getattr(self.image_processor, "_last_display_depth", None)
+        self.frozen_display_depth = (
+            display_depth.copy() if display_depth is not None else None
+        )
+
+        self.frozen_fused_pcd = fused_pcd
+        self.video_frozen = True
+        print(done_message)
 
     def _on_show_points(self: FletMainWindow, e=None):
         """UI handler for the Show Points button - switch to depth view and show overlay for selected object."""

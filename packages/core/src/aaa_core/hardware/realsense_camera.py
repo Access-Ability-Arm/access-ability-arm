@@ -124,6 +124,28 @@ class RealsenseCamera:
         # (depth sensor has wider FOV: 86x57 deg vs color's 69x42 deg).
         self.align_to_color = rs.align(rs.stream.color)
 
+        # Depth post-processing chain. Built once and reused across frames so the
+        # temporal filter can accumulate state (a fresh instance per frame would
+        # have no history to smooth against). Spatial and hole-filling operate
+        # better in disparity space, so the chain is wrapped in
+        # disparity_transform(True) ... disparity_transform(False).
+        # Two parallel chains: one for the native 848x480 depth used for point
+        # clouds, and one for the 1920x1080 display depth aligned to color FOV.
+        # State is per-instance, so they must not share filter objects.
+        self._depth_to_disparity = rs.disparity_transform(True)
+        self._disparity_to_depth = rs.disparity_transform(False)
+        self._spatial = rs.spatial_filter()
+        self._spatial.set_option(rs.option.holes_fill, 3)
+        self._temporal = rs.temporal_filter()
+        self._hole_filling = rs.hole_filling_filter()
+
+        self._display_depth_to_disparity = rs.disparity_transform(True)
+        self._display_disparity_to_depth = rs.disparity_transform(False)
+        self._display_spatial = rs.spatial_filter()
+        self._display_spatial.set_option(rs.option.holes_fill, 3)
+        self._display_temporal = rs.temporal_filter()
+        self._display_hole_filling = rs.hole_filling_filter()
+
     def get_frame_stream(self):
         """
         Capture a coherent set of frames from RealSense.
@@ -168,22 +190,24 @@ class RealsenseCamera:
             error(f"RealSense frame timeout: {e}")
             return False, None, None, None, None
 
-        # Apply filter to fill the Holes in the depth image
-        spatial = rs.spatial_filter()
-        spatial.set_option(rs.option.holes_fill, 3)
-        filtered_depth = spatial.process(depth_frame)
+        # Post-process depth in disparity space:
+        #   depth -> disparity -> spatial -> temporal -> hole_filling -> depth
+        # Filter instances live on self so the temporal filter can smooth
+        # against the previous frame.
+        disp = self._depth_to_disparity.process(depth_frame)
+        disp = self._spatial.process(disp)
+        disp = self._temporal.process(disp)
+        disp = self._hole_filling.process(disp)
+        filled_depth = self._disparity_to_depth.process(disp)
 
-        hole_filling = rs.hole_filling_filter()
-        filled_depth = hole_filling.process(filtered_depth)
-
-        # Apply same filters to display depth for visual quality
+        # Same chain for the 1080p display depth (independent filter state).
         display_depth_image = None
         if display_depth_frame:
-            display_spatial = rs.spatial_filter()
-            display_spatial.set_option(rs.option.holes_fill, 3)
-            filtered_display = display_spatial.process(display_depth_frame)
-            display_hole_filling = rs.hole_filling_filter()
-            filled_display = display_hole_filling.process(filtered_display)
+            ddisp = self._display_depth_to_disparity.process(display_depth_frame)
+            ddisp = self._display_spatial.process(ddisp)
+            ddisp = self._display_temporal.process(ddisp)
+            ddisp = self._display_hole_filling.process(ddisp)
+            filled_display = self._display_disparity_to_depth.process(ddisp)
             display_depth_image = np.asanyarray(filled_display.get_data())
 
         # Convert images to numpy arrays
