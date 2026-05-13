@@ -94,10 +94,15 @@ class PointCloudMixin:
                 result = project_pcd_to_mask(fused_pcd, mask_full, intr)
                 if result is not None:
                     pts, _colors = result
-                    if subsample > 1 and len(pts) > 0:
-                        pts = pts[::subsample]
+                    # NB: do NOT apply `subsample` here. TSDF voxelization
+                    # already controls density (one point per voxel cube);
+                    # the caller's subsample value was tuned for raw pixel-grid
+                    # deprojection where points are otherwise per-pixel-dense.
+                    mask_px = int(np.count_nonzero(mask_full))
                     print(
-                        f"  Using TSDF-fused points: {len(pts)} (object {object_index})"
+                        f"  Using TSDF-fused points: {len(pts)} "
+                        f"(object {object_index}, mask={mask_px}px, "
+                        f"fused_cloud_total={len(fused_pcd.points)})"
                     )
                     return [(float(p[0]), float(p[1]), float(p[2])) for p in pts]
             except Exception as ex:

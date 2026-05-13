@@ -58,8 +58,8 @@ def capture_and_fuse(
     image_processor,
     duration_sec: float = 1.0,
     max_frames: int = 20,
-    voxel_size: float = 0.003,
-    sdf_trunc: float = 0.012,
+    voxel_size: float = 0.002,
+    sdf_trunc: float = 0.010,
     depth_trunc_m: float = 2.0,
 ):
     """Collect RGB-D frames over `duration_sec` and fuse them with TSDF.
