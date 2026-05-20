@@ -179,13 +179,13 @@ class PointCloudMixin:
         ys = ys[::subsample]
 
         if display_depth is not None:
-            # Color-aligned path: depth and RGB both at 1920x1080, index directly
+            # Color-aligned path: depth and RGB both at 1920x1080, index directly.
+            # frozen_raw_frame mirrors image_processor._last_rgb_frame which is
+            # already RGB (both processors run BGR→RGB before storing it), so
+            # no channel swap is needed here.
             depths = display_depth[ys, xs]
             valid = depths > 0
-            # Sample from frozen_raw_frame (BGR) directly, convert to RGB
-            colors_bgr = rgb[ys[valid], xs[valid]]
-            colors_rgb = colors_bgr[:, ::-1].copy()
-            return colors_rgb
+            return rgb[ys[valid], xs[valid]].copy()
         elif aligned_color is not None and depth is not None:
             # Fallback: scale to native depth space (imprecise due to FOV mismatch)
             h_depth, w_depth = depth.shape[:2]
