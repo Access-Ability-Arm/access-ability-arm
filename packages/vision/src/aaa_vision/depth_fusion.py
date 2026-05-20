@@ -1,9 +1,19 @@
-"""Multi-frame depth fusion via Open3D TSDF integration.
+"""Multi-frame depth fusion.
 
 The grasp-preview UI freezes the scene for ~1 s before the user makes a
-decision. During that window the camera is stationary, so we can integrate
-many RGB-D frames into a single TSDF volume and extract a much cleaner
-point cloud than any individual frame would give.
+decision. During that window the camera is stationary, so we can combine
+many depth frames into a single noise-reduced depth map. Two strategies
+live here:
+
+- `capture_and_average_depth` — per-pixel mean across frames, ignoring
+  invalid (zero) samples. Produces a smooth, full-resolution depth map that
+  the existing single-frame deprojection path can use transparently.
+- `capture_and_fuse` — TSDF volumetric fusion. Produces a unified point
+  cloud with 3D outlier rejection but at voxel-grid density, which is
+  inherently sparser than per-pixel deprojection.
+
+The freeze path uses averaging by default for "smooth and dense"; TSDF and
+its helper `project_pcd_to_mask` are kept as alternatives.
 """
 
 from __future__ import annotations
@@ -52,6 +62,74 @@ def get_color_intrinsics(image_processor) -> dict:
         except Exception:
             pass
     return dict(_D435_COLOR_INTRINSICS_1080P)
+
+
+def capture_and_average_depth(
+    image_processor,
+    duration_sec: float = 1.0,
+    max_frames: int = 20,
+    min_valid_fraction: float = 0.34,
+):
+    """Collect frames and pixel-wise average them into one denoised depth map.
+
+    Reads `_last_display_depth` (1080p depth aligned to color) and
+    `_last_rgb_frame` (1080p RGB) from the image processor. For each pixel,
+    averages the depth across all frames where that pixel has a valid (>0)
+    reading; pixels with too few valid samples are zeroed so they fall back
+    to "no depth" downstream rather than to a phantom near-zero average.
+
+    Returns (avg_depth_uint16, latest_rgb) — or (None, None) if no frames
+    could be collected.
+    """
+    frames_depth = []
+    frames_rgb = []
+    seen: set = set()
+    deadline = time.time() + duration_sec
+    while time.time() < deadline and len(frames_depth) < max_frames:
+        depth = getattr(image_processor, "_last_display_depth", None)
+        rgb = getattr(image_processor, "_last_rgb_frame", None)
+        if depth is None or rgb is None:
+            time.sleep(0.01)
+            continue
+        if depth.shape[:2] != rgb.shape[:2]:
+            time.sleep(0.01)
+            continue
+        fid = (id(rgb), id(depth))
+        if fid in seen:
+            time.sleep(0.01)
+            continue
+        seen.add(fid)
+        frames_depth.append(depth.copy())
+        frames_rgb.append(rgb.copy())
+        time.sleep(0.03)
+
+    if not frames_depth:
+        return None, None
+    if len(frames_depth) == 1:
+        return frames_depth[0], frames_rgb[0]
+
+    # Streaming sum/count to keep peak memory at ~2 float32 frames rather than
+    # the full (N, H, W) stack. For 1080p uint16 with N=20 that's 16MB vs 80MB.
+    h, w = frames_depth[0].shape[:2]
+    sums = np.zeros((h, w), dtype=np.float32)
+    counts = np.zeros((h, w), dtype=np.float32)
+    for f in frames_depth:
+        valid = f > 0
+        sums += np.where(valid, f.astype(np.float32), 0.0)
+        counts += valid.astype(np.float32)
+
+    min_valid = max(2, int(round(len(frames_depth) * min_valid_fraction)))
+    safe_counts = np.maximum(counts, 1.0)
+    avg = (sums / safe_counts).astype(np.uint16)
+    avg[counts < min_valid] = 0
+
+    valid_px = int(np.count_nonzero(avg))
+    total_px = h * w
+    print(
+        f"  Depth averaging: {len(frames_depth)} frames → "
+        f"{valid_px}/{total_px} valid px ({100.0 * valid_px / total_px:.1f}%)"
+    )
+    return avg, frames_rgb[-1]
 
 
 def capture_and_fuse(

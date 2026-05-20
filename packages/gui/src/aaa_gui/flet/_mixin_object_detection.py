@@ -693,30 +693,33 @@ class ObjectDetectionMixin:
         done_message: str,
         duration_sec: float = 1.0,
     ):
-        """Collect frames for `duration_sec`, fuse with TSDF, then freeze the view.
+        """Collect frames for `duration_sec`, pixel-wise average them, then freeze.
 
-        The TSDF integration runs concurrently with the freeze countdown so the
-        freeze latency stays at ~1 s. Falls back to a single-frame snapshot if
-        fusion is unavailable (no Open3D, no depth, or non-RealSense camera).
+        The averaging runs concurrently with the freeze countdown so the
+        freeze latency stays at ~1 s. The averaged depth replaces the
+        single-frame snapshot of `frozen_display_depth`, so all downstream
+        point-cloud paths get smoother depth transparently — no other code
+        needs to know averaging happened.
         """
-        from aaa_vision.depth_fusion import capture_and_fuse
+        from aaa_vision.depth_fusion import capture_and_average_depth
 
-        fused_pcd = None
+        avg_depth = None
+        avg_rgb = None
         if getattr(self.image_processor, "use_realsense", False):
             try:
-                fused_pcd = capture_and_fuse(
+                avg_depth, avg_rgb = capture_and_average_depth(
                     self.image_processor,
                     duration_sec=duration_sec,
                     max_frames=20,
                 )
             except Exception as ex:
-                print(f"Find Objects: TSDF fusion failed, falling back: {ex}")
-                fused_pcd = None
+                print(f"Find Objects: depth averaging failed, falling back: {ex}")
+                avg_depth, avg_rgb = None, None
         else:
             # Non-RealSense path: just wait so behavior matches the old freeze
             time.sleep(duration_sec)
 
-        # Snapshot single-frame data for the legacy fallback paths
+        # Snapshot single-frame data for paths that still want raw frames
         try:
             depth = getattr(self.image_processor, "depth_frame", None)
             self.frozen_depth_frame = depth.copy() if depth is not None else None
@@ -727,12 +730,17 @@ class ObjectDetectionMixin:
         aligned = getattr(self.image_processor, "_last_aligned_color", None)
         self.frozen_aligned_color = aligned.copy() if aligned is not None else None
 
-        display_depth = getattr(self.image_processor, "_last_display_depth", None)
-        self.frozen_display_depth = (
-            display_depth.copy() if display_depth is not None else None
-        )
+        # Prefer the averaged depth; fall back to last live frame if averaging
+        # was unavailable.
+        if avg_depth is not None:
+            self.frozen_display_depth = avg_depth
+        else:
+            display_depth = getattr(self.image_processor, "_last_display_depth", None)
+            self.frozen_display_depth = (
+                display_depth.copy() if display_depth is not None else None
+            )
 
-        self.frozen_fused_pcd = fused_pcd
+        self.frozen_fused_pcd = None
         self.video_frozen = True
         print(done_message)
 
