@@ -601,12 +601,15 @@ class PointCloudMixin:
         import sys
         from pathlib import Path
 
-        # Ensure there is an exported file; try to export if not present
+        # last_exported_ply is invalidated whenever the selection changes or
+        # the view is re-frozen, so a cached path is always for the currently
+        # selected object: reuse it, otherwise export the current selection.
         if not getattr(self, "last_exported_ply", None):
-            print("No previously exported PLY found - exporting now...")
+            print("Preview 3D: exporting current selection...")
             path = self._export_selected_object_ply(e)
         else:
             path = self.last_exported_ply
+            print(f"Preview 3D: reusing PLY for current selection ({Path(path).name})")
 
         if not path:
             print("No PLY available to preview")

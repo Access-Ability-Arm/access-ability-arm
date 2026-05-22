@@ -60,6 +60,12 @@ class ObjectDetectionMixin:
             self.object_analysis = None
             print(f"Selected object #{object_index + 1}: {class_name}")
 
+        # Invalidate the cached export — it belonged to the previous selection.
+        # This keeps Preview 3D predictable: it always reflects the object
+        # currently selected (re-exporting when the selection changed, reusing
+        # the file only for repeat views of the same object).
+        self.last_exported_ply = None
+
         # Highlight the selected button
         for i, btn in enumerate(self.object_buttons_row.controls):
             if i == self.selected_object:
@@ -651,6 +657,9 @@ class ObjectDetectionMixin:
         self.object_analysis = None
         self._analysis_in_progress = False
         self.frozen_raw_frame = None
+        # The cached export belonged to the prior freeze — drop it so Preview
+        # 3D re-exports against the new frame instead of showing stale data.
+        self.last_exported_ply = None
         # Hide object action buttons
         self._update_object_action_visibility()
         self.page.update()
