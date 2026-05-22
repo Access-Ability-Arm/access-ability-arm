@@ -133,6 +133,8 @@ class FletMainWindow(
         self.frozen_aligned_color = None  # Store aligned color (848x480) at freeze time
         self.frozen_display_depth = None  # Store display depth (1920x1080) at freeze time
         self.frozen_fused_pcd = None  # TSDF-fused Open3D PointCloud (camera frame, meters)
+        self.frozen_depth_std = None  # Per-pixel temporal std of the averaged depth (diagnostic)
+        self.frozen_depth_stack = None  # Raw per-frame depth stack (N,H,W) for test-fixture export
         self.object_analysis = None  # ObjectAnalysis result for selected object
         self._analysis_in_progress = False  # Flag for background analysis thread
         self.last_exported_ply = None  # Path to the last exported PLY file

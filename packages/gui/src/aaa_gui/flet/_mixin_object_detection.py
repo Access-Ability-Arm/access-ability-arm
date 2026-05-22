@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -705,16 +706,33 @@ class ObjectDetectionMixin:
 
         avg_depth = None
         avg_rgb = None
+        depth_std = None
+        depth_stack = None
         if getattr(self.image_processor, "use_realsense", False):
             try:
-                avg_depth, avg_rgb = capture_and_average_depth(
+                # Optional raw-stack capture for offline validation. Enable by
+                # setting AAA_SAVE_RAW_DEPTH=1; stacks land in logs/raw_depth/
+                # and can be replayed via scripts/validate_depth_fusion.py.
+                save_raw_path = None
+                if os.environ.get("AAA_SAVE_RAW_DEPTH"):
+                    import time as _time
+                    from pathlib import Path
+
+                    raw_dir = Path("logs/raw_depth")
+                    raw_dir.mkdir(parents=True, exist_ok=True)
+                    save_raw_path = str(
+                        raw_dir / f"rawdepth_{_time.strftime('%Y%m%d_%H%M%S')}.npz"
+                    )
+
+                avg_depth, avg_rgb, depth_std, depth_stack = capture_and_average_depth(
                     self.image_processor,
                     duration_sec=duration_sec,
                     max_frames=20,
+                    save_raw_path=save_raw_path,
                 )
             except Exception as ex:
                 print(f"Find Objects: depth averaging failed, falling back: {ex}")
-                avg_depth, avg_rgb = None, None
+                avg_depth, avg_rgb, depth_std, depth_stack = None, None, None, None
         else:
             # Non-RealSense path: just wait so behavior matches the old freeze
             time.sleep(duration_sec)
@@ -741,6 +759,11 @@ class ObjectDetectionMixin:
             )
 
         self.frozen_fused_pcd = None
+        self.frozen_depth_std = depth_std
+        # Retain the raw per-frame stack so Export PLY can bundle a complete
+        # replayable test fixture. ~80 MB held for the duration of the freeze;
+        # cleared on unfreeze.
+        self.frozen_depth_stack = depth_stack
         self.video_frozen = True
         print(done_message)
 

@@ -64,22 +64,90 @@ def get_color_intrinsics(image_processor) -> dict:
     return dict(_D435_COLOR_INTRINSICS_1080P)
 
 
+def variance_gated_average(
+    frames_depth,
+    min_valid_fraction: float = 0.34,
+    std_threshold_mm: float = 40.0,
+):
+    """Average a depth-frame stack, rejecting temporally unstable pixels.
+
+    Pure function (no camera dependency) so it can be replayed on saved raw
+    stacks for offline validation — see scripts/validate_depth_fusion.py.
+
+    For each pixel, across the frames where it has a valid (>0) reading:
+      - compute the mean depth
+      - compute the temporal std (two-pass, deviations-from-mean form, which
+        is numerically stable — a naive E[x²]-E[x]² suffers catastrophic
+        cancellation here because depths squared are large)
+
+    A pixel is invalidated (set to 0) when either:
+      - it has too few valid samples (< min_valid_fraction of frames), or
+      - its temporal std exceeds `std_threshold_mm`.
+
+    The std gate is the discontinuity fix: a pixel straddling an object edge
+    flickers between foreground and background depth across frames, so a plain
+    mean places a phantom point at the mid-depth (the "skirt"). Such a pixel
+    has std in the hundreds of mm, while a stable surface pixel sits well
+    under 10 mm — so the gate cleanly removes ambiguous edge pixels instead of
+    inventing a depth for them.
+
+    Returns (avg_uint16, std_float32, counts_float32). avg has gated pixels
+    zeroed; std and counts are returned ungated for diagnostics.
+    """
+    if not frames_depth:
+        return None, None, None
+
+    h, w = frames_depth[0].shape[:2]
+    n = len(frames_depth)
+
+    # Pass 1: per-pixel mean over valid samples.
+    sums = np.zeros((h, w), dtype=np.float32)
+    counts = np.zeros((h, w), dtype=np.float32)
+    for f in frames_depth:
+        valid = f > 0
+        sums += np.where(valid, f.astype(np.float32), 0.0)
+        counts += valid.astype(np.float32)
+    safe_counts = np.maximum(counts, 1.0)
+    mean = sums / safe_counts
+
+    # Pass 2: per-pixel variance as mean squared deviation from the mean.
+    sqdev = np.zeros((h, w), dtype=np.float32)
+    for f in frames_depth:
+        valid = f > 0
+        d = np.where(valid, f.astype(np.float32) - mean, 0.0)
+        sqdev += d * d
+    std = np.sqrt(np.maximum(sqdev / safe_counts, 0.0)).astype(np.float32)
+
+    min_valid = max(2, int(round(n * min_valid_fraction)))
+    avg = mean.astype(np.uint16)
+    gated = (counts < min_valid) | (std > std_threshold_mm)
+    avg[gated] = 0
+
+    return avg, std, counts.astype(np.float32)
+
+
 def capture_and_average_depth(
     image_processor,
     duration_sec: float = 1.0,
     max_frames: int = 20,
     min_valid_fraction: float = 0.34,
+    std_threshold_mm: float = 40.0,
+    save_raw_path: "Optional[str]" = None,
 ):
     """Collect frames and pixel-wise average them into one denoised depth map.
 
     Reads `_last_display_depth` (1080p depth aligned to color) and
-    `_last_rgb_frame` (1080p RGB) from the image processor. For each pixel,
-    averages the depth across all frames where that pixel has a valid (>0)
-    reading; pixels with too few valid samples are zeroed so they fall back
-    to "no depth" downstream rather than to a phantom near-zero average.
+    `_last_rgb_frame` (1080p RGB) from the image processor, then delegates to
+    `variance_gated_average` for the actual fusion.
 
-    Returns (avg_depth_uint16, latest_rgb) — or (None, None) if no frames
-    could be collected.
+    If `save_raw_path` is given, the full raw frame stack plus the computed
+    avg/std/counts are written there (np.savez_compressed) so the fusion can
+    be replayed and validated offline without the camera.
+
+    Returns (avg_depth_uint16, latest_rgb, depth_std_float32, depth_stack) —
+    or (None, None, None, None) if no frames could be collected. The raw
+    `depth_stack` (N, H, W uint16) is returned so the caller can retain it and
+    later bundle a complete test fixture (e.g. on Export PLY).
     """
     frames_depth = []
     frames_rgb = []
@@ -104,32 +172,95 @@ def capture_and_average_depth(
         time.sleep(0.03)
 
     if not frames_depth:
-        return None, None
+        return None, None, None, None
+
+    stack = np.stack(frames_depth, axis=0)
+
     if len(frames_depth) == 1:
-        return frames_depth[0], frames_rgb[0]
+        return frames_depth[0], frames_rgb[0], None, stack
 
-    # Streaming sum/count to keep peak memory at ~2 float32 frames rather than
-    # the full (N, H, W) stack. For 1080p uint16 with N=20 that's 16MB vs 80MB.
+    avg, std, counts = variance_gated_average(
+        frames_depth,
+        min_valid_fraction=min_valid_fraction,
+        std_threshold_mm=std_threshold_mm,
+    )
+
     h, w = frames_depth[0].shape[:2]
-    sums = np.zeros((h, w), dtype=np.float32)
-    counts = np.zeros((h, w), dtype=np.float32)
-    for f in frames_depth:
-        valid = f > 0
-        sums += np.where(valid, f.astype(np.float32), 0.0)
-        counts += valid.astype(np.float32)
-
-    min_valid = max(2, int(round(len(frames_depth) * min_valid_fraction)))
-    safe_counts = np.maximum(counts, 1.0)
-    avg = (sums / safe_counts).astype(np.uint16)
-    avg[counts < min_valid] = 0
-
     valid_px = int(np.count_nonzero(avg))
     total_px = h * w
+    # Pixels that have data but were rejected specifically by the std gate.
+    edge_rejected = int(np.count_nonzero((counts > 0) & (avg == 0) & (std > std_threshold_mm)))
     print(
         f"  Depth averaging: {len(frames_depth)} frames → "
-        f"{valid_px}/{total_px} valid px ({100.0 * valid_px / total_px:.1f}%)"
+        f"{valid_px}/{total_px} valid px ({100.0 * valid_px / total_px:.1f}%), "
+        f"{edge_rejected} px rejected as unstable edges (std>{std_threshold_mm:.0f}mm)"
     )
-    return avg, frames_rgb[-1]
+
+    if save_raw_path is not None:
+        try:
+            np.savez_compressed(
+                save_raw_path,
+                depth_stack=stack,
+                rgb=frames_rgb[-1],
+                avg=avg,
+                std=std,
+                counts=counts,
+                std_threshold_mm=np.float32(std_threshold_mm),
+                min_valid_fraction=np.float32(min_valid_fraction),
+            )
+            print(f"  Saved raw depth stack → {save_raw_path}")
+        except Exception as ex:
+            print(f"  Could not save raw depth stack: {ex}")
+
+    return avg, frames_rgb[-1], std, stack
+
+
+def save_fixture(
+    path: str,
+    depth_stack: np.ndarray,
+    rgb: "Optional[np.ndarray]",
+    avg_depth: "Optional[np.ndarray]",
+    depth_std: "Optional[np.ndarray]",
+    contours,
+    selected_object: "Optional[int]",
+    intrinsics: dict,
+    processed_cloud_path: "Optional[str]" = None,
+):
+    """Write a complete depth-fusion test fixture (np.savez_compressed).
+
+    Bundles everything needed to replay the freeze → mask → cloud pipeline
+    offline so real recordings can become regression test cases:
+
+      - depth_stack: raw per-frame depth (N, H, W uint16) — input to averaging
+      - rgb: the frozen RGB frame
+      - avg / std: the averaged depth and per-pixel temporal std
+      - contours: the detection contours (object array; load with allow_pickle)
+      - selected_object: which object index the cloud was exported for
+      - intrinsics: camera intrinsics as a JSON string
+      - processed_cloud_path: the .ply this fixture was saved alongside
+
+    Replayable via scripts/validate_depth_fusion.py.
+    """
+    import json
+
+    payload = {
+        "depth_stack": depth_stack,
+        "selected_object": np.int32(-1 if selected_object is None else selected_object),
+        "intrinsics_json": json.dumps(intrinsics),
+        "contours": np.array(
+            [np.asarray(c) for c in (contours or [])], dtype=object
+        ),
+    }
+    if rgb is not None:
+        payload["rgb"] = rgb
+    if avg_depth is not None:
+        payload["avg"] = avg_depth
+    if depth_std is not None:
+        payload["std"] = depth_std
+    if processed_cloud_path is not None:
+        payload["processed_cloud_path"] = str(processed_cloud_path)
+
+    np.savez_compressed(path, **payload)
 
 
 def capture_and_fuse(

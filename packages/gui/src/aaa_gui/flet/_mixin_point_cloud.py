@@ -11,6 +11,58 @@ if TYPE_CHECKING:
 class PointCloudMixin:
     """Methods for point cloud extraction, PLY export, and preview."""
 
+    # Shrink the object mask inward by this many pixels before sampling points.
+    # The RF-DETR contour typically overshoots the true silhouette by 1-3 px,
+    # so the outermost ring samples background depth and welds a discontinuous
+    # ring of background points onto the object cloud. Eroding drops that ring.
+    _MASK_ERODE_PX = 3
+
+    def _object_mask_xy(self: FletMainWindow, object_index: int, subsample: int):
+        """Return (xs, ys) pixel coords inside the eroded object mask.
+
+        Shared by get_object_depth_points and _extract_object_colors so the two
+        sample identical pixels in identical order — otherwise their point and
+        color arrays desync and colors silently get dropped. Returns
+        (None, None) if the object/frame is unavailable.
+        """
+        import cv2
+        import numpy as np
+
+        if not getattr(self, "frozen_detections", None):
+            return None, None
+        contours = self.frozen_detections.get("contours")
+        if not contours or object_index >= len(contours):
+            return None, None
+        rgb = getattr(self, "frozen_raw_frame", None)
+        if rgb is None:
+            return None, None
+
+        h, w = rgb.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.drawContours(
+            mask,
+            [np.array(contours[object_index], dtype=np.int32)],
+            -1,
+            255,
+            thickness=cv2.FILLED,
+        )
+
+        erode_px = self._MASK_ERODE_PX
+        if erode_px > 0:
+            kernel = np.ones((erode_px * 2 + 1, erode_px * 2 + 1), np.uint8)
+            eroded = cv2.erode(mask, kernel)
+            # Tiny objects can erode away entirely — keep the un-eroded mask then.
+            if np.count_nonzero(eroded) > 0:
+                mask = eroded
+
+        ys, xs = np.where(mask == 255)
+        if len(xs) == 0:
+            return None, None
+        if subsample > 1:
+            xs = xs[::subsample]
+            ys = ys[::subsample]
+        return xs, ys
+
     @staticmethod
     def _ensure_meters(arr):
         """Convert pixel+depth_mm points to meters if needed.
@@ -38,17 +90,7 @@ class PointCloudMixin:
         self: FletMainWindow, object_index: int, subsample: int = 4, to_meters: bool = False
     ):
         """Return list of (x, y, depth_mm) or (X, Y, Z) if to_meters and RealSense available for selected frozen object."""
-        import cv2
         import numpy as np
-
-        if not getattr(self, "frozen_detections", None):
-            return []
-
-        contours = self.frozen_detections.get("contours")
-        if not contours or object_index >= len(contours):
-            return []
-
-        contour = contours[object_index]
 
         rgb = getattr(self, "frozen_raw_frame", None)
         if rgb is None:
@@ -74,17 +116,9 @@ class PointCloudMixin:
         h_rgb, w_rgb = rgb.shape[:2]
         h_depth, w_depth = depth.shape[:2]
 
-        mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
-        cv2.drawContours(
-            mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED
-        )
-
-        ys, xs = np.where(mask_rgb == 255)
-        if len(xs) == 0:
+        xs, ys = self._object_mask_xy(object_index, subsample)
+        if xs is None:
             return []
-
-        xs = xs[::subsample]
-        ys = ys[::subsample]
 
         if use_color_intrinsics:
             # display_depth is same resolution as RGB: index directly
@@ -149,34 +183,19 @@ class PointCloudMixin:
         Returns Nx3 uint8 array matching the points from get_object_depth_points,
         or None if color data is unavailable.
         """
-        import cv2
         import numpy as np
 
-        if not getattr(self, "frozen_detections", None):
-            return None
-
-        contours = self.frozen_detections.get("contours")
-        if not contours or object_index >= len(contours):
-            return None
-
-        contour = contours[object_index]
         rgb = getattr(self, "frozen_raw_frame", None)
         if rgb is None:
             return None
 
         h_rgb, w_rgb = rgb.shape[:2]
 
-        mask_rgb = np.zeros((h_rgb, w_rgb), dtype=np.uint8)
-        cv2.drawContours(
-            mask_rgb, [np.array(contour, dtype=np.int32)], -1, 255, thickness=cv2.FILLED
-        )
-
-        ys, xs = np.where(mask_rgb == 255)
-        if len(xs) == 0:
+        # Same eroded mask + subsample as get_object_depth_points, so the color
+        # array lines up 1:1 with the point array.
+        xs, ys = self._object_mask_xy(object_index, subsample)
+        if xs is None:
             return None
-
-        xs = xs[::subsample]
-        ys = ys[::subsample]
 
         if display_depth is not None:
             # Color-aligned path: depth and RGB both at 1920x1080, index directly.
@@ -326,6 +345,36 @@ class PointCloudMixin:
                 self.last_exported_ply = str(out_path)
             except Exception:
                 self.last_exported_ply = None
+
+            # Bundle a complete test fixture next to the exported cloud: the
+            # raw per-frame depth stack plus everything needed to replay the
+            # freeze → mask → cloud pipeline offline. This turns real
+            # recordings into regression cases (see scripts/validate_depth_fusion.py).
+            try:
+                stack = getattr(self, "frozen_depth_stack", None)
+                if stack is not None:
+                    from aaa_vision.depth_fusion import (
+                        get_color_intrinsics,
+                        save_fixture,
+                    )
+
+                    fixture_path = out_path.with_name(out_path.stem + "_fixture.npz")
+                    save_fixture(
+                        str(fixture_path),
+                        depth_stack=stack,
+                        rgb=getattr(self, "frozen_raw_frame", None),
+                        avg_depth=getattr(self, "frozen_display_depth", None),
+                        depth_std=getattr(self, "frozen_depth_std", None),
+                        contours=(self.frozen_detections or {}).get("contours", []),
+                        selected_object=self.selected_object,
+                        intrinsics=get_color_intrinsics(self.image_processor),
+                        processed_cloud_path=str(out_path),
+                    )
+                    print(f"✓ Test fixture saved: {fixture_path.name}")
+                else:
+                    print("  (no raw depth stack retained — test fixture not saved)")
+            except Exception as ex:
+                print(f"  Could not save test fixture: {ex}")
 
             if hasattr(self, "status_text"):
                 self.status_text.value = f"PLY saved: {out_path.name}"
