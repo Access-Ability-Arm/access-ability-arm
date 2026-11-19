@@ -65,10 +65,26 @@ class AppConfig:
     button_hold_threshold: float = 0.5  # seconds
 
     # Robotic arm settings
+    arm_type: str = "lite6"           # "lite6" or "b601"
     lite6_ip: str = "192.168.1.203"  # Default IP for UFactory Lite6
     lite6_port: int = 502  # Modbus TCP port
     lite6_auto_connect: bool = True  # Auto-connect on startup
     lite6_available: bool = False
+    b601_port: str = "/dev/ttyACM0"  # Serial port: Linux "/dev/ttyACM0", Windows "COM3"
+    b601_available: bool = False
+
+    # Camera-to-gripper (tool) rigid mount transform.
+    # Describes where the D435 sits relative to the gripper tip — a physical
+    # constant of the hardware that only changes if the camera is remounted.
+    # Translation in mm, rotation in degrees (roll/pitch/yaw, intrinsic XYZ).
+    # Defaults to identity (camera at gripper origin, aligned with tool axes).
+    # Visual grasping accuracy depends on measuring these from the actual mount.
+    camera_to_tool_tx_mm: float = 0.0
+    camera_to_tool_ty_mm: float = 0.0
+    camera_to_tool_tz_mm: float = 0.0
+    camera_to_tool_roll: float = 0.0
+    camera_to_tool_pitch: float = 0.0
+    camera_to_tool_yaw: float = 0.0
 
     # Movement settings
     tap_step_size: int = 10  # mm for short button press
@@ -176,12 +192,22 @@ def apply_user_config(config: AppConfig, user_config: dict):
     # Arm settings
     if 'arm' in user_config:
         arm = user_config['arm']
+        if 'type' in arm:
+            config.arm_type = arm['type']
         if 'ip' in arm:
             config.lite6_ip = arm['ip']
         if 'port' in arm:
             config.lite6_port = arm['port']
         if 'auto_connect' in arm:
             config.lite6_auto_connect = arm['auto_connect']
+        if 'b601_port' in arm:
+            config.b601_port = arm['b601_port']
+        for key in (
+            'camera_to_tool_tx_mm', 'camera_to_tool_ty_mm', 'camera_to_tool_tz_mm',
+            'camera_to_tool_roll', 'camera_to_tool_pitch', 'camera_to_tool_yaw',
+        ):
+            if key in arm:
+                setattr(config, key, float(arm[key]))
 
     # Camera settings
     if 'camera' in user_config:
@@ -304,6 +330,15 @@ def detect_hardware_capabilities() -> AppConfig:
         success(f"{underline('Lite6 arm driver')} available")
     except ImportError:
         error("Lite6 arm driver not available")
+
+    # Try to detect B601 arm driver
+    try:
+        from aaa_b601_driver import B601Arm  # noqa: F401
+
+        config.b601_available = True
+        success(f"{underline('B601 arm driver')} available")
+    except ImportError:
+        error("B601 arm driver not available")
 
     # Try RF-DETR first (SOTA 2025), fallback to YOLOv11, then Mask R-CNN
     # Note: optimize_for_inference() breaks mask output, so we skip optimization

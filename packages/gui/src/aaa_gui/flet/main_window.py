@@ -25,7 +25,7 @@ except ImportError:
 import flet as ft
 
 # Import Flet-compatible arm controller
-if app_config.lite6_available:
+if app_config.lite6_available or app_config.b601_available:
     from aaa_core.workers.arm_controller_flet import ArmControllerFlet
 
 # Import mixins
@@ -210,11 +210,14 @@ class FletMainWindow(
         self.button_controller.start()  # Start the thread once
 
         # Arm controller (if available)
-        if app_config.lite6_available:
-            print("[DEBUG] Creating arm controller...")
+        arm_available = app_config.lite6_available or app_config.b601_available
+        if arm_available:
+            print(f"[DEBUG] Creating arm controller (type={app_config.arm_type})...")
             self.arm_controller = ArmControllerFlet(
                 arm_ip=app_config.lite6_ip,
                 port=app_config.lite6_port,
+                arm_type=app_config.arm_type,
+                serial_port=app_config.b601_port,
                 on_connection_status=self._on_arm_connection_status,
                 on_error=self._on_arm_error,
             )
@@ -225,12 +228,14 @@ class FletMainWindow(
                     "[DEBUG] Auto-connect enabled - starting background connection thread for arm..."
                 )
                 try:
+                    if app_config.arm_type == "b601":
+                        _connect_label = f"B601 on {app_config.b601_port}"
+                    else:
+                        _connect_label = f"Lite6 at {app_config.lite6_ip}:{app_config.lite6_port}"
 
                     def connect_async():
                         try:
-                            print(
-                                f"[Arm] Connecting to arm at {app_config.lite6_ip}:{app_config.lite6_port}..."
-                            )
+                            print(f"[Arm] Connecting to {_connect_label}...")
                             self.arm_controller.connect_arm()
                         except Exception as e:
                             print(f"[Arm] Async connect failed: {e}")
@@ -1230,12 +1235,55 @@ class FletMainWindow(
     # ------------------------------------------------------------------ #
 
     def _on_execute(self):
-        """Handle Execute button - confirms grasp plan and begins arm motion"""
+        """Handle Execute button - confirms grasp plan and begins arm motion."""
         print("Execute: Beginning grasp motion...")
         if not self.arm_controller or not self.arm_controller.arm:
             print("Arm not connected - cannot execute grasp")
             return
-        print("Grasp execution not yet implemented")
+        if self.object_analysis is None:
+            print("No grasp analysis available")
+            return
+
+        analysis = self.object_analysis
+
+        # Switch UI to 'analyzing' row to show progress
+        self._toggle_grip_buttons("analyzing")
+        if hasattr(self, "grip_analyzing_row"):
+            for ctrl in self.grip_analyzing_row.controls:
+                if hasattr(ctrl, "value") and isinstance(ctrl.value, str):
+                    ctrl.value = "Executing..."
+        self.page.update()
+
+        def _run():
+            def on_progress(msg: str):
+                if hasattr(self, "grasp_status_text") and self._ui_built:
+                    self.grasp_status_text.value = msg
+                    try:
+                        self.page.update()
+                    except Exception:
+                        pass
+
+            success = self.arm_controller.execute_grasp(
+                grasp_point_cam=tuple(analysis.grasp_point),
+                grasp_approach_cam=tuple(analysis.grasp_approach),
+                grasp_width_m=analysis.grasp_width,
+                on_progress=on_progress,
+            )
+
+            if self._ui_built:
+                if success:
+                    self.grasp_status_text.value = "Grasp complete"
+                    self.grasp_status_text.color = "#4CAF50"
+                else:
+                    self.grasp_status_text.value = "Grasp failed — check arm"
+                    self.grasp_status_text.color = "#F44336"
+                self._toggle_grip_buttons("decision")
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+
+        threading.Thread(target=_run, daemon=True).start()
 
     # ------------------------------------------------------------------ #
     #  Grip Decision Buttons + Nudge Controls                             #

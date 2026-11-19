@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aaa-b601-driver"
+version = "0.1.0"
+description = "Seeed Studio reBot Arm B601 driver for Access Ability Arm"
+requires-python = ">=3.11,<3.14"
+authors = [
+    {name = "Access Ability Arm Team"}
+]
+dependencies = [
+    "aaa-core",
+    "motorbridge",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

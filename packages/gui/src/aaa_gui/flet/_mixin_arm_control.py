@@ -236,7 +236,12 @@ class ArmControlMixin:
 
         if self.arm_status_text and self._ui_built:
             if connected:
-                self.arm_status_text.value = f"Arm: \u2713 Connected ({app_config.lite6_ip})"
+                arm_label = (
+                    app_config.b601_port
+                    if app_config.arm_type == "b601"
+                    else app_config.lite6_ip
+                )
+                self.arm_status_text.value = f"Arm: \u2713 Connected ({arm_label})"
                 self.arm_status_text.color = "#2E7D32"  # Green 800
             else:
                 self.arm_status_text.value = f"Arm: \u2717 {message}"
@@ -506,3 +511,40 @@ class ArmControlMixin:
         self.arm_controller.move_relative_tool(
             *deltas, speed=movement_speed, wait=False,
         )
+
+    # ------------------------------------------------------------------ #
+    #  Gravity Compensation (B601 only)                                   #
+    # ------------------------------------------------------------------ #
+
+    def _on_gravity_comp_toggle(self: FletMainWindow):
+        """Toggle gravity compensation on the B601 arm.
+
+        Activates 'floating' mode — the arm holds pose against gravity
+        but yields to manual force.  Disabling automatically homes the arm.
+        Silently no-ops on Lite6 (unsupported).
+        """
+        if not self.arm_controller:
+            return
+
+        enabled = not getattr(self, "_gravity_comp_active", False)
+        success = self.arm_controller.set_gravity_compensation(enabled)
+
+        if success:
+            self._gravity_comp_active = enabled
+            btn = getattr(self, "gravity_comp_btn", None)
+            if btn is not None:
+                if enabled:
+                    btn.bgcolor = ft.Colors.with_opacity(0.80, ft.Colors.AMBER_500)
+                    # Update inner label text
+                    try:
+                        btn.content.controls[1].value = "Float: ON"
+                    except Exception:
+                        pass
+                else:
+                    btn.bgcolor = ft.Colors.with_opacity(0.80, ft.Colors.BLUE_500)
+                    try:
+                        btn.content.controls[1].value = "Float"
+                    except Exception:
+                        pass
+                btn.update()
+            print(f"Gravity compensation {'enabled' if enabled else 'disabled'}")
