@@ -3,8 +3,11 @@
 
 # Robotic Arm Settings
 arm:
-  # IP address of your UFactory Lite6 arm
-  # Find this in the xArm Studio or your network settings
+  # Arm type: "lite6" (UFactory Lite6, TCP/IP) or "b601" (Seeed reBot Arm B601, serial/CAN)
+  type: "lite6"
+
+  # --- UFactory Lite6 settings (used when type = "lite6") ---
+  # IP address of your Lite6 arm (find in xArm Studio or network settings)
   ip: "192.168.1.203"
 
   # Port number (default: 502 for Modbus TCP)
@@ -12,6 +15,59 @@ arm:
 
   # Auto-connect on startup
   auto_connect: true
+
+  # --- Seeed reBot Arm B601 settings (used when type = "b601") ---
+  # Serial port connected to the B601 CAN adapter
+  # Linux: "/dev/ttyACM0"   Windows: "COM3"
+  b601_port: "/dev/ttyACM0"
+
+  # --- Camera-to-gripper (tool) mount calibration ---
+  #
+  # Physical constant of the hardware.  Change only if the camera is
+  # physically detached and remounted.  Does NOT change when the arm
+  # is repositioned in the room.
+  #
+  # COORDINATE FRAMES (all right-handed):
+  #
+  #   Gripper tool frame:
+  #     +X  rightward across the gripper face (when facing the jaw opening)
+  #     +Y  upward along the gripper body
+  #     +Z  forward, out through the jaw opening (approach / grasp direction)
+  #
+  #   Camera frame (RealSense D435 standard):
+  #     +X  rightward in the camera image
+  #     +Y  downward in the camera image
+  #     +Z  into the scene (depth / optical axis)
+  #
+  # TRANSLATION  tx / ty / tz  (millimetres)
+  #   Vector from gripper tip origin to camera lens origin, expressed in
+  #   the gripper tool frame.
+  #   +tx  camera is to the right  of the gripper tip
+  #   +ty  camera is above          the gripper tip
+  #   +tz  camera is further forward (farther from the arm, closer to object)
+  #
+  # ROTATION  roll / pitch / yaw  (degrees)
+  #   Intrinsic RPY: rotate the camera frame onto the gripper tool frame by
+  #   applying roll first, then pitch about the already-rotated Y axis, then
+  #   yaw about the already-rotated Z axis.  Right-hand rule throughout
+  #   (curl fingers in the positive direction; thumb points along +axis).
+  #   +roll   tilts the top of the camera toward gripper +X (rightward)
+  #   +pitch  tilts the camera face upward (away from the floor)
+  #   +yaw    rotates the camera face toward gripper -X (leftward)
+  #
+  # EXAMPLE — camera mounted 40 mm above and 20 mm behind the gripper tip,
+  # tilted 30° downward to see the object below:
+  #   camera_to_tool_tx_mm:  0.0
+  #   camera_to_tool_ty_mm: 40.0
+  #   camera_to_tool_tz_mm: -20.0
+  #   camera_to_tool_pitch: -30.0   (negative = face tilts downward)
+  #
+  camera_to_tool_tx_mm: 0.0   # camera right of gripper tip (mm, +X gripper)
+  camera_to_tool_ty_mm: 0.0   # camera above gripper tip    (mm, +Y gripper)
+  camera_to_tool_tz_mm: 0.0   # camera forward of gripper tip (mm, +Z gripper)
+  camera_to_tool_roll:  0.0   # +roll  = camera top tilts right  (degrees)
+  camera_to_tool_pitch: 0.0   # +pitch = camera face tilts up    (degrees)
+  camera_to_tool_yaw:   0.0   # +yaw   = camera face turns left  (degrees)
 
 # Camera Settings
 camera:

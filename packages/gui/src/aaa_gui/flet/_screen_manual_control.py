@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import flet as ft
 
 from . import _design_tokens as T
+from aaa_core.config.settings import app_config
 
 if TYPE_CHECKING:
     from .main_window import FletMainWindow
@@ -268,6 +269,14 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
         lambda _: window._on_grip_state_changed(True),
     )
 
+    # Gravity compensation toggle — B601 only
+    window.gravity_comp_btn = _make_bottom_btn(
+        "Float", ft.Icons.WAVES,
+        T.BLUE_500,
+        lambda _: window._on_gravity_comp_toggle(),
+    )
+    window.gravity_comp_btn.visible = (app_config.arm_type == "b601")
+
     # Speed selector — prototype: bg-white/20 (unselected), bg-white (selected)
     window.speed_segment = ft.SegmentedButton(
         segments=[
@@ -319,6 +328,7 @@ def build_screen_manual_control(window: FletMainWindow) -> ft.Container:
                 ft.VerticalDivider(width=1, color=ft.Colors.with_opacity(0.3, T.WHITE)),
                 open_grip_btn,
                 close_grip_btn,
+                window.gravity_comp_btn,
                 ft.VerticalDivider(width=1, color=ft.Colors.with_opacity(0.3, T.WHITE)),
                 stop_btn,
             ],
